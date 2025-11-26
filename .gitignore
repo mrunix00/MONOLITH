@@ -1,0 +1,9 @@
+.cache/
+build/
+toolchain/
+libs/limine/*
+libs/Unity/*
+libs/microui/*
+libs/flanterm/*
+.clangd
+bx_enh_dbg.ini

@@ -1,0 +1,19 @@
+[submodule "libs/Unity"]
+	path = libs/Unity
+	url = https://github.com/ThrowTheSwitch/Unity.git
+	shallow = true
+[submodule "libs/flanterm"]
+	path = libs/flanterm
+	url = https://codeberg.org/mintsuki/flanterm.git
+	shallow = true
+[submodule "libs/limine"]
+	path = libs/limine
+	url = https://codeberg.org/Limine/Limine
+	branch = v10.x-binary
+	shallow = true
+[submodule "libs/microui"]
+	path = libs/microui
+	url = https://github.com/rxi/microui
+[submodule "libs/limine-protocol"]
+	path = libs/limine-protocol
+	url = https://codeberg.org/Limine/limine-protocol
