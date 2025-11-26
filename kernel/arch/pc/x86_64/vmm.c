@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include "libs/limine-protocol/include/limine.h"
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/paging.h>
 #include <kernel/debug.h>
@@ -15,15 +16,15 @@
 
 __attribute__((used, section(".limine_requests"))) volatile struct limine_hhdm_request
     limine_hhdm_request
-    = {.id = LIMINE_HHDM_REQUEST, .revision = 0};
+    = {.id = LIMINE_HHDM_REQUEST_ID, .revision = 0};
 
-__attribute__((used, section(".limine_requests"))) volatile struct limine_kernel_address_request
+__attribute__((used, section(".limine_requests"))) volatile struct limine_executable_address_request
     limine_kernel_address_request
-    = {.id = LIMINE_KERNEL_ADDRESS_REQUEST, .revision = 0};
+    = {.id = LIMINE_EXECUTABLE_ADDRESS_REQUEST_ID, .revision = 0};
 
 __attribute__((used, section(".limine_requests"))) volatile struct limine_paging_mode_request
     limine_paging_request
-    = {.id = LIMINE_PAGING_MODE_REQUEST, .mode = LIMINE_PAGING_MODE_X86_64_4LVL, .revision = 0};
+    = {.id = LIMINE_PAGING_MODE_REQUEST_ID, .mode = LIMINE_PAGING_MODE_X86_64_4LVL, .revision = 0};
 
 static page_table_t *_pt_top_level;
 

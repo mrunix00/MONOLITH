@@ -8,10 +8,12 @@
 	shallow = true
 [submodule "libs/limine"]
 	path = libs/limine
-	url = https://github.com/limine-bootloader/limine/
-	branch = v9.x-binary
+	url = https://codeberg.org/Limine/Limine
+	branch = v10.x-binary
 	shallow = true
 [submodule "libs/microui"]
 	path = libs/microui
 	url = https://github.com/rxi/microui
-	shallow = true
+[submodule "libs/limine-protocol"]
+	path = libs/limine-protocol
+	url = https://codeberg.org/Limine/limine-protocol

@@ -96,7 +96,7 @@ static const char *_get_mmap_type(int t)
         return "Bad Memory";
     case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
         return "Bootloader Reclaimable";
-    case LIMINE_MEMMAP_KERNEL_AND_MODULES:
+    case LIMINE_MEMMAP_EXECUTABLE_AND_MODULES:
         return "Kernel and Modules";
     case LIMINE_MEMMAP_FRAMEBUFFER:
         return "Framebuffer";
@@ -124,7 +124,7 @@ void pmm_init(struct limine_memmap_response *mmap_response)
             entry->length);
         if (entry->type == LIMINE_MEMMAP_USABLE
             || entry->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE
-            || entry->type == LIMINE_MEMMAP_KERNEL_AND_MODULES) {
+            || entry->type == LIMINE_MEMMAP_EXECUTABLE_AND_MODULES) {
             if (entry->base + entry->length > kernel_end_addr)
                 kernel_end_addr = entry->base + entry->length;
         }

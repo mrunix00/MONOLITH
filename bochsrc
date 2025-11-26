@@ -1,6 +1,0 @@
-romimage: file=/home/mrunix/Downloads/BIOS-bochs-latest
-vgaromimage: file=/home/mrunix/Downloads/VGABIOS-lgpl-latest
-megs: 256
-ata0-slave: type=cdrom, path=build/myos.iso, status=inserted
-boot:cdrom
-display_library: x, options="gui_debug"
