@@ -80,7 +80,12 @@ size_t strlen(const char *s)
         len++;
     return len;
 }
+/*
+ * Copyright (c) 2025, Ibrahim KAIKAA <ibrahimkaikaa@gmail.com>
+ * SPDX-License-Identifier: GPL-3.0
+ */
 
+#pragma once
 void *memset(void *s, int c, size_t n)
 {
     unsigned char *p = s;
@@ -97,4 +102,13 @@ char *strcat(char *dest, const char *src)
     while ((*dest++ = *src++))
         ;
     return result;
+}
+
+int strcmp(const char *s1, const char *s2)
+{
+    while (*s1 && (*s1 == *s2)) {
+        s1++;
+        s2++;
+    }
+    return ((unsigned char) *s1) - ((unsigned char) *s2);
 }

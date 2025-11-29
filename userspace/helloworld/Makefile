@@ -1,19 +1,29 @@
 TARGET := helloworld
 
+LIBC_DIR := ../libs/libc
+LIBC_INCLUDE_DIR := $(LIBC_DIR)/include
+LIBC_STATIC := $(BUILD_DIR)/libs/libc.a
+
 SRC := main.c
 OBJ_DIR := $(BUILD_DIR)/obj/userspace/$(TARGET)
+CFLAGS := -nostdlib -nostartfiles -nodefaultlibs -ffreestanding -O3 -I $(LIBC_INCLUDE_DIR) -Wl,-e,main
+LIBS := $(LIBC_STATIC)
 
 .PHONY: all clean
 
 all: $(TARGET)
 
-$(TARGET): $(SRC)
+$(TARGET): $(SRC) $(LIBC_STATIC)
 	@echo "Compiling $(TARGET) for $(CPU_ARCH) architecture"
 	@mkdir -p $(OBJ_DIR)
 	@mkdir -p $(INITRD_DIR)
-	$(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc -nostdlib -nostartfiles -nodefaultlibs -ffreestanding -O3 -o $(OBJ_DIR)/$(TARGET) $(SRC)
+	$(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc $(CFLAGS) -o $(OBJ_DIR)/$(TARGET) $(SRC) $(LIBS)
 	@cp $(OBJ_DIR)/$(TARGET) $(INITRD_DIR)/$(TARGET)
 	@echo "Installed $(TARGET) to $(INITRD_DIR)"
+
+$(LIBC_STATIC):
+	@$(MAKE) -C ../libs BUILD_DIR=$(BUILD_DIR) TOOLCHAIN_BIN=$(TOOLCHAIN_BIN) \
+		CPU_ARCH=$(CPU_ARCH) CROSS_PREFIX=$(CROSS_PREFIX) INITRD_DIR=$(INITRD_DIR)
 
 clean:
 	@echo "Cleaning $(TARGET)"

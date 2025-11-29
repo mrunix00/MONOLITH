@@ -8,7 +8,9 @@
 
 int fprintf(io_t err, const char *fmt, ...)
 {
-    // TODO: Implement fprintf function
+    (void) err;
+    (void) fmt;
+    // TODO: Implement fprintf function for console output
     return 0;
 }
 

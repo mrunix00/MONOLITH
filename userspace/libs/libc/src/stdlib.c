@@ -5,6 +5,8 @@
 
 #include <stddef.h>
 #include <stdlib.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 
 static void swap(void *a, void *b, size_t size)
 {
@@ -111,4 +113,11 @@ void qsort(void *base, size_t n, size_t size, int (*compar)(const void *, const 
     }
 }
 
-void abort() {}
+[[noreturn]] void exit(void)
+{
+    syscall0(SYSCALL_EXIT);
+}
+
+[[noreturn]] void abort(void) {
+    syscall0(SYSCALL_EXIT);
+}
