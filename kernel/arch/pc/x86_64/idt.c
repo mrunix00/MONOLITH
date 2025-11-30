@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include "kernel/usermode/task.h"
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/idt.h>
 #include <kernel/arch/pc/morse_debug.h>
@@ -232,39 +233,48 @@ void isr_handler(struct interrupt_registers *regs)
         if (tmp != (tmp | 3)) {
             asm_outb(tmp | 3, 0x61);
         }
-        debug_log_fmt("[-] System panic!\n");
+        char error_message[128];
+
         switch (regs->isr_number) {
         case 14: { /* Page Fault */
             uintptr_t address = asm_read_cr2();
-            char buffer[128];
-            strcpy(buffer, "Page fault at 0x");
+            strcpy(error_message, "Page fault at 0x");
             size_t index = strlen("Page fault at 0x");
-            itohex(address, buffer + index);
-            debug_log_fmt("[-] %s\n", buffer);
-            panic(buffer, regs);
-            morse_log(buffer);
+            itohex(address, error_message + index);
         } break;
         case 13: { /* General Protection Fault */
             uintptr_t address = regs->rip;
-            uintptr_t rax = regs->rax;
-            uintptr_t rdx = regs->rdx;
-            uintptr_t rcx = regs->rcx;
-            char buffer[128];
-            strcpy(buffer, "General Protection Fault at 0x");
+            strcpy(error_message, "General Protection Fault at 0x");
             size_t index = strlen("General Protection Fault at 0x");
-            itohex(address, buffer + index);
-            debug_log_fmt(
-                "[*] %s\n[*] rax: 0x%x\n[*] rdx: 0x%x\n[*] rcx: 0x%x\n", buffer, rax, rdx, rcx);
-            panic(buffer, regs);
-            morse_log(buffer);
+            itohex(address, error_message + index);
         } break;
         default:
-            panic(error_messages[regs->isr_number], regs);
-            morse_log(error_messages[regs->isr_number]);
-            debug_log_fmt("[-] Error: %s\n", error_messages[regs->isr_number]);
+            memcpy(
+                error_message,
+                error_messages[regs->isr_number],
+                strlen(error_messages[regs->isr_number]));
         }
-        while (1)
-            __asm__("hlt");
+
+        task_t *current = task_get_current();
+        if (current != NULL && current->user_mode) {
+            debug_log_fmt("[-] Task crashed!\n");
+            debug_log_fmt("[-] %s\n", error_message);
+
+            task_t *next = task_next(current);
+            task_mark_exiting(current);
+            if (!next || next == current)
+                next = task_next(NULL);
+            if (!next || next == current)
+                next = task_idle();
+            task_switch(next);
+        } else {
+            debug_log_fmt("[-] System panic!\n");
+            debug_log_fmt("[-] %s\n", error_message);
+            panic(error_messages[regs->isr_number], regs);
+            morse_log(error_message);
+            while (1)
+                __asm__("hlt");
+        }
     }
 }
 
