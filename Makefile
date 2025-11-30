@@ -71,7 +71,7 @@ all: | $(BUILD_DIR)
 toolchain:
 	@if [ ! -f "$(CC)" ] || [ ! -f "$(LD)" ]; then \
 		echo "Building toolchain for $(ARCH) in $(TOOLCHAIN_DIR)..."; \
-		ARCH="$(ARCH)" sh ./scripts/build-toolchain.sh; \
+		ARCH="$(ARCH)" bash ./scripts/build-toolchain.sh; \
 	else \
 		echo "Toolchain already exists at $(TOOLCHAIN_DIR)"; \
 	fi
