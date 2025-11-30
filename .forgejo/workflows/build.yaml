@@ -1,0 +1,58 @@
+name: Build & Release ISO
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          apt update
+          apt install -y \
+            build-essential bison flex libgmp3-dev libmpc-dev libmpfr-dev \
+            texinfo libisl-dev nasm qemu-system xorriso mtools \
+            grub-pc-bin grub-common git bash
+
+      - name: Build
+        run: |
+          make
+          mkdir -p dist/release
+          cp build/myos.iso dist/release/monolith-$(date +'%Y%m%d%H%M')-x86_64.iso
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: iso
+          path: dist/release/*
+
+  release:
+    runs-on: ubuntu
+    needs: build
+
+    steps:
+      - name: Download built ISO
+        uses: actions/download-artifact@v3
+        with:
+          name: iso
+          path: dist/release
+
+      - name: Forgejo Release
+        uses: actions/forgejo-release@v2
+        with:
+          direction: upload
+          token: ${{ secrets.ACCESS_TOKEN }}
+          tag: nightly-${{ forgejo.run_number }}
+          name: Nightly Build ${{ forgejo.run_number }}
+          prerelease: true
+          upload: monolith-*.iso
+          upload_dir: .
+          overwrite: true
