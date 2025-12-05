@@ -103,7 +103,7 @@ coverage-report:
 
 # Link
 $(KERNEL_BIN): kernel flanterm | toolchain
-	$(LD) $(LDFLAGS) -o $@ $(shell find $(OBJ_DIR) -type f -name "*.o")
+	$(LD) $(LDFLAGS) -o $@ $(shell find $(OBJ_DIR)/kernel $(OBJ_DIR)/libs -type f -name "*.o" 2>/dev/null)
 
 # Build userspace programs
 userspace: | $(BUILD_DIR) $(INITRD_DIR)
