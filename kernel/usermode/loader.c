@@ -97,11 +97,10 @@ int load_elf(file_t *file)
         PTFLAG_RW | PTFLAG_P,
         false);
 
-    asm_write_cr3(asm_read_cr3());
     uintptr_t stack_top = 0x00007fffe0000000ULL + 10 * PAGE_SIZE;
-    task->state.cr3 = asm_read_cr3();
     task->state.rsp = stack_top;
     task->state.rsp0 = 0xFFFFFFFFFFFFF000LL;
+    /* task->state.cr3 is already set by task_create() to the task's own address space */
     task_switch(task);
 
     /* Should not reach here: control transferred to the user task */
