@@ -36,23 +36,27 @@ void vmm_init(struct limine_memmap_response *);
 
 /*
  * Map a single page from a physical to a virtual address.
+ * cr3 is the physical address of the target PML4.
  */
-void vmm_map(uintptr_t virt_addr, uintptr_t phys_addr, size_t flags, bool flush);
+void vmm_map(uintptr_t cr3, uintptr_t virt_addr, uintptr_t phys_addr, size_t flags, bool flush);
 
 /*
  * Map a specified number of pages from a physical to a virtual address.
+ * cr3 is the physical address of the target PML4.
  */
-void vmm_map_range(uintptr_t virt_addr, uintptr_t phys_addr, size_t size, size_t flags, bool flush);
+void vmm_map_range(uintptr_t cr3, uintptr_t virt_addr, uintptr_t phys_addr, size_t size, size_t flags, bool flush);
 
 /*
  * Unmap a single page from a virtual address.
+ * cr3 is the physical address of the target PML4.
  */
-void vmm_unmap(uintptr_t virt_addr, bool flush);
+void vmm_unmap(uintptr_t cr3, uintptr_t virt_addr, bool flush);
 
 /*
  * Unmap a specified number of pages from a virtual address.
+ * cr3 is the physical address of the target PML4.
  */
-void vmm_unmap_range(uintptr_t virt_addr, size_t size, bool flush);
+void vmm_unmap_range(uintptr_t cr3, uintptr_t virt_addr, size_t size, bool flush);
 
 /*
  * Convert a physical address to a high-half direct mapped address.
@@ -63,3 +67,24 @@ void *vmm_get_hhdm_addr(void *phys_addr);
  * Convert a higher-half direct mapped virtual address to the physical address.
  */
 void *vmm_get_lhdm_addr(void *virt_addr);
+
+/*
+ * Create a new address space for a task.
+ * Returns the physical address of the new PML4 (suitable for loading into CR3).
+ * The higher half (kernel space) is shared with the kernel's address space.
+ * Returns 0 on failure.
+ */
+uintptr_t vmm_create_address_space(void);
+
+/*
+ * Destroy an address space, freeing all userspace page tables.
+ * Does not free the actual physical pages that were mapped - only the page table structures.
+ * The cr3 parameter is the physical address of the PML4 to destroy.
+ * Does nothing if cr3 is the kernel's address space.
+ */
+void vmm_destroy_address_space(uintptr_t cr3);
+
+/*
+ * Get the kernel's CR3 value (physical address of the kernel's PML4).
+ */
+uintptr_t vmm_get_kernel_cr3(void);

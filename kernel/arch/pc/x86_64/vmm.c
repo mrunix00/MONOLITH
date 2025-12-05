@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-#include "libs/limine-protocol/include/limine.h"
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/paging.h>
 #include <kernel/debug.h>
@@ -13,6 +12,7 @@
 #include <kernel/memory/vmm.h>
 #include <kernel/terminal/kshell.h>
 #include <kernel/video/panic.h>
+#include <libs/limine-protocol/include/limine.h>
 
 __attribute__((used, section(".limine_requests"))) volatile struct limine_hhdm_request
     limine_hhdm_request
@@ -47,6 +47,11 @@ void *vmm_get_lhdm_addr(void *virt_addr)
     return virt_addr - limine_hhdm_request.response->offset;
 }
 
+uintptr_t vmm_get_kernel_cr3(void)
+{
+    return (uintptr_t) vmm_get_lhdm_addr(_pt_top_level);
+}
+
 static void _vmmap_command(int argc, char *argv[])
 {
     if (argc != 4) {
@@ -58,7 +63,7 @@ static void _vmmap_command(int argc, char *argv[])
     uintptr_t phys = atox(argv[2]);
     uint32_t flags = atox(argv[3]);
 
-    vmm_map(virt, phys, flags, true);
+    vmm_map(vmm_get_kernel_cr3(), virt, phys, flags, true);
 }
 
 static void _vminfo_command(int, char **)
@@ -143,6 +148,22 @@ static void _set_pat(void)
     _asm_write_msr(0x277, pat_value);
 }
 
+static inline void *_get_next_level(page_table_t *pt, uint64_t index)
+{
+    page_table_entry_t *entry = &pt->entries[index];
+    void *next_pt;
+    if (!entry->flags.present) {
+        next_pt = pmm_alloc(1);
+        if (next_pt == NULL)
+            return NULL;
+        entry->raw = ((uint64_t) next_pt) | 0b111;
+        page_table_t *next_pt_hhdm = vmm_get_hhdm_addr(next_pt);
+        memset(next_pt_hhdm, 0, PAGE_SIZE);
+        return next_pt_hhdm;
+    }
+    return vmm_get_hhdm_addr((void *) (entry->raw & ~0xFFF));
+}
+
 void vmm_init(struct limine_memmap_response *memmap_response)
 {
     debug_log("[*] Initializing VMM...\n");
@@ -157,10 +178,13 @@ void vmm_init(struct limine_memmap_response *memmap_response)
     _pt_top_level = vmm_get_hhdm_addr(_pt_top_level);
     memset(_pt_top_level, 0, PAGE_SIZE);
 
+    uintptr_t kernel_cr3 = vmm_get_kernel_cr3();
+
     for (uint64_t i = 0; i < memmap_response->entry_count; i++) {
         uint64_t type = memmap_response->entries[i]->type;
         if (type != LIMINE_MEMMAP_BAD_MEMORY) {
             vmm_map_range(
+                kernel_cr3,
                 (uintptr_t) vmm_get_hhdm_addr((void *) memmap_response->entries[i]->base),
                 memmap_response->entries[i]->base,
                 memmap_response->entries[i]->length,
@@ -188,13 +212,18 @@ void vmm_init(struct limine_memmap_response *memmap_response)
     uintptr_t data_size = (uintptr_t) &_data_end - data_start_vaddr;
 
     vmm_map_range(
-        limine_requests_start_vaddr, limine_requests_start_paddr, limine_requests_size, 0x03, false);
-    vmm_map_range(text_start_vaddr, text_start_paddr, text_size, 0x03, false);
-    vmm_map_range(rodata_start_vaddr, rodata_start_paddr, rodata_size, 0x03, false);
-    vmm_map_range(data_start_vaddr, data_start_paddr, data_size, 0x03, false);
+        kernel_cr3,
+        limine_requests_start_vaddr,
+        limine_requests_start_paddr,
+        limine_requests_size,
+        0x03,
+        false);
+    vmm_map_range(kernel_cr3, text_start_vaddr, text_start_paddr, text_size, 0x03, false);
+    vmm_map_range(kernel_cr3, rodata_start_vaddr, rodata_start_paddr, rodata_size, 0x03, false);
+    vmm_map_range(kernel_cr3, data_start_vaddr, data_start_paddr, data_size, 0x03, false);
 
     _set_pat();
-    asm_write_cr3((uintptr_t) vmm_get_lhdm_addr(_pt_top_level));
+    asm_write_cr3(kernel_cr3);
 
     debug_log_fmt("[*] The page table is located at 0x%x\n", _pt_top_level);
     kshell_register_command("vmmap", "Map virtual address to physical address", _vmmap_command);
@@ -203,21 +232,10 @@ void vmm_init(struct limine_memmap_response *memmap_response)
     debug_log("[+] Initialized VMM\n");
 }
 
-static inline void *_get_next_level(page_table_entry_t *entry)
+void vmm_map(uintptr_t cr3, uintptr_t virt, uintptr_t phys, size_t flags, bool flush)
 {
-    void *pt;
-    if (!entry->flags.present) {
-        pt = pmm_alloc(1);
-        if (pt == NULL)
-            return NULL;
-        entry->raw = ((uint64_t) pt) | 0b111;
-        return vmm_get_hhdm_addr(pt);
-    }
-    return vmm_get_hhdm_addr((void *) (entry->raw & ~0xFFF));
-}
+    page_table_t *pml4 = vmm_get_hhdm_addr((void *) cr3);
 
-void vmm_map(uintptr_t virt, uintptr_t phys, size_t flags, bool flush)
-{
     uint64_t pml4_index = PML4_GET_INDEX(virt);
     uint64_t pdpt_index = PML3_GET_INDEX(virt);
     uint64_t pdt_index = PML2_GET_INDEX(virt);
@@ -225,45 +243,56 @@ void vmm_map(uintptr_t virt, uintptr_t phys, size_t flags, bool flush)
 
     page_table_t *pdpt, *pdt, *pt;
 
-    pdpt = _get_next_level(&_pt_top_level->entries[pml4_index]);
+    pdpt = _get_next_level(pml4, pml4_index);
     if (pdpt == NULL)
         goto failure;
 
-    pdt = _get_next_level(&pdpt->entries[pdpt_index]);
+    pdt = _get_next_level(pdpt, pdpt_index);
     if (pdt == NULL)
         goto failure;
-    pt = _get_next_level(&pdt->entries[pdt_index]);
+
+    pt = _get_next_level(pdt, pdt_index);
     if (pt == NULL)
         goto failure;
 
     pt->entries[pt_index].raw = (uintptr_t) phys | flags;
     if (flush) {
         debug_log_fmt("[*] Mapped phys 0x%x to virt 0x%x\n", phys, virt);
-        asm_invlpg((void *) virt);
+        if (asm_read_cr3() == cr3) {
+            asm_invlpg((void *) virt);
+        }
     }
     return;
 
 failure:
-    debug_log_fmt("[-] Failed to map virtual address 0x%x to physical address 0x%x\n", virt, phys);
+    debug_log_fmt(
+        "[-] Failed to map virtual address 0x%x to physical address 0x%x in address space 0x%x\n",
+        virt,
+        phys,
+        cr3);
 }
 
-void vmm_map_range(uintptr_t virt_addr, uintptr_t phys_addr, size_t size, size_t flags, bool flush)
+void vmm_map_range(
+    uintptr_t cr3, uintptr_t virt_addr, uintptr_t phys_addr, size_t size, size_t flags, bool flush)
 {
     debug_log_fmt(
-        "[*] Mapping 0x%x - 0x%x to 0x%x - 0x%x\n",
+        "[*] Mapping 0x%x - 0x%x to 0x%x - 0x%x in address space 0x%x\n",
         phys_addr,
         phys_addr + size,
         virt_addr,
-        virt_addr + size);
+        virt_addr + size,
+        cr3);
     size_t num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE; /* Round up */
     for (size_t i = 0; i < num_pages; i++)
-        vmm_map(virt_addr + i * PAGE_SIZE, phys_addr + i * PAGE_SIZE, flags, false);
-    if (flush)
-        asm_write_cr3(asm_read_cr3());
+        vmm_map(cr3, virt_addr + i * PAGE_SIZE, phys_addr + i * PAGE_SIZE, flags, false);
+    if (flush && asm_read_cr3() == cr3)
+        asm_write_cr3(cr3);
 }
 
-void vmm_unmap(uintptr_t virt, bool flush)
+void vmm_unmap(uintptr_t cr3, uintptr_t virt, bool flush)
 {
+    page_table_t *pml4 = vmm_get_hhdm_addr((void *) cr3);
+
     uint64_t pml4_index = PML4_GET_INDEX(virt);
     uint64_t pdpt_index = PML3_GET_INDEX(virt);
     uint64_t pdt_index = PML2_GET_INDEX(virt);
@@ -271,31 +300,92 @@ void vmm_unmap(uintptr_t virt, bool flush)
 
     page_table_t *pdpt, *pdt, *pt;
 
-    pdpt = _get_next_level(&_pt_top_level->entries[pml4_index]);
-    if (pdpt == NULL)
-        goto failure;
+    if (!pml4->entries[pml4_index].flags.present)
+        return;
+    pdpt = vmm_get_hhdm_addr((void *) (pml4->entries[pml4_index].raw & ~0xFFF));
 
-    pdt = _get_next_level(&pdpt->entries[pdpt_index]);
-    if (pdt == NULL)
-        goto failure;
-    pt = _get_next_level(&pdt->entries[pdt_index]);
-    if (pt == NULL)
-        goto failure;
+    if (!pdpt->entries[pdpt_index].flags.present)
+        return;
+    pdt = vmm_get_hhdm_addr((void *) (pdpt->entries[pdpt_index].raw & ~0xFFF));
+
+    if (!pdt->entries[pdt_index].flags.present)
+        return;
+    pt = vmm_get_hhdm_addr((void *) (pdt->entries[pdt_index].raw & ~0xFFF));
 
     pt->entries[pt_index].raw = 0;
-    if (flush)
+    if (flush && asm_read_cr3() == cr3)
         asm_invlpg((void *) virt);
-    return;
-
-failure:
-    debug_log_fmt("[-] Failed to unmap virtual address 0x%x\n", virt);
 }
 
-void vmm_unmap_range(uintptr_t virt_addr, size_t size, bool flush)
+void vmm_unmap_range(uintptr_t cr3, uintptr_t virt_addr, size_t size, bool flush)
 {
-    debug_log_fmt("[*] Unmapping 0x%x - 0x%x\n", virt_addr, virt_addr + size);
+    debug_log_fmt(
+        "[*] Unmapping 0x%x - 0x%x from address space 0x%x\n", virt_addr, virt_addr + size, cr3);
     size_t num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE; /* Round up */
     for (size_t i = 0; i < num_pages; i++) {
-        vmm_unmap(virt_addr + i * PAGE_SIZE, flush);
+        vmm_unmap(cr3, virt_addr + i * PAGE_SIZE, false);
     }
+    if (flush && asm_read_cr3() == cr3)
+        asm_write_cr3(cr3);
+}
+
+uintptr_t vmm_create_address_space(void)
+{
+    /* Allocate a new PML4 */
+    void *new_pml4_phys = pmm_alloc(1);
+    if (new_pml4_phys == NULL) {
+        debug_log("[-] Failed to allocate PML4 for new address space\n");
+        return 0;
+    }
+
+    page_table_t *new_pml4 = vmm_get_hhdm_addr(new_pml4_phys);
+    memset(new_pml4, 0, PAGE_SIZE);
+
+    /* Copy the higher half (kernel space) entries from the kernel's PML4.*/
+    for (int i = 256; i < 512; i++)
+        new_pml4->entries[i] = _pt_top_level->entries[i];
+
+    debug_log_fmt("[*] Created new address space at 0x%x\n", new_pml4_phys);
+    return (uintptr_t) new_pml4_phys;
+}
+
+static void _free_page_table_level(page_table_t *pt, int level)
+{
+    if (pt == NULL || level < 1)
+        return;
+
+    for (int i = 0; i < 512; i++) {
+        if (pt->entries[i].flags.present && level > 1) {
+            /* Recurse into lower levels */
+            page_table_t *next = vmm_get_hhdm_addr((void *) (pt->entries[i].raw & ~0xFFF));
+            _free_page_table_level(next, level - 1);
+
+            /* Free this page table page (but not the actual mapped memory at level 1) */
+            void *phys = (void *) (pt->entries[i].raw & ~0xFFF);
+            pmm_free(phys, 1);
+        }
+    }
+}
+
+void vmm_destroy_address_space(uintptr_t cr3)
+{
+    /* Don't destroy the kernel's address space */
+    if (cr3 == vmm_get_kernel_cr3() || cr3 == 0)
+        return;
+
+    page_table_t *pml4 = vmm_get_hhdm_addr((void *) cr3);
+
+    /* Only free the lower half (userspace) page tables. */
+    for (int i = 0; i < 256; i++) {
+        if (pml4->entries[i].flags.present) {
+            page_table_t *pdpt = vmm_get_hhdm_addr((void *) (pml4->entries[i].raw & ~0xFFF));
+            _free_page_table_level(pdpt, 3); /* Level 3 = PDPT */
+            void *phys = (void *) (pml4->entries[i].raw & ~0xFFF);
+            pmm_free(phys, 1);
+        }
+    }
+
+    /* Free the PML4 itself */
+    pmm_free((void *) cr3, 1);
+    debug_log_fmt("[*] Destroyed address space at 0x%x\n", cr3);
 }

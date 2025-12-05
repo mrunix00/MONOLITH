@@ -36,11 +36,16 @@ int sys_request_fb(void *fb_info)
 {
     if (framebuffer_request.response->framebuffer_count < 1)
         return -1;
+    task_t *current = task_get_current();
+    if (!current)
+        return -1;
     size_t width = framebuffer_request.response->framebuffers[0]->width;
     size_t height = framebuffer_request.response->framebuffers[0]->height;
     void *lhfb = vmm_get_lhdm_addr(framebuffer_request.response->framebuffers[0]->address);
     void *hhfb = framebuffer_request.response->framebuffers[0]->address;
+    /* Map framebuffer into the current task's address space */
     vmm_map_range(
+        current->state.cr3,
         (uintptr_t) hhfb,
         (uintptr_t) lhfb,
         width * height * 4,

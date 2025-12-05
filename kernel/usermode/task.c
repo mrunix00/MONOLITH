@@ -42,12 +42,22 @@ task_t *task_create(void *entry_point, task_mode_t mode)
 
     memset(task, 0, sizeof(task_t));
     task->user_mode = (mode == TASK_MODE_USER);
-    task->state.cr3 = asm_read_cr3();
     task->state.rip = (uintptr_t) entry_point;
     task->state.rflags = DEFAULT_RFLAGS;
     task->state.cs = task->user_mode ? USER_CODE_SELECTOR : KERNEL_CODE_SELECTOR;
     task->state.ss = task->user_mode ? USER_DATA_SELECTOR : KERNEL_DATA_SELECTOR;
     task->state.rsp0 = asm_read_rsp();
+
+    /* Create a new address space for this task, or use the kernel's for kernel tasks */
+    if (task->user_mode) {
+        task->state.cr3 = vmm_create_address_space();
+        if (task->state.cr3 == 0) {
+            kfree(task);
+            return NULL;
+        }
+    } else {
+        task->state.cr3 = vmm_get_kernel_cr3();
+    }
 
     task->next = &_task_list_head;
     _task_list_tail->next = task;
@@ -90,7 +100,8 @@ int task_map(
     memblock->flags = flags;
     memblock->release_on_exit = release_on_exit;
 
-    vmm_map_range(virt_addr, phys_addr, page_count * PAGE_SIZE, flags, true);
+    /* Map into the task's own address space */
+    vmm_map_range(task->state.cr3, virt_addr, phys_addr, page_count * PAGE_SIZE, flags, true);
 
     return 0;
 }
@@ -319,10 +330,14 @@ static void _task_destroy(task_t *task)
                 continue;
             if (memblock->phys_addr)
                 pmm_free((void *) memblock->phys_addr, memblock->page_count);
-            if (memblock->virt_addr)
-                vmm_unmap_range(memblock->virt_addr, memblock->page_count * PAGE_SIZE, true);
+            /* Note: We don't need to unmap individually since we'll destroy the entire address space */
         }
         kfree(task->memory.memblocks);
+    }
+
+    /* Destroy the task's address space (only if it's a user task with its own address space) */
+    if (task->user_mode && task->state.cr3 != 0) {
+        vmm_destroy_address_space(task->state.cr3);
     }
 
     kfree(task);
