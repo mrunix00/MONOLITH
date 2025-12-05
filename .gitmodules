@@ -11,9 +11,6 @@
 	url = https://codeberg.org/Limine/Limine
 	branch = v10.x-binary
 	shallow = true
-[submodule "libs/microui"]
-	path = libs/microui
-	url = https://github.com/rxi/microui
 [submodule "libs/limine-protocol"]
 	path = libs/limine-protocol
 	url = https://codeberg.org/Limine/limine-protocol

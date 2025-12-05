@@ -5,5 +5,19 @@
 
 #pragma once
 
-#define SYSCALL_HELLO 0
-#define SYSCALL_EXIT 15
+#define SYSCALL_HELLO                0
+#define SYSCALL_REQUEST_FB           1
+#define SYSCALL_REGISTER_MOUSE       2
+#define SYSCALL_REGISTER_KEYBOARD    3
+#define SYSCALL_FILE_OPEN            4
+#define SYSCALL_FILE_CLOSE           5
+#define SYSCALL_FILE_CREATE          6
+#define SYSCALL_FILE_REMOVE          7
+#define SYSCALL_FILE_READ            8
+#define SYSCALL_FILE_WRITE           9
+#define SYSCALL_FILE_SEEK            10
+#define SYSCALL_FILE_GETDENTS        11
+#define SYSCALL_FILE_GETSTATS        12
+#define SYSCALL_FILE_TELL            13
+#define SYSCALL_GETDRIVES            14
+#define SYSCALL_EXIT                 15

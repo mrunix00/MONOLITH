@@ -65,9 +65,7 @@
 - [x] x86_64.
 - [x] ~~i386.~~ (Deprecated)
 - [ ] aarch64.
-- [ ] mips.
-- [ ] risc-v.
-- [ ] ppc.
+- [ ] riscv64.
 
 ## Hardware Support
 
@@ -80,10 +78,10 @@
 ## Video and Graphics
 
 - [ ] Bochs Display Adapter.
-- [ ] GUI.
+- [x] GUI.
 - [ ] Graphics library.
-- [ ] Font rendering.
-- [ ] Window manager.
+- [x] Font rendering.
+- [x] Window manager.
 
 ## Networking
 

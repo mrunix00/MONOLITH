@@ -1,27 +1,34 @@
-TARGET := gui
+TARGET := desktop
 
 LIBC_DIR := ../libs/libc
 LIBC_INCLUDE_DIR := $(LIBC_DIR)/include
 LIBC_STATIC := $(BUILD_DIR)/libs/libc.a
 
-SRC := $(wildcard *.c) ../../libs/microui/src/microui.c
+SRC := $(wildcard *.c)
 OBJ_DIR := $(BUILD_DIR)/obj/userspace/$(TARGET)
-MICROUI := ../../libs/microui/src
+OBJ := $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRC))
 
-CFLAGS += -nostdlib -nodefaultlibs -ffreestanding -O0 -mstackrealign -g -I $(MICROUI) -I $(LIBC_INCLUDE_DIR) -fPIC -Wl,-e,main
+CFLAGS += -O2 -I $(LIBC_INCLUDE_DIR) -Wall -Wextra
+LDFLAGS := -nostdlib -nodefaultlibs -Wl,-e,main
 LIBS := $(LIBC_STATIC)
 
 .PHONY: all clean
 
 all: $(TARGET)
 
-$(TARGET): $(SRC) $(LIBC_STATIC)
-	@echo "Compiling $(TARGET) for $(CPU_ARCH) architecture"
-	@mkdir -p $(OBJ_DIR)
+$(TARGET): $(OBJ) $(LIBC_STATIC)
+	@echo "Linking $(TARGET) for $(CPU_ARCH) architecture"
 	@mkdir -p $(INITRD_DIR)
-	$(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc $(CFLAGS) -o $(OBJ_DIR)/$(TARGET) $(SRC) $(LIBS)
+	$(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc $(LDFLAGS) -o $(OBJ_DIR)/$(TARGET) $(OBJ) $(LIBS)
 	@cp $(OBJ_DIR)/$(TARGET) $(INITRD_DIR)/$(TARGET)
 	@echo "Installed $(TARGET) to $(INITRD_DIR)"
+
+$(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
+	@echo "Compiling $<"
+	$(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc $(CFLAGS) -c $< -o $@
+
+$(OBJ_DIR):
+	@mkdir -p $(OBJ_DIR)
 
 $(LIBC_STATIC):
 	@$(MAKE) -C ../libs BUILD_DIR=$(BUILD_DIR) TOOLCHAIN_BIN=$(TOOLCHAIN_BIN) \
@@ -29,5 +36,5 @@ $(LIBC_STATIC):
 
 clean:
 	@echo "Cleaning $(TARGET)"
-	@rm -f $(OBJ_DIR)/$(TARGET)
+	@rm -rf $(OBJ_DIR)
 	@rm -f $(INITRD_DIR)/$(TARGET)
