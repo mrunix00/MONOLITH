@@ -19,42 +19,59 @@ vfs_drive_t *vfs_new_drive(const char *name)
     if (_drives_count >= MAX_DRIVE_COUNT)
         return NULL;
 
-    /* Assign a unique drive name by appending a numeric suffix */
+    /* Assign a unique drive name, first try base name, then append numeric suffix if needed */
     size_t base_len = strlen(name);
     char final_name[40];
-    for (int suffix = 0; suffix < MAX_DRIVE_COUNT; ++suffix) {
-        /* Convert suffix to string */
-        char suffix_str[4];
-        int suffix_len = 0;
-        int num = suffix;
-        if (num == 0) {
-            suffix_str[suffix_len++] = '0';
-        } else {
-            char rev[4];
-            int rev_len = 0;
-            while (num > 0 && rev_len < (int) sizeof(rev)) {
-                rev[rev_len++] = '0' + (num % 10);
-                num /= 10;
-            }
-            for (int j = rev_len - 1; j >= 0; --j)
-                suffix_str[suffix_len++] = rev[j];
-        }
-        suffix_str[suffix_len] = '\0';
-        /* Compose candidate name */
-        if (base_len + suffix_len >= sizeof(final_name))
-            continue;
-        memcpy(final_name, name, base_len);
-        memcpy(final_name + base_len, suffix_str, suffix_len + 1);
-        /* Check uniqueness */
-        bool exists = false;
-        for (int i = 0; i < MAX_DRIVE_COUNT; ++i) {
-            if (_drives_map[i] && strcmp(_drives_map[i]->name, final_name) == 0) {
-                exists = true;
-                break;
-            }
-        }
-        if (!exists)
+    
+    /* First check if base name (no suffix) is available */
+    bool base_name_exists = false;
+    for (int i = 0; i < MAX_DRIVE_COUNT; ++i) {
+        if (_drives_map[i] && strcmp(_drives_map[i]->name, name) == 0) {
+            base_name_exists = true;
             break;
+        }
+    }
+    
+    if (!base_name_exists && base_len < sizeof(final_name)) {
+        /* Base name is available, use it */
+        strncpy(final_name, name, sizeof(final_name) - 1);
+        final_name[sizeof(final_name) - 1] = '\0';
+    } else {
+        /* Base name exists, find unique name with suffix */
+        for (int suffix = 0; suffix < MAX_DRIVE_COUNT; ++suffix) {
+            /* Convert suffix to string */
+            char suffix_str[4];
+            int suffix_len = 0;
+            int num = suffix;
+            if (num == 0) {
+                suffix_str[suffix_len++] = '0';
+            } else {
+                char rev[4];
+                int rev_len = 0;
+                while (num > 0 && rev_len < (int) sizeof(rev)) {
+                    rev[rev_len++] = '0' + (num % 10);
+                    num /= 10;
+                }
+                for (int j = rev_len - 1; j >= 0; --j)
+                    suffix_str[suffix_len++] = rev[j];
+            }
+            suffix_str[suffix_len] = '\0';
+            /* Compose candidate name */
+            if (base_len + suffix_len >= sizeof(final_name))
+                continue;
+            memcpy(final_name, name, base_len);
+            memcpy(final_name + base_len, suffix_str, suffix_len + 1);
+            /* Check uniqueness */
+            bool exists = false;
+            for (int i = 0; i < MAX_DRIVE_COUNT; ++i) {
+                if (_drives_map[i] && strcmp(_drives_map[i]->name, final_name) == 0) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists)
+                break;
+        }
     }
 
     uint8_t index;
