@@ -7,8 +7,8 @@
 #include <kernel/arch/pc/idt.h>
 #include <kernel/arch/pc/sse.h>
 #include <kernel/debug.h>
-#include <kernel/fs/initrdfs.h>
 #include <kernel/fs/tmpfs.h>
+#include <kernel/fs/ustar.h>
 #include <kernel/fs/vfs.h>
 #include <kernel/input/ps2_keyboard.h>
 #include <kernel/input/ps2_mouse.h>
@@ -67,8 +67,22 @@ void kmain()
     timer_init();
     syscalls_init();
     task_switching_init();
-    initrd_load_modules(limine_module_request.response);
-    tmpfs_new_drive("tmpfs");
+    
+    /* Create tmpfs drive */
+    vfs_drive_t *tmpfs_drive = tmpfs_new_drive("system");
+    
+    /* Optionally populate tmpfs with initrd contents if available */
+    if (limine_module_request.response != NULL && limine_module_request.response->module_count > 0) {
+        debug_log("[*] Loading initrd into tmpfs...\n");
+        for (uint64_t i = 0; i < limine_module_request.response->module_count; i++) {
+            struct limine_file *module = limine_module_request.response->modules[i];
+            if (tmpfs_populate_from_initrd(tmpfs_drive, (void *) module->address) == 0) {
+                debug_log_fmt("[+] Loaded \"%s\" into tmpfs\n", module->path);
+            } else {
+                debug_log_fmt("[-] Failed to load \"%s\" into tmpfs\n", module->path);
+            }
+        }
+    }
 
     ps2_init_keyboard();
     ps2_mouse_init();

@@ -16,7 +16,7 @@
 
 static kshell_command_desc_t _registered_commands[KSHELL_COMMANDS_LIMIT];
 static size_t _registered_commands_count = 0;
-static char _current_dir[PATH_MAX] = "system0:/";
+static char _current_dir[PATH_MAX] = "system:/";
 
 static void _help(int argc, char *argv[])
 {
