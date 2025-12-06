@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-#include <kernel/usermode/task.h>
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/idt.h>
 #include <kernel/debug.h>
@@ -13,9 +12,8 @@
 #include <kernel/klibc/memory.h>
 #include <kernel/memory/heap.h>
 #include <kernel/memory/vmm.h>
-#include <kernel/terminal/kshell.h>
-#include <kernel/terminal/terminal.h>
 #include <kernel/usermode/syscall.h>
+#include <kernel/usermode/task.h>
 #include <stdint.h>
 
 extern void _syscall_handler();
@@ -27,8 +25,7 @@ void syscalls_init()
 
 void sys_hello()
 {
-    kprintf("\nSyscalls are working!");
-    debug_log_fmt("[*] Syscalls are working!\n");
+    debug_log("[*] Syscalls are working!\n");
 }
 
 extern struct limine_framebuffer_request framebuffer_request;

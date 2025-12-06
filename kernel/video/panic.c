@@ -11,7 +11,6 @@
 
 extern struct flanterm_context *_fb_ctx;
 static size_t _rows, _cols;
-extern bool _term_initialized;
 
 static const char _start_escape[] = "\033[38;5;250;48;5;21m\033[2J\033[H\033[?25l";
 static const char _text_color[] = "\x1b[38;5;250;48;5;21m";
@@ -75,7 +74,7 @@ void _dump_registers(struct interrupt_registers *regs)
 
 void panic(const char *message, struct interrupt_registers *regs)
 {
-    if (!_term_initialized)
+    if (!_fb_ctx)
         return;
 
     flanterm_get_dimensions(_fb_ctx, &_cols, &_rows);

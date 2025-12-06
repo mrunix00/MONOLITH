@@ -10,7 +10,6 @@
 #include <kernel/klibc/string.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
-#include <kernel/terminal/kshell.h>
 #include <kernel/video/panic.h>
 #include <libs/limine-protocol/include/limine.h>
 
@@ -50,72 +49,6 @@ void *vmm_get_lhdm_addr(void *virt_addr)
 uintptr_t vmm_get_kernel_cr3(void)
 {
     return (uintptr_t) vmm_get_lhdm_addr(_pt_top_level);
-}
-
-static void _vmmap_command(int argc, char *argv[])
-{
-    if (argc != 4) {
-        kprintf("\n[*] Usage: vmmap <virt> <phys> <flags>");
-        return;
-    }
-
-    uintptr_t virt = atox(argv[1]);
-    uintptr_t phys = atox(argv[2]);
-    uint32_t flags = atox(argv[3]);
-
-    vmm_map(vmm_get_kernel_cr3(), virt, phys, flags, true);
-}
-
-static void _vminfo_command(int, char **)
-{
-    size_t present_pml5_entries = 0, present_pml4_entries = 0, present_pml3_entries = 0,
-           present_pml2_entries = 0, present_pml1_entries = 0;
-
-    /* Count present entries at each level.
-     * I know this code is cursed, but it (probably) works.
-     * TODO: refactor this shit.
-     */
-    for (int i = 0; i < 512; i++) {
-        if (_pt_top_level->entries[i].flags.present) {
-            present_pml4_entries++;
-            page_table_t *pml3 = vmm_get_hhdm_addr(
-                (void *) (_pt_top_level->entries[i].raw & ~0xFFF));
-            for (int j = 0; j < 512; j++) {
-                if (pml3->entries[j].flags.present) {
-                    present_pml3_entries++;
-                    page_table_t *pml2 = vmm_get_hhdm_addr((void *) (pml3->entries[j].raw & ~0xFFF));
-                    for (int k = 0; k < 512; k++) {
-                        if (pml2->entries[k].flags.present) {
-                            present_pml2_entries++;
-                            page_table_t *pml1 = vmm_get_hhdm_addr(
-                                (void *) (pml2->entries[k].raw & ~0xFFF));
-                            for (int l = 0; l < 512; l++) {
-                                if (pml1->entries[l].flags.present) {
-                                    present_pml1_entries++;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    size_t total_mapped_pages = present_pml5_entries + present_pml4_entries + present_pml3_entries
-                                + present_pml2_entries + present_pml1_entries;
-    size_t total_mapped_memory_mb = total_mapped_pages * PAGE_SIZE / 1048576;
-
-    kprintf("\n[*] Virtual Memory Information:\n");
-    kprintf("[*] Page Table Top Level Address: 0x%x\n", _pt_top_level);
-    kprintf("[*] Page Size: %d bytes\n", PAGE_SIZE);
-    if (limine_paging_request.response->mode == LIMINE_PAGING_MODE_X86_64_5LVL)
-        kprintf("[*] Present PML5 Entries: %d\n", present_pml5_entries);
-    kprintf("[*] Present PML4 Entries: %d\n", present_pml4_entries);
-    kprintf("[*] Present PML3 Entries: %d\n", present_pml3_entries);
-    kprintf("[*] Present PML2 Entries: %d\n", present_pml2_entries);
-    kprintf("[*] Present PML1 Entries: %d\n", present_pml1_entries);
-    kprintf("[*] Total mapped pages: %d\n", total_mapped_pages);
-    kprintf("[*] Total mapped memory: %d MB\n", total_mapped_memory_mb);
 }
 
 static inline void _asm_write_msr(uint32_t msr, uint64_t value)
@@ -226,9 +159,6 @@ void vmm_init(struct limine_memmap_response *memmap_response)
     asm_write_cr3(kernel_cr3);
 
     debug_log_fmt("[*] The page table is located at 0x%x\n", _pt_top_level);
-    kshell_register_command("vmmap", "Map virtual address to physical address", _vmmap_command);
-    kshell_register_command("vminfo", "Display virtual memory statistics", _vminfo_command);
-
     debug_log("[+] Initialized VMM\n");
 }
 
