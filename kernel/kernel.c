@@ -16,8 +16,8 @@
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
 #include <kernel/serial.h>
-#include <kernel/terminal/terminal.h>
 #include <kernel/timer.h>
+#include <kernel/usermode/loader.h>
 #include <kernel/usermode/syscall.h>
 #include <kernel/usermode/task.h>
 #include <libs/flanterm/src/flanterm_backends/fb.h>
@@ -67,10 +67,10 @@ void kmain()
     timer_init();
     syscalls_init();
     task_switching_init();
-    
+
     /* Create tmpfs drive */
     vfs_drive_t *tmpfs_drive = tmpfs_new_drive("system");
-    
+
     /* Optionally populate tmpfs with initrd contents if available */
     if (limine_module_request.response != NULL && limine_module_request.response->module_count > 0) {
         debug_log("[*] Loading initrd into tmpfs...\n");
@@ -87,9 +87,26 @@ void kmain()
     ps2_init_keyboard();
     ps2_mouse_init();
 
-    stop_debug_console();
-    term_init(framebuffer_request.response);
+    while (1) {
+        debug_log("[*] Launching desktop...\n");
 
-    while (1)
-        __asm__("hlt");
+        file_t file = file_open("system:/desktop");
+        if (file.internal == NULL) {
+            debug_log("[-] Failed to open desktop executable\n");
+            debug_log("[*] Retrying in 1 second...\n");
+            sleep(1000);
+            continue;
+        }
+
+        int result = load_elf(&file);
+        if (result < 0) {
+            debug_log("[-] Failed to load desktop ELF\n");
+            debug_log("[*] Retrying in 1 second...\n");
+            sleep(1000);
+            continue;
+        }
+
+        debug_log("[!] Desktop exited, relaunching...\n");
+        sleep(100);
+    }
 }

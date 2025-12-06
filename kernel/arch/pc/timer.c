@@ -6,10 +6,7 @@
 #include <kernel/arch/pc/idt.h>
 #include <kernel/arch/pc/pit.h>
 #include <kernel/debug.h>
-#include <kernel/klibc/string.h>
 #include <kernel/memory/heap.h>
-#include <kernel/terminal/kshell.h>
-#include <kernel/terminal/terminal.h>
 #include <kernel/timer.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -60,22 +57,11 @@ static void _timer_irq()
     }
 }
 
-static void _sleep_cmd(int argc, char *argv[])
-{
-    if (argc != 2) {
-        kputs("\n[*] Usage: sleep [duration in ticks]");
-        return;
-    }
-    uint64_t duration = atoul(argv[1]);
-    sleep(duration);
-}
-
 void timer_init()
 {
     debug_log("[*] Initializing the timer\n");
     pit_set_frequency(1000);
     irq_register_handler(0, _timer_irq);
-    kshell_register_command("sleep", "Sleep for a specified duration", _sleep_cmd);
     debug_log("[+] Initialized the timer\n");
 }
 
