@@ -489,6 +489,7 @@ int main(void)
             desktop_set_cursor(CURSOR_ARROW);
             break;
         case RESIZE_TOP:
+        case RESIZE_BOTTOM:
             desktop_set_cursor(CURSOR_RESIZE_NS);
             break;
         case RESIZE_LEFT:
