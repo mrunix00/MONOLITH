@@ -40,7 +40,7 @@
 %endmacro
 
 section .text
-extern sys_hello
+extern sys_exit
 extern sys_request_fb
 extern sys_register_mouse_handler
 extern sys_register_keyboard_handler
@@ -55,11 +55,10 @@ extern sys_file_getdents
 extern sys_file_getstats
 extern sys_file_tell
 extern sys_getdrives
-extern sys_exit
 
 section .rodata
 syscall_table:
-    dq sys_hello
+    dq sys_exit
     dq sys_request_fb
     dq sys_register_mouse_handler
     dq sys_register_keyboard_handler
@@ -74,7 +73,6 @@ syscall_table:
     dq sys_file_getstats
     dq sys_file_tell
     dq sys_getdrives
-    dq sys_exit
 syscall_table_end:
 
 section .text

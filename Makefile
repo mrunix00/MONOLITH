@@ -38,7 +38,7 @@ endef
 # Output files
 KERNEL_BIN := $(BUILD_DIR)/kernel.bin
 INITRD_TAR := $(BUILD_DIR)/initrd.tar
-ISO_FILE := $(BUILD_DIR)/myos.iso
+ISO_FILE := $(BUILD_DIR)/monolith.iso
 
 # Export variables for submakes
 export BUILD_DIR TOOLCHAIN_BIN TOOLCHAIN_DIR TOOLCHAIN_BASE_DIR ARCH CROSS_PREFIX CPU_ARCH INITRD_DIR
@@ -130,9 +130,8 @@ $(ISO_FILE): $(KERNEL_BIN) $(INITRD_TAR)
 	mkdir -p build/iso/boot/limine
 	cp -v $(KERNEL_BIN) build/iso/boot
 	cp -v $(INITRD_TAR) build/iso/boot
-	cp -v boot/pc/limine.conf boot/pc/wallpaper.png libs/limine/limine-bios.sys \
-	    libs/limine/limine-bios-cd.bin libs/limine/limine-uefi-cd.bin \
-		build/iso/boot/limine
+	cp -v boot/pc/limine.conf libs/limine/limine-bios.sys libs/limine/limine-bios-cd.bin \
+	    libs/limine/limine-uefi-cd.bin build/iso/boot/limine
 	mkdir -p build/iso/EFI/BOOT
 	cp -v libs/limine/BOOTX64.EFI build/iso/EFI/BOOT
 	cp -v libs/limine/BOOTIA32.EFI build/iso/EFI/BOOT
