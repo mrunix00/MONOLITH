@@ -5,8 +5,173 @@
 
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+
+typedef struct block_header
+{
+    size_t size;
+    struct block_header *next;
+} block_header_t;
+
+static struct
+{
+    int initialized;
+    block_header_t *free_list;
+} _heap = {0, NULL};
+
+static void _add_free_block(void *memory, size_t size)
+{
+    block_header_t *new_block = (block_header_t *) memory;
+    new_block->size = size - sizeof(block_header_t);
+    new_block->next = NULL;
+
+    block_header_t *current = _heap.free_list;
+    block_header_t *previous = NULL;
+    while (current != NULL && current < new_block) {
+        previous = current;
+        current = current->next;
+    }
+    new_block->next = current;
+    if (previous == NULL) {
+        _heap.free_list = new_block;
+    } else {
+        previous->next = new_block;
+    }
+}
+
+static int _heap_grow(size_t min_size)
+{
+    /* Calculate pages needed (minimum 1 page) */
+    size_t pages = (min_size + sizeof(block_header_t) + PAGE_SIZE - 1) / PAGE_SIZE;
+    if (pages < 1)
+        pages = 1;
+
+    void *new_memory = alloc_pages(pages, ALLOC_PAGES_FLAG_RW);
+    if (new_memory == NULL)
+        return -1;
+
+    _add_free_block(new_memory, pages * PAGE_SIZE);
+    return 0;
+}
+
+void *malloc(size_t size)
+{
+    if (size == 0)
+        return NULL;
+
+    /* Initialize heap on first use */
+    if (!_heap.initialized) {
+        if (_heap_grow(size) < 0)
+            return NULL;
+        _heap.initialized = 1;
+    }
+
+    block_header_t *current, *previous;
+
+start:
+    current = _heap.free_list;
+    previous = NULL;
+
+    /* Search for a suitable free block */
+    while (current != NULL) {
+        if (current->size >= size + sizeof(block_header_t) + 8) {
+            /* Split block */
+            block_header_t *new_block = (block_header_t *) ((void *) current
+                                                            + sizeof(block_header_t) + size);
+            new_block->size = current->size - size - sizeof(block_header_t);
+            new_block->next = current->next;
+            current->size = size;
+            current->next = NULL;
+            if (previous != NULL) {
+                previous->next = new_block;
+            } else {
+                _heap.free_list = new_block;
+            }
+            return (void *) ((void *) current + sizeof(block_header_t));
+        } else if (current->size >= size) {
+            /* Use entire block */
+            if (previous != NULL) {
+                previous->next = current->next;
+            } else {
+                _heap.free_list = current->next;
+            }
+            return (void *) ((void *) current + sizeof(block_header_t));
+        } else {
+            previous = current;
+            current = current->next;
+        }
+    }
+
+    /* If no suitable blocks found, grow the heap */
+    if (_heap_grow(size) == 0)
+        goto start;
+
+    return NULL;
+}
+
+void *realloc(void *ptr, size_t size)
+{
+    if (ptr == NULL)
+        return malloc(size);
+
+    if (size == 0) {
+        free(ptr);
+        return NULL;
+    }
+
+    block_header_t *block = (block_header_t *) ((void *) ptr - sizeof(block_header_t));
+    size_t old_size = block->size;
+
+    if (size <= old_size)
+        return ptr;
+
+    void *new_ptr = malloc(size);
+    if (new_ptr != NULL) {
+        memcpy(new_ptr, ptr, old_size);
+        free(ptr);
+    }
+    return new_ptr;
+}
+
+void free(void *ptr)
+{
+    if (ptr == NULL)
+        return;
+
+    block_header_t *block = (block_header_t *) ((void *) ptr - sizeof(block_header_t));
+
+    block_header_t *current = _heap.free_list;
+    block_header_t *previous = NULL;
+    while (current != NULL && current < block) {
+        previous = current;
+        current = current->next;
+    }
+
+    /* Insert the block into the free list */
+    block->next = current;
+    if (previous == NULL) {
+        _heap.free_list = block;
+    } else {
+        previous->next = block;
+    }
+
+    /* Merge with the previous block if adjacent */
+    if (previous != NULL
+        && (void *) previous + sizeof(block_header_t) + previous->size == (void *) block) {
+        previous->size += sizeof(block_header_t) + block->size;
+        previous->next = block->next;
+        block = previous; /* Update block to point to the merged block */
+    }
+
+    /* Merge with the next block if adjacent */
+    if (block->next != NULL
+        && (void *) block + sizeof(block_header_t) + block->size == (void *) block->next) {
+        block->size += sizeof(block_header_t) + block->next->size;
+        block->next = block->next->next;
+    }
+}
 
 static void swap(void *a, void *b, size_t size)
 {
@@ -118,6 +283,7 @@ void qsort(void *base, size_t n, size_t size, int (*compar)(const void *, const 
     syscall0(SYSCALL_EXIT);
 }
 
-[[noreturn]] void abort(void) {
+[[noreturn]] void abort(void)
+{
     syscall0(SYSCALL_EXIT);
 }
