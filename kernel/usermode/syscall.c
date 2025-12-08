@@ -11,6 +11,7 @@
 #include <kernel/input/ps2_mouse.h>
 #include <kernel/klibc/memory.h>
 #include <kernel/memory/heap.h>
+#include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
 #include <kernel/timer.h>
 #include <kernel/usermode/syscall.h>
@@ -150,4 +151,63 @@ void sys_sleep(uint64_t ms)
 uint64_t sys_get_ticks()
 {
     return timer_get_ticks();
+}
+
+#define USER_SPACE_START 0x0000000000001000ULL
+#define USER_SPACE_END 0x0000800000000000ULL
+
+/* Find an unused virtual address region in the task's address space */
+static uintptr_t _find_free_vaddr(task_t *task, size_t num_pages)
+{
+    size_t required_size = num_pages * PAGE_SIZE;
+    uintptr_t candidate = USER_SPACE_START;
+
+    if (task->memory.memblocks == NULL || task->memory.memblocks_count == 0)
+        return candidate;
+
+    /* First-fit search */
+    for (size_t i = 0; i < task->memory.memblocks_count; i++) {
+        task_memblock_t *block = &task->memory.memblocks[i];
+        uintptr_t block_end = block->virt_addr + block->page_count * PAGE_SIZE;
+
+        /* If candidate overlaps with this block, move past it */
+        if (candidate < block_end && candidate + required_size > block->virt_addr)
+            candidate = block_end;
+    }
+
+    return candidate;
+}
+
+void *sys_alloc_pages(size_t num_pages, uint64_t flags)
+{
+    if (num_pages == 0)
+        return NULL;
+
+    task_t *current = task_get_current();
+    if (!current || !current->user_mode)
+        return NULL;
+
+    void *phys_mem = pmm_alloc(num_pages);
+    if (!phys_mem)
+        return NULL;
+
+    uintptr_t virt_addr = _find_free_vaddr(current, num_pages);
+    if (virt_addr == 0) {
+        pmm_free(phys_mem, num_pages);
+        return NULL;
+    }
+
+    uint64_t pt_flags = PTFLAG_P | PTFLAG_US;
+    if (flags & ALLOC_PAGES_FLAG_RW)
+        pt_flags |= PTFLAG_RW;
+    if (!(flags & ALLOC_PAGES_FLAG_EXEC))
+        pt_flags |= PTFLAG_XD;
+
+    if (task_map(current, virt_addr, (uintptr_t) phys_mem, num_pages, pt_flags, true) < 0) {
+        pmm_free(phys_mem, num_pages);
+        return NULL;
+    }
+
+    memset(vmm_get_hhdm_addr(phys_mem), 0, num_pages * PAGE_SIZE);
+    return (void *) virt_addr;
 }
