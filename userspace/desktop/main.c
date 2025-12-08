@@ -12,9 +12,14 @@
 #include "window.h"
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* Application state */
 static bool _running = true;
+
+/* VSync / Frame timing constants */
+#define TARGET_FPS       60
+#define FRAME_TIME_MS    (1000 / TARGET_FPS) /* ~16ms per frame */
 
 /* Demo window content */
 static char _about_text[] = "MONOLITH Desktop\n\nA graphical desktop environment \nfor MONOLITH.";
@@ -35,8 +40,6 @@ typedef struct
     int cursor_pos;
     bool is_active;
     window_t *dialog_window;
-    int blink_counter;
-    bool cursor_visible;
 } new_folder_dialog_t;
 
 static new_folder_dialog_t _folder_dialog = {0};
@@ -74,13 +77,6 @@ static void _process_folder_dialog_input(void)
     if (wm_get_active() != _folder_dialog.dialog_window)
         return;
 
-    /* Blink cursor - use higher threshold for reasonable blink rate */
-    _folder_dialog.blink_counter++;
-    if (_folder_dialog.blink_counter >= 500) {
-        _folder_dialog.blink_counter = 0;
-        _folder_dialog.cursor_visible = !_folder_dialog.cursor_visible;
-    }
-
     char c = input_get_char();
 
     /* No input this frame */
@@ -88,21 +84,13 @@ static void _process_folder_dialog_input(void)
         /* Check arrow keys even without character input */
         if (input_key_pressed(KEY_LEFT) && _folder_dialog.cursor_pos > 0) {
             _folder_dialog.cursor_pos--;
-            _folder_dialog.blink_counter = 0;
-            _folder_dialog.cursor_visible = true;
         }
         if (input_key_pressed(KEY_RIGHT)
             && _folder_dialog.cursor_pos < (int) strlen(_folder_dialog.input_text)) {
             _folder_dialog.cursor_pos++;
-            _folder_dialog.blink_counter = 0;
-            _folder_dialog.cursor_visible = true;
         }
         return;
     }
-
-    /* Reset cursor blink on any keypress */
-    _folder_dialog.blink_counter = 0;
-    _folder_dialog.cursor_visible = true;
 
     if (c == '\n') {
         /* Enter pressed - create folder */
@@ -185,8 +173,8 @@ static void _draw_new_folder_dialog(window_t *win)
     int text_y = input_rect.y + (DIALOG_INPUT_HEIGHT - FONT_HEIGHT) / 2;
     graphics_draw_text(_folder_dialog.input_text, text_x, text_y, COLOR_BLACK);
 
-    /* Draw cursor if active and visible */
-    if (_folder_dialog.is_active && _folder_dialog.cursor_visible && wm_get_active() == win) {
+    /* Draw cursor if active */
+    if (_folder_dialog.is_active && wm_get_active() == win) {
         /* Calculate cursor position */
         char temp[MAX_FOLDER_NAME_LEN + 1];
         strncpy(temp, _folder_dialog.input_text, _folder_dialog.cursor_pos);
@@ -377,8 +365,6 @@ static void _ctx_new_folder(void)
     strcpy(_folder_dialog.input_text, "New Folder");
     _folder_dialog.cursor_pos = strlen(_folder_dialog.input_text);
     _folder_dialog.is_active = true;
-    _folder_dialog.blink_counter = 0;
-    _folder_dialog.cursor_visible = true;
 
     /* Create dialog window */
     framebuffer_t *fb = graphics_get_fb();
@@ -471,8 +457,10 @@ int main(void)
     input_init();
     _setup_desktop();
 
-    /* Main loop */
+    /* Main loop with VSync */
     while (_running) {
+        uint64_t frame_start = get_ticks();
+
         /* Update input state at start of frame */
         input_update();
 
@@ -537,6 +525,13 @@ int main(void)
 
         /* Present to screen */
         graphics_present();
+
+        /* VSync: Wait for remaining frame time to maintain target FPS */
+        uint64_t frame_end = get_ticks();
+        uint64_t elapsed = frame_end - frame_start;
+        if (elapsed < FRAME_TIME_MS) {
+            usleep(FRAME_TIME_MS - elapsed);
+        }
     }
 
     /* Exit cleanly */
