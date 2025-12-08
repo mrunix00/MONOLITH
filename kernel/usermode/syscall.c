@@ -12,6 +12,7 @@
 #include <kernel/klibc/memory.h>
 #include <kernel/memory/heap.h>
 #include <kernel/memory/vmm.h>
+#include <kernel/timer.h>
 #include <kernel/usermode/syscall.h>
 #include <kernel/usermode/task.h>
 #include <stdint.h>
@@ -139,4 +140,14 @@ int sys_exit()
     task_switch(next);
     __builtin_unreachable();
     return 0;
+}
+
+void sys_sleep(uint64_t ms)
+{
+    sleep(ms);
+}
+
+uint64_t sys_get_ticks()
+{
+    return timer_get_ticks();
 }

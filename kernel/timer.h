@@ -9,3 +9,4 @@
 
 void timer_init();
 void sleep(uint64_t ms);
+uint64_t timer_get_ticks();

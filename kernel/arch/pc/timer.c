@@ -19,6 +19,7 @@ struct timer_block
 };
 
 static timer_block_t *_base;
+static volatile uint64_t _tick_count = 0;
 
 static timer_block_t *_new_time_block(uint64_t duration)
 {
@@ -36,6 +37,8 @@ static timer_block_t *_new_time_block(uint64_t duration)
 
 static void _timer_irq()
 {
+    _tick_count++;
+
     timer_block_t *current = _base;
     timer_block_t *prev = NULL;
 
@@ -70,4 +73,9 @@ void sleep(uint64_t ms)
     timer_block_t *block = _new_time_block(ms);
     while (block->countdown > 0)
         __asm__("hlt");
+}
+
+uint64_t timer_get_ticks()
+{
+    return _tick_count;
 }

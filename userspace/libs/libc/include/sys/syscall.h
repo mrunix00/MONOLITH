@@ -20,3 +20,5 @@
 #define SYSCALL_FILE_GETSTATS        12
 #define SYSCALL_FILE_TELL            13
 #define SYSCALL_GETDRIVES            14
+#define SYSCALL_SLEEP                15
+#define SYSCALL_GET_TICKS            16
