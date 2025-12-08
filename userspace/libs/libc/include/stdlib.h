@@ -10,3 +10,6 @@
 void qsort(void *base, size_t n, size_t size, int (*compar)(const void *, const void *));
 void exit(void);
 [[noreturn]] void abort(void);
+void *malloc(size_t size);
+void *realloc(void *ptr, size_t size);
+void free(void *ptr);
