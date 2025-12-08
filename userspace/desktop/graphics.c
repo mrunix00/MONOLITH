@@ -12,9 +12,8 @@
 /* Framebuffer info */
 static framebuffer_t fb;
 
-/* Double buffer (statically allocated for simplicity - supports up to 1920x1080) */
-/* TODO: Allocate dynamically */
-static uint32_t backbuffer[1920 * 1080];
+/* Double buffer */
+static uint32_t *backbuffer = NULL;
 
 /* Clipping rectangle */
 static rect_t clip_rect;
@@ -23,6 +22,16 @@ int graphics_init(void)
 {
     int result = syscall1(SYSCALL_REQUEST_FB, (long) &fb);
     if (result < 0) {
+        return -1;
+    }
+
+    /* Calculate the number of pages needed for the backbuffer */
+    size_t buffer_size = fb.width * fb.height * sizeof(uint32_t);
+    size_t num_pages = (buffer_size + PAGE_SIZE - 1) / PAGE_SIZE;
+
+    /* Allocate backbuffer using the alloc_pages syscall */
+    backbuffer = (uint32_t *) alloc_pages(num_pages, ALLOC_PAGES_FLAG_RW);
+    if (backbuffer == NULL) {
         return -1;
     }
 

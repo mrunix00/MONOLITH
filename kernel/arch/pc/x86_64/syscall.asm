@@ -36,7 +36,7 @@
     pop rdx
     pop rcx
     pop rbx
-    pop rax
+    add rsp, 8      ; skip rax - preserve syscall return value
 %endmacro
 
 section .text
@@ -57,6 +57,7 @@ extern sys_file_tell
 extern sys_getdrives
 extern sys_sleep
 extern sys_get_ticks
+extern sys_alloc_pages
 
 section .rodata
 syscall_table:
@@ -77,6 +78,7 @@ syscall_table:
     dq sys_getdrives
     dq sys_sleep
     dq sys_get_ticks
+    dq sys_alloc_pages
 syscall_table_end:
 
 section .text
