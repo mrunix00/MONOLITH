@@ -26,7 +26,7 @@ jobs:
         run: |
           make
           mkdir -p dist/release
-          cp build/myos.iso dist/release/monolith-$(date +'%Y%m%d%H%M')-x86_64.iso
+          cp build/monolith.iso dist/release/monolith-$(date +'%Y%m%d%H%M')-x86_64.iso
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3

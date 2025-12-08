@@ -23,11 +23,6 @@ void syscalls_init()
     idt_set_gate(0x80, _syscall_handler, IDT_TYPE_SOFTWARE);
 }
 
-void sys_hello()
-{
-    debug_log("[*] Syscalls are working!\n");
-}
-
 extern struct limine_framebuffer_request framebuffer_request;
 int sys_request_fb(void *fb_info)
 {
