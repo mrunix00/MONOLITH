@@ -8,9 +8,6 @@
 #include "types.h"
 #include <stdbool.h>
 
-/* Maximum number of windows */
-#define MAX_WINDOWS 16
-
 /* Window title bar height */
 #define TITLEBAR_HEIGHT 20
 

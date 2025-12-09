@@ -17,10 +17,6 @@
 /* Application state */
 static bool _running = true;
 
-/* VSync / Frame timing constants */
-#define TARGET_FPS       60
-#define FRAME_TIME_MS    (1000 / TARGET_FPS) /* ~16ms per frame */
-
 /* Demo window content */
 static char _about_text[] = "MONOLITH Desktop\n\nA graphical desktop environment \nfor MONOLITH.";
 
@@ -457,9 +453,16 @@ int main(void)
     input_init();
     _setup_desktop();
 
-    /* Main loop with VSync */
+    /* Initial render */
+    desktop_draw();
+    desktop_draw_cursor();
+    graphics_present();
+
+    /* Main loop - event driven rendering */
     while (_running) {
-        uint64_t frame_start = get_ticks();
+        /* Wait for input events (sleep to avoid busy-waiting) */
+        while (!input_has_events() && _running)
+            usleep(1);
 
         /* Update input state at start of frame */
         input_update();
@@ -526,12 +529,8 @@ int main(void)
         /* Present to screen */
         graphics_present();
 
-        /* VSync: Wait for remaining frame time to maintain target FPS */
-        uint64_t frame_end = get_ticks();
-        uint64_t elapsed = frame_end - frame_start;
-        if (elapsed < FRAME_TIME_MS) {
-            usleep(FRAME_TIME_MS - elapsed);
-        }
+        /* Clear events flag after processing */
+        input_clear_events();
     }
 
     /* Exit cleanly */

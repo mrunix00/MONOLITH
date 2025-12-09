@@ -7,12 +7,14 @@
 #include "font.h"
 #include "graphics.h"
 #include "input.h"
+#include <stdlib.h>
 #include <string.h>
 
-/* Window storage */
-static window_t windows[MAX_WINDOWS];
-static int window_order[MAX_WINDOWS]; /* Index order for z-ordering (last = topmost) */
+/* Window storage - dynamically allocated */
+static window_t *windows = NULL;
+static int *window_order = NULL; /* Index order for z-ordering (last = topmost) */
 static int num_windows = 0;
+static int windows_capacity = 0;
 static int next_window_id = 1;
 
 /* Hover state for cursor changes */
@@ -20,21 +22,51 @@ static resize_edge_t hover_resize_edge = RESIZE_NONE;
 
 void wm_init(void)
 {
-    memset(windows, 0, sizeof(windows));
-    memset(window_order, -1, sizeof(window_order));
     num_windows = 0;
+    windows_capacity = 0;
     next_window_id = 1;
+}
+
+/* Initial capacity for window arrays */
+#define INITIAL_WINDOWS_CAPACITY 8
+
+/* Grow the window arrays if needed */
+static bool wm_grow_arrays(void)
+{
+    int new_capacity = windows_capacity == 0 ? INITIAL_WINDOWS_CAPACITY : windows_capacity * 2;
+
+    /* realloc(NULL, size) behaves like malloc(size) */
+    window_t *new_windows = realloc(windows, new_capacity * sizeof(window_t));
+    if (!new_windows)
+        return false;
+
+    int *new_order = realloc(window_order, new_capacity * sizeof(int));
+    if (!new_order)
+        return false;
+
+    /* Initialize new slots */
+    for (int i = windows_capacity; i < new_capacity; i++) {
+        memset(&new_windows[i], 0, sizeof(window_t));
+        new_order[i] = -1;
+    }
+
+    windows = new_windows;
+    window_order = new_order;
+    windows_capacity = new_capacity;
+
+    return true;
 }
 
 window_t *wm_create_window(const char *title, int x, int y, int w, int h, uint32_t flags)
 {
-    if (num_windows >= MAX_WINDOWS) {
-        return NULL;
+    if (num_windows >= windows_capacity) {
+        if (!wm_grow_arrays())
+            return NULL;
     }
 
     /* Find free slot */
     int slot = -1;
-    for (int i = 0; i < MAX_WINDOWS; i++) {
+    for (int i = 0; i < windows_capacity; i++) {
         if (!windows[i].visible && windows[i].id == 0) {
             slot = i;
             break;
@@ -42,7 +74,18 @@ window_t *wm_create_window(const char *title, int x, int y, int w, int h, uint32
     }
 
     if (slot < 0) {
-        return NULL;
+        /* No free slot found, try to grow again */
+        if (!wm_grow_arrays())
+            return NULL;
+
+        slot = windows_capacity - INITIAL_WINDOWS_CAPACITY; /* First slot in new allocation */
+        /* Find actual free slot */
+        for (int i = 0; i < windows_capacity; i++) {
+            if (!windows[i].visible && windows[i].id == 0) {
+                slot = i;
+                break;
+            }
+        }
     }
 
     window_t *win = &windows[slot];
@@ -78,7 +121,7 @@ window_t *wm_create_window(const char *title, int x, int y, int w, int h, uint32
     num_windows++;
 
     /* Deactivate other windows */
-    for (int i = 0; i < MAX_WINDOWS; i++) {
+    for (int i = 0; i < windows_capacity; i++) {
         if (&windows[i] != win && windows[i].visible) {
             windows[i].flags &= ~WINDOW_FLAG_ACTIVE;
         }
@@ -89,7 +132,7 @@ window_t *wm_create_window(const char *title, int x, int y, int w, int h, uint32
 
 void wm_destroy_window(window_t *win)
 {
-    if (!win || !win->visible)
+    if (!win || !win->visible || !windows || !window_order)
         return;
 
     /* Find in order array */
@@ -124,7 +167,10 @@ void wm_destroy_window(window_t *win)
 
 window_t *wm_get_window(int id)
 {
-    for (int i = 0; i < MAX_WINDOWS; i++) {
+    if (!windows)
+        return NULL;
+
+    for (int i = 0; i < windows_capacity; i++) {
         if (windows[i].id == id && windows[i].visible) {
             return &windows[i];
         }
@@ -134,12 +180,12 @@ window_t *wm_get_window(int id)
 
 void wm_bring_to_front(window_t *win)
 {
-    if (!win || !win->visible)
+    if (!win || !win->visible || !windows || !window_order)
         return;
 
     /* Find window slot */
     int slot = -1;
-    for (int i = 0; i < MAX_WINDOWS; i++) {
+    for (int i = 0; i < windows_capacity; i++) {
         if (&windows[i] == win) {
             slot = i;
             break;
@@ -168,7 +214,7 @@ void wm_bring_to_front(window_t *win)
     window_order[num_windows - 1] = slot;
 
     /* Update active state */
-    for (int i = 0; i < MAX_WINDOWS; i++) {
+    for (int i = 0; i < windows_capacity; i++) {
         if (windows[i].visible) {
             windows[i].flags &= ~WINDOW_FLAG_ACTIVE;
         }
@@ -178,7 +224,7 @@ void wm_bring_to_front(window_t *win)
 
 window_t *wm_get_active(void)
 {
-    if (num_windows <= 0)
+    if (num_windows <= 0 || !windows || !window_order)
         return NULL;
     int top = window_order[num_windows - 1];
     if (top >= 0) {
@@ -197,6 +243,9 @@ bool wm_point_in_window(window_t *win, int x, int y)
 
 window_t *wm_window_at_point(int x, int y)
 {
+    if (!windows || !window_order)
+        return NULL;
+
     /* Check from top to bottom (reverse order) */
     for (int i = num_windows - 1; i >= 0; i--) {
         int slot = window_order[i];
@@ -314,6 +363,9 @@ static resize_edge_t get_resize_edge(window_t *win, int x, int y)
 
 void wm_process_input(bool skip_click_handling)
 {
+    if (!windows || !window_order)
+        return;
+
     int mx = input_get_mouse_x();
     int my = input_get_mouse_y();
     bool left = input_mouse_left();
@@ -323,7 +375,7 @@ void wm_process_input(bool skip_click_handling)
     hover_resize_edge = RESIZE_NONE;
 
     /* Check for resizing first */
-    for (int i = 0; i < MAX_WINDOWS; i++) {
+    for (int i = 0; i < windows_capacity; i++) {
         window_t *win = &windows[i];
         if (!win->visible)
             continue;
@@ -394,7 +446,7 @@ void wm_process_input(bool skip_click_handling)
     }
 
     /* Check for dragging */
-    for (int i = 0; i < MAX_WINDOWS; i++) {
+    for (int i = 0; i < windows_capacity; i++) {
         window_t *win = &windows[i];
         if (!win->visible)
             continue;
@@ -517,7 +569,7 @@ void wm_process_input(bool skip_click_handling)
     }
 
     /* Update close button state */
-    for (int i = 0; i < MAX_WINDOWS; i++) {
+    for (int i = 0; i < windows_capacity; i++) {
         window_t *win = &windows[i];
         if (!win->visible)
             continue;
@@ -542,7 +594,7 @@ void wm_process_input(bool skip_click_handling)
     /* Update hover resize edge for cursor changes (only if not resizing or dragging) */
     bool any_resizing = false;
     bool any_dragging = false;
-    for (int i = 0; i < MAX_WINDOWS; i++) {
+    for (int i = 0; i < windows_capacity; i++) {
         if (windows[i].visible && windows[i].resizing) {
             any_resizing = true;
             hover_resize_edge = windows[i].resize_edge;
@@ -571,11 +623,14 @@ void wm_process_input(bool skip_click_handling)
 
 window_t *wm_check_close_clicked(void)
 {
+    if (!windows)
+        return NULL;
+
     int mx = input_get_mouse_x();
     int my = input_get_mouse_y();
     bool left = input_mouse_left();
 
-    for (int i = 0; i < MAX_WINDOWS; i++) {
+    for (int i = 0; i < windows_capacity; i++) {
         window_t *win = &windows[i];
         if (!win->visible)
             continue;
@@ -593,11 +648,14 @@ window_t *wm_check_close_clicked(void)
 
 window_t *wm_check_minimize_clicked(void)
 {
+    if (!windows)
+        return NULL;
+
     int mx = input_get_mouse_x();
     int my = input_get_mouse_y();
     bool left = input_mouse_left();
 
-    for (int i = 0; i < MAX_WINDOWS; i++) {
+    for (int i = 0; i < windows_capacity; i++) {
         window_t *win = &windows[i];
         if (!win->visible)
             continue;
@@ -615,11 +673,14 @@ window_t *wm_check_minimize_clicked(void)
 
 window_t *wm_check_maximize_clicked(void)
 {
+    if (!windows)
+        return NULL;
+
     int mx = input_get_mouse_x();
     int my = input_get_mouse_y();
     bool left = input_mouse_left();
 
-    for (int i = 0; i < MAX_WINDOWS; i++) {
+    for (int i = 0; i < windows_capacity; i++) {
         window_t *win = &windows[i];
         if (!win->visible)
             continue;
@@ -882,6 +943,9 @@ static void draw_window(window_t *win)
 
 void wm_draw_all(void)
 {
+    if (!windows || !window_order)
+        return;
+
     /* Draw windows from bottom to top */
     for (int i = 0; i < num_windows; i++) {
         int slot = window_order[i];
@@ -905,7 +969,7 @@ int wm_get_window_count(void)
 
 window_t *wm_get_window_by_creation_order(int index)
 {
-    if (index < 0 || index >= num_windows)
+    if (index < 0 || index >= num_windows || !windows || !window_order)
         return NULL;
 
     /* Find the nth visible window by walking the window_order array
@@ -933,7 +997,10 @@ resize_edge_t wm_get_hover_resize_edge(void)
 
 bool wm_is_resizing(void)
 {
-    for (int i = 0; i < MAX_WINDOWS; i++) {
+    if (!windows)
+        return false;
+
+    for (int i = 0; i < windows_capacity; i++) {
         if (windows[i].visible && windows[i].resizing) {
             return true;
         }

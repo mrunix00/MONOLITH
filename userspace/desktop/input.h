@@ -97,3 +97,9 @@ bool input_key_pressed(keyboard_scancode_t key);
 
 /* Update input state (call once per frame) */
 void input_update(void);
+
+/* Check if any input event occurred since last update */
+bool input_has_events(void);
+
+/* Clear the events flag (call after processing events) */
+void input_clear_events(void);
