@@ -11,6 +11,8 @@
 /* Mouse state */
 static int mouse_x = 100;
 static int mouse_y = 100;
+static int prev_mouse_x = 100;
+static int prev_mouse_y = 100;
 static bool mouse_left = false;
 static bool mouse_right = false;
 static bool mouse_middle = false;
@@ -24,6 +26,11 @@ static volatile bool right_click_event = false;
 /* Frame-level click state (set at start of frame, valid for entire frame) */
 static bool frame_left_clicked = false;
 static bool frame_right_clicked = false;
+
+/* Event tracking - set when any input event occurs */
+static volatile bool has_mouse_event = false;
+static volatile bool has_keyboard_event = false;
+static bool events_pending = false;
 
 /* Keyboard state */
 static bool shift_held = false;
@@ -87,10 +94,16 @@ static void mouse_handler(mouse_event_t event)
     mouse_left = event.left_button;
     mouse_right = event.right_button;
     mouse_middle = event.middle_button;
+
+    /* Mark that we have a mouse event */
+    has_mouse_event = true;
 }
 
 static void keyboard_handler(keyboard_event_t event)
 {
+    /* Mark that we have a keyboard event */
+    has_keyboard_event = true;
+
     /* Handle modifier keys */
     if (event.scancode == KEY_LSHIFT || event.scancode == KEY_RSHIFT) {
         shift_held = (event.action == KEYBOARD_PRESSED || event.action == KEYBOARD_HOLD);
@@ -197,7 +210,26 @@ void input_update(void)
     left_click_event = false;
     right_click_event = false;
 
+    /* Update events_pending flag based on any input changes */
+    events_pending = has_mouse_event || has_keyboard_event;
+
+    /* Clear the interrupt-set event flags */
+    has_mouse_event = false;
+    has_keyboard_event = false;
+
+    prev_mouse_x = mouse_x;
+    prev_mouse_y = mouse_y;
     prev_mouse_left = mouse_left;
     prev_mouse_right = mouse_right;
     last_key_pressed = 0;
+}
+
+bool input_has_events(void)
+{
+    return events_pending || has_mouse_event || has_keyboard_event;
+}
+
+void input_clear_events(void)
+{
+    events_pending = false;
 }

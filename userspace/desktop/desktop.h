@@ -24,7 +24,6 @@
 
 /* Maximum menu items */
 #define MAX_MENU_ITEMS 16
-#define MAX_ICONS 16
 #define MAX_CONTEXT_MENU_ITEMS 16
 
 /* Context menu item structure */

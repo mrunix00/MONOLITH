@@ -8,6 +8,7 @@
 #include "graphics.h"
 #include "input.h"
 #include "window.h"
+#include <stdlib.h>
 #include <string.h>
 
 /* Taskbar button dimensions */
@@ -22,6 +23,9 @@
 #define CONTEXT_MENU_CHECKMARK_WIDTH 20
 #define CONTEXT_MENU_SHORTCUT_MARGIN 30
 
+/* Initial capacity for icons array */
+#define INITIAL_ICONS_CAPACITY 8
+
 /* Menu */
 static menu_t _menu;
 static bool _menu_open = false;
@@ -29,9 +33,10 @@ static bool _menu_open = false;
 /* Taskbar button click state */
 static int _taskbar_pressed_window = -1; /* Window ID of pressed taskbar button, -1 if none */
 
-/* Desktop _icons */
-static desktop_icon_t _icons[MAX_ICONS];
+/* Desktop _icons - dynamically allocated */
+static desktop_icon_t *_icons = NULL;
 static int _num_icons = 0;
+static int _icons_capacity = 0;
 
 /* Icon dragging state */
 static int _dragging_icon = -1; /* Index of icon being dragged, -1 if none */
@@ -376,6 +381,9 @@ static void _draw_folder_icon(int x, int y, bool selected)
 
 static void _draw_icons(void)
 {
+    if (!_icons)
+        return;
+
     for (int i = 0; i < _num_icons; i++) {
         desktop_icon_t *icon = &_icons[i];
 
@@ -807,10 +815,36 @@ static void _draw_cursor_bitmap(
     }
 }
 
+/* Grow the icons array if needed */
+static bool _icons_grow(void)
+{
+    int new_capacity = _icons_capacity == 0 ? INITIAL_ICONS_CAPACITY : _icons_capacity * 2;
+
+    /* realloc(NULL, size) behaves like malloc(size) */
+    desktop_icon_t *new_icons = realloc(_icons, new_capacity * sizeof(desktop_icon_t));
+    if (!new_icons) {
+        return false;
+    }
+
+    /* Initialize new slots */
+    for (int i = _icons_capacity; i < new_capacity; i++) {
+        memset(&new_icons[i], 0, sizeof(desktop_icon_t));
+    }
+
+    _icons = new_icons;
+    _icons_capacity = new_capacity;
+
+    return true;
+}
+
 static void _desktop_add_icon(const char *label, int x, int y)
 {
-    if (_num_icons >= MAX_ICONS)
-        return;
+    /* Grow array if needed */
+    if (_num_icons >= _icons_capacity) {
+        if (!_icons_grow()) {
+            return;
+        }
+    }
 
     desktop_icon_t *icon = &_icons[_num_icons++];
     strncpy(icon->label, label, 31);
@@ -823,6 +857,9 @@ static void _desktop_add_icon(const char *label, int x, int y)
 /* Check if a grid cell is occupied by any icon */
 static bool _is_grid_cell_occupied(int grid_x, int grid_y)
 {
+    if (!_icons)
+        return false;
+
     int cell_x = ICON_GRID_START_X + grid_x * ICON_GRID_CELL_WIDTH;
     int cell_y = ICON_GRID_START_Y + grid_y * ICON_GRID_CELL_HEIGHT;
 
@@ -906,9 +943,16 @@ static void _desktop_snap_to_grid(int *x, int *y)
 void desktop_init(void)
 {
     memset(&_menu, 0, sizeof(_menu));
-    memset(_icons, 0, sizeof(_icons));
     memset(&_context_menu, 0, sizeof(_context_menu));
+
+    /* Free any existing icons allocation */
+    if (_icons) {
+        free(_icons);
+        _icons = NULL;
+    }
+
     _num_icons = 0;
+    _icons_capacity = 0;
     _menu_open = false;
     _context_menu.visible = false;
     _context_menu.hover_index = -1;
@@ -941,9 +985,6 @@ void desktop_add_menu_separator(void)
 
 void desktop_add_icon_grid(const char *label)
 {
-    if (_num_icons >= MAX_ICONS)
-        return;
-
     int x, y;
     _desktop_get_next_grid_position(&x, &y);
     _desktop_add_icon(label, x, y);
@@ -951,7 +992,7 @@ void desktop_add_icon_grid(const char *label)
 
 void desktop_delete_icon(int index)
 {
-    if (index < 0 || index >= _num_icons)
+    if (!_icons || index < 0 || index >= _num_icons)
         return;
 
     /* Shift all _icons after this one down by one */
@@ -966,6 +1007,9 @@ void desktop_delete_icon(int index)
 
 int desktop_get_selected_icon(void)
 {
+    if (!_icons)
+        return -1;
+
     for (int i = 0; i < _num_icons; i++) {
         if (_icons[i].selected) {
             return i;
@@ -976,6 +1020,9 @@ int desktop_get_selected_icon(void)
 
 int desktop_get_icon_at(int x, int y)
 {
+    if (!_icons)
+        return -1;
+
     for (int i = 0; i < _num_icons; i++) {
         desktop_icon_t *icon = &_icons[i];
 
@@ -1151,12 +1198,12 @@ bool desktop_process_input(void)
             if (win == NULL) {
                 /* Check if right-clicking on an icon */
                 int icon_idx = desktop_get_icon_at(mx, my);
-                if (icon_idx >= 0) {
+                if (icon_idx >= 0 && _icons) {
                     /* Select this icon and deselect others */
                     for (int i = 0; i < _num_icons; i++) {
                         _icons[i].selected = (i == icon_idx);
                     }
-                } else {
+                } else if (_icons) {
                     /* Right-click on empty desktop - deselect all _icons */
                     for (int i = 0; i < _num_icons; i++) {
                         _icons[i].selected = false;
@@ -1290,7 +1337,7 @@ bool desktop_process_input(void)
     }
 
     /* Handle icon dragging */
-    if (_dragging_icon >= 0) {
+    if (_dragging_icon >= 0 && _icons) {
         if (input_mouse_left()) {
             /* Update icon position while dragging */
             desktop_icon_t *icon = &_icons[_dragging_icon];
@@ -1320,7 +1367,7 @@ bool desktop_process_input(void)
     }
 
     /* Check desktop icon clicks */
-    if (clicked && my >= TASKBAR_HEIGHT && !_menu_open) {
+    if (clicked && my >= TASKBAR_HEIGHT && !_menu_open && _icons) {
         bool found_icon = false;
 
         for (int i = 0; i < _num_icons; i++) {

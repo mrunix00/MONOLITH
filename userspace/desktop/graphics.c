@@ -5,6 +5,7 @@
 
 #include "graphics.h"
 #include "font.h"
+#include <stdlib.h>
 #include <string.h>
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -25,12 +26,9 @@ int graphics_init(void)
         return -1;
     }
 
-    /* Calculate the number of pages needed for the backbuffer */
+    /* Allocate backbuffer using malloc */
     size_t buffer_size = fb.width * fb.height * sizeof(uint32_t);
-    size_t num_pages = (buffer_size + PAGE_SIZE - 1) / PAGE_SIZE;
-
-    /* Allocate backbuffer using the alloc_pages syscall */
-    backbuffer = (uint32_t *) alloc_pages(num_pages, ALLOC_PAGES_FLAG_RW);
+    backbuffer = (uint32_t *) malloc(buffer_size);
     if (backbuffer == NULL) {
         return -1;
     }
