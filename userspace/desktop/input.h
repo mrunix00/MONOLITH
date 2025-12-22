@@ -69,10 +69,6 @@ typedef struct
     keyboard_action_t action;
 } keyboard_event_t;
 
-/* Handler function types */
-typedef void (*mouse_event_handler_t)(mouse_event_t);
-typedef void (*keyboard_event_handler_t)(keyboard_event_t);
-
 /* Initialize input system */
 void input_init(void);
 

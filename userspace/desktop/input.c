@@ -5,8 +5,21 @@
 
 #include "input.h"
 #include "graphics.h"
+#include <string.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+
+/* Mouse state structure matching kernel */
+typedef struct
+{
+    int32_t x;
+    int32_t y;
+    bool left_button;
+    bool right_button;
+    bool middle_button;
+    int8_t delta_x;
+    int8_t delta_y;
+} mouse_state_t;
 
 /* Mouse state */
 static int mouse_x = 100;
@@ -19,24 +32,24 @@ static bool mouse_middle = false;
 static bool prev_mouse_left = false;
 static bool prev_mouse_right = false;
 
-/* Click events (set by interrupt handler, cleared by input_update) */
-static volatile bool left_click_event = false;
-static volatile bool right_click_event = false;
+/* Click events (detected by polling, cleared by input_update) */
+static bool left_click_event = false;
+static bool right_click_event = false;
 
 /* Frame-level click state (set at start of frame, valid for entire frame) */
 static bool frame_left_clicked = false;
 static bool frame_right_clicked = false;
 
 /* Event tracking - set when any input event occurs */
-static volatile bool has_mouse_event = false;
-static volatile bool has_keyboard_event = false;
 static bool events_pending = false;
 
 /* Keyboard state */
+static keyboard_action_t prev_key_state[256];
+static keyboard_action_t current_key_state[256];
 static bool shift_held = false;
 static bool capslock_on = false;
-static volatile char last_char = 0;
-static volatile bool char_available = false; /* Flag to indicate new char available */
+static char last_char = 0;
+static bool char_available = false; /* Flag to indicate new char available */
 static keyboard_scancode_t last_key_pressed = 0;
 
 /* Scancode to ASCII mapping */
@@ -57,92 +70,15 @@ static const char scancode_to_ascii_shifted[256]
        0,   '*', 0,   ' ', 0,   0,   0,   0,   0,   0,   0,    0,   0,   0,   0,    0,    0,   0,
        0,   0,   '-', 0,   0,   0,   '+', 0,   0,   0,   0,    0,   0,   0,   0,    0};
 
-static void mouse_handler(mouse_event_t event)
-{
-    framebuffer_t *fb = graphics_get_fb();
-
-    /* Calculate delta with sign extension */
-    int delta_x = event.x_sign ? ((int) event.x_movement - 256) : event.x_movement;
-    int delta_y = event.y_sign ? ((int) event.y_movement - 256) : event.y_movement;
-
-    /* Update position */
-    int new_x = mouse_x + delta_x;
-    int new_y = mouse_y - delta_y; /* Y is inverted */
-
-    /* Clamp to screen bounds */
-    if (new_x < 0)
-        new_x = 0;
-    if (new_y < 0)
-        new_y = 0;
-    if (new_x >= (int) fb->width)
-        new_x = (int) fb->width - 1;
-    if (new_y >= (int) fb->height)
-        new_y = (int) fb->height - 1;
-
-    mouse_x = new_x;
-    mouse_y = new_y;
-
-    /* Detect click events (button just pressed) */
-    if (event.left_button && !mouse_left) {
-        left_click_event = true;
-    }
-    if (event.right_button && !mouse_right) {
-        right_click_event = true;
-    }
-
-    /* Update button state */
-    mouse_left = event.left_button;
-    mouse_right = event.right_button;
-    mouse_middle = event.middle_button;
-
-    /* Mark that we have a mouse event */
-    has_mouse_event = true;
-}
-
-static void keyboard_handler(keyboard_event_t event)
-{
-    /* Mark that we have a keyboard event */
-    has_keyboard_event = true;
-
-    /* Handle modifier keys */
-    if (event.scancode == KEY_LSHIFT || event.scancode == KEY_RSHIFT) {
-        shift_held = (event.action == KEYBOARD_PRESSED || event.action == KEYBOARD_HOLD);
-        return;
-    }
-
-    if (event.scancode == KEY_CAPSLOCK && event.action == KEYBOARD_PRESSED) {
-        capslock_on = !capslock_on;
-        return;
-    }
-
-    /* Process key presses and holds (for key repeat) */
-    /* KEYBOARD_PRESSED = key just went down, KEYBOARD_HOLD = key is being held */
-    if (event.action == KEYBOARD_PRESSED || event.action == KEYBOARD_HOLD) {
-        last_key_pressed = event.scancode;
-
-        /* Convert to ASCII */
-        uint8_t scancode = (uint8_t) event.scancode;
-        bool use_shifted = shift_held;
-
-        /* For letters, also consider capslock */
-        char base = scancode_to_ascii[scancode];
-        if (base >= 'a' && base <= 'z') {
-            use_shifted = shift_held ^ capslock_on;
-        }
-
-        if (use_shifted) {
-            last_char = scancode_to_ascii_shifted[scancode];
-        } else {
-            last_char = scancode_to_ascii[scancode];
-        }
-        char_available = true;
-    }
-}
-
 void input_init(void)
 {
-    syscall1(SYSCALL_REGISTER_MOUSE, (long) mouse_handler);
-    syscall1(SYSCALL_REGISTER_KEYBOARD, (long) keyboard_handler);
+    /* Initialize keyboard state */
+    memset(prev_key_state, KEYBOARD_RELEASED, sizeof(prev_key_state));
+    memset(current_key_state, KEYBOARD_RELEASED, sizeof(current_key_state));
+
+    /* Poll initial state */
+    syscall1(SYSCALL_GET_KEYBOARD_STATE, (long) current_key_state);
+    memcpy(prev_key_state, current_key_state, sizeof(current_key_state));
 }
 
 int input_get_mouse_x(void)
@@ -202,20 +138,122 @@ bool input_key_pressed(keyboard_scancode_t key)
 
 void input_update(void)
 {
+    framebuffer_t *fb = graphics_get_fb();
+    mouse_state_t mouse_state;
+    bool mouse_changed = false;
+    bool keyboard_changed = false;
+
+    /* Poll mouse state */
+    if (syscall1(SYSCALL_GET_MOUSE_STATE, (long) &mouse_state) == 0) {
+        /* Update mouse position with clamping */
+        int new_x = mouse_state.x;
+        int new_y = mouse_state.y;
+
+        /* Clamp to screen bounds */
+        if (new_x < 0)
+            new_x = 0;
+        if (new_y < 0)
+            new_y = 0;
+        if (new_x >= (int) fb->width)
+            new_x = (int) fb->width - 1;
+        if (new_y >= (int) fb->height)
+            new_y = (int) fb->height - 1;
+
+        /* Detect position or button changes */
+        if (new_x != mouse_x || new_y != mouse_y || mouse_state.left_button != mouse_left
+            || mouse_state.right_button != mouse_right
+            || mouse_state.middle_button != mouse_middle) {
+            mouse_changed = true;
+        }
+
+        /* Detect click events (button just pressed) */
+        if (mouse_state.left_button && !mouse_left) {
+            left_click_event = true;
+        }
+        if (mouse_state.right_button && !mouse_right) {
+            right_click_event = true;
+        }
+
+        mouse_x = new_x;
+        mouse_y = new_y;
+        mouse_left = mouse_state.left_button;
+        mouse_right = mouse_state.right_button;
+        mouse_middle = mouse_state.middle_button;
+    }
+
+    /* Poll keyboard state */
+    syscall1(SYSCALL_GET_KEYBOARD_STATE, (long) current_key_state);
+
+    /* Check for changes */
+    for (int i = 0; i < 256; i++) {
+        if (current_key_state[i] != prev_key_state[i]) {
+            keyboard_changed = true;
+            break;
+        }
+    }
+
+    /* Process keyboard state changes */
+    if (keyboard_changed) {
+        /* Handle modifier keys */
+        bool new_shift_held
+            = (current_key_state[KEY_LSHIFT] == KEYBOARD_PRESSED
+               || current_key_state[KEY_LSHIFT] == KEYBOARD_HOLD
+               || current_key_state[KEY_RSHIFT] == KEYBOARD_PRESSED
+               || current_key_state[KEY_RSHIFT] == KEYBOARD_HOLD);
+
+        if (new_shift_held != shift_held) {
+            shift_held = new_shift_held;
+        }
+
+        /* Handle capslock toggle */
+        if (current_key_state[KEY_CAPSLOCK] == KEYBOARD_PRESSED
+            && prev_key_state[KEY_CAPSLOCK] != KEYBOARD_PRESSED) {
+            capslock_on = !capslock_on;
+        }
+
+        /* Process key presses and holds (for key repeat) */
+        for (int i = 0; i < 256; i++) {
+            keyboard_action_t prev_action = prev_key_state[i];
+            keyboard_action_t curr_action = current_key_state[i];
+
+            if ((curr_action == KEYBOARD_PRESSED || curr_action == KEYBOARD_HOLD)
+                && (prev_action != KEYBOARD_PRESSED && prev_action != KEYBOARD_HOLD)) {
+                /* Key was just pressed */
+                last_key_pressed = (keyboard_scancode_t) i;
+
+                /* Convert to ASCII */
+                uint8_t scancode = (uint8_t) i;
+                bool use_shifted = shift_held;
+
+                /* For letters, also consider capslock */
+                char base = scancode_to_ascii[scancode];
+                if (base >= 'a' && base <= 'z') {
+                    use_shifted = shift_held ^ capslock_on;
+                }
+
+                if (use_shifted) {
+                    last_char = scancode_to_ascii_shifted[scancode];
+                } else {
+                    last_char = scancode_to_ascii[scancode];
+                }
+                char_available = true;
+            }
+        }
+
+        /* Update previous state */
+        memcpy(prev_key_state, current_key_state, sizeof(current_key_state));
+    }
+
     /* Capture click events for this frame */
     frame_left_clicked = left_click_event;
     frame_right_clicked = right_click_event;
 
-    /* Clear the interrupt-set events */
+    /* Clear the click events */
     left_click_event = false;
     right_click_event = false;
 
-    /* Update events_pending flag based on any input changes */
-    events_pending = has_mouse_event || has_keyboard_event;
-
-    /* Clear the interrupt-set event flags */
-    has_mouse_event = false;
-    has_keyboard_event = false;
+    /* Update events_pending flag */
+    events_pending = mouse_changed || keyboard_changed;
 
     prev_mouse_x = mouse_x;
     prev_mouse_y = mouse_y;
@@ -226,7 +264,45 @@ void input_update(void)
 
 bool input_has_events(void)
 {
-    return events_pending || has_mouse_event || has_keyboard_event;
+    /* Poll kernel state to check for changes without modifying local state */
+    mouse_state_t mouse_state;
+    keyboard_action_t key_state[256];
+
+    /* Check mouse state */
+    if (syscall1(SYSCALL_GET_MOUSE_STATE, (long) &mouse_state) == 0) {
+        framebuffer_t *fb = graphics_get_fb();
+        int new_x = mouse_state.x;
+        int new_y = mouse_state.y;
+
+        /* Clamp to screen bounds */
+        if (new_x < 0)
+            new_x = 0;
+        if (new_y < 0)
+            new_y = 0;
+        if (new_x >= (int) fb->width)
+            new_x = (int) fb->width - 1;
+        if (new_y >= (int) fb->height)
+            new_y = (int) fb->height - 1;
+
+        /* Check if mouse state changed */
+        if (new_x != mouse_x || new_y != mouse_y || mouse_state.left_button != mouse_left
+            || mouse_state.right_button != mouse_right
+            || mouse_state.middle_button != mouse_middle) {
+            return true;
+        }
+    }
+
+    /* Check keyboard state */
+    if (syscall1(SYSCALL_GET_KEYBOARD_STATE, (long) key_state) == 0) {
+        /* Compare with previous state */
+        for (int i = 0; i < 256; i++) {
+            if (key_state[i] != prev_key_state[i]) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 void input_clear_events(void)
