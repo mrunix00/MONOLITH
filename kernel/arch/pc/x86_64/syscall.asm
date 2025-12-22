@@ -42,8 +42,8 @@
 section .text
 extern sys_exit
 extern sys_request_fb
-extern sys_register_mouse_handler
-extern sys_register_keyboard_handler
+extern sys_get_keyboard_state
+extern sys_get_mouse_state
 extern sys_file_open
 extern sys_file_close
 extern sys_file_create
@@ -63,8 +63,8 @@ section .rodata
 syscall_table:
     dq sys_exit
     dq sys_request_fb
-    dq sys_register_mouse_handler
-    dq sys_register_keyboard_handler
+    dq sys_get_keyboard_state
+    dq sys_get_mouse_state
     dq sys_file_open
     dq sys_file_close
     dq sys_file_create

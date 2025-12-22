@@ -5,8 +5,6 @@
 
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/idt.h>
-#include <kernel/input/ps2_keyboard.h>
-#include <kernel/input/ps2_mouse.h>
 #include <kernel/klibc/memory.h>
 #include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
@@ -31,7 +29,6 @@ static void _task_state_save(task_t *task, interrupt_registers_t *regs);
 static void _task_state_load(task_t *task, interrupt_registers_t *regs);
 static void _task_unlink(task_t *task);
 static void _task_destroy(task_t *task);
-
 
 task_t *task_create(void *entry_point, task_mode_t mode)
 {
@@ -319,9 +316,6 @@ static void _task_destroy(task_t *task)
 {
     if (!task || task == &_task_list_head)
         return;
-
-    ps2_keyboard_unregister_handlers_for_task(task);
-    ps2_mouse_unregister_handlers_for_task(task);
 
     if (task->memory.memblocks) {
         for (size_t i = 0; i < task->memory.memblocks_count; i++) {

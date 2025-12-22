@@ -5,10 +5,7 @@
 
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/idt.h>
-#include <kernel/debug.h>
 #include <kernel/input/ps2_mouse.h>
-#include <kernel/klibc/memory.h>
-#include <kernel/memory/heap.h>
 #include <stdint.h>
 
 #define PS2_DATA_PORT 0x60
@@ -18,15 +15,14 @@
 uint8_t _mouse_cycle = 0;
 uint8_t _mouse_byte[3];
 
-typedef struct
-{
-    ps2_mouse_event_handler_t handler;
-    task_t *owner;
-} mouse_handler_entry_t;
-
-static mouse_handler_entry_t *_event_handlers = NULL;
-static uint16_t _mouse_event_handlers_count = 0;
-static uint16_t _mouse_event_handlers_capacity = 16;
+/* Internal mouse state */
+static int32_t _mouse_x = 0;
+static int32_t _mouse_y = 0;
+static bool _mouse_left_button = false;
+static bool _mouse_right_button = false;
+static bool _mouse_middle_button = false;
+static int8_t _mouse_delta_x = 0;
+static int8_t _mouse_delta_y = 0;
 
 static void _mouse_irq()
 {
@@ -52,22 +48,31 @@ static void _mouse_irq()
     case 2:
         _mouse_byte[2] = asm_inb(PS2_DATA_PORT);
         _mouse_cycle = 0;
-        mouse_event_t event;
-        event.left_button = _mouse_byte[0] & 0x01;
-        event.right_button = _mouse_byte[0] & 0x02;
-        event.middle_button = _mouse_byte[0] & 0x04;
-        event.always_on = _mouse_byte[0] & 0x08;
-        event.x_sign = _mouse_byte[0] & 0x10;
-        event.y_sign = _mouse_byte[0] & 0x20;
-        event.x_overflow = _mouse_byte[0] & 0x40;
-        event.y_overflow = _mouse_byte[0] & 0x80;
-        event.x_movement = _mouse_byte[1];
-        event.y_movement = _mouse_byte[2];
 
-        for (int i = 0; i < _mouse_event_handlers_capacity; i++) {
-            if (_event_handlers[i].handler != NULL)
-                _event_handlers[i].handler(event);
+        /* Update button states */
+        _mouse_left_button = _mouse_byte[0] & 0x01;
+        _mouse_right_button = _mouse_byte[0] & 0x02;
+        _mouse_middle_button = _mouse_byte[0] & 0x04;
+
+        /* Calculate movement deltas with sign extension */
+        int8_t delta_x = _mouse_byte[1];
+        int8_t delta_y = _mouse_byte[2];
+
+        /* Handle sign extension for 9-bit values */
+        if (_mouse_byte[0] & 0x10) {
+            delta_x |= 0xFFFFFF00; /* Sign extend */
         }
+        if (_mouse_byte[0] & 0x20) {
+            delta_y |= 0xFFFFFF00; /* Sign extend */
+        }
+
+        /* Update accumulated position */
+        _mouse_x += delta_x;
+        _mouse_y -= delta_y; /* Y is inverted */
+
+        /* Store deltas for polling */
+        _mouse_delta_x = delta_x;
+        _mouse_delta_y = delta_y;
         break;
     }
 }
@@ -98,51 +103,32 @@ void ps2_mouse_init()
     _mouse_write(0xF4);
     _mouse_read();
 
-    _event_handlers = kmalloc(_mouse_event_handlers_capacity * sizeof(mouse_handler_entry_t));
-    memset(_event_handlers, 0, _mouse_event_handlers_capacity * sizeof(mouse_handler_entry_t));
+    /* Initialize mouse state */
+    _mouse_x = 0;
+    _mouse_y = 0;
+    _mouse_left_button = false;
+    _mouse_right_button = false;
+    _mouse_middle_button = false;
+    _mouse_delta_x = 0;
+    _mouse_delta_y = 0;
+
     irq_register_handler(12, _mouse_irq);
 }
 
-int ps2_mouse_register_event_handler(ps2_mouse_event_handler_t handler)
+void ps2_mouse_get_state(mouse_state_t *state)
 {
-    task_t *owner = task_get_current();
-    if (_mouse_event_handlers_count + 1 == _mouse_event_handlers_capacity) {
-        mouse_handler_entry_t *new_ptr = krealloc(
-            _event_handlers,
-            _mouse_event_handlers_capacity * 2 * sizeof(mouse_handler_entry_t));
-        if (new_ptr == NULL)
-            return -1;
-        memset(
-            new_ptr + _mouse_event_handlers_capacity,
-            0,
-            _mouse_event_handlers_capacity * sizeof(mouse_handler_entry_t));
-        _mouse_event_handlers_capacity *= 2;
-        _event_handlers = new_ptr;
-    }
-
-    for (int i = 0; i < _mouse_event_handlers_capacity; i++) {
-        if (_event_handlers[i].handler == NULL) {
-            _event_handlers[i].handler = handler;
-            _event_handlers[i].owner = owner;
-            _mouse_event_handlers_count++;
-            return 0;
-        }
-    }
-
-    return -1;
-}
-
-void ps2_mouse_unregister_handlers_for_task(task_t *task)
-{
-    if (!task || !_event_handlers)
+    if (!state)
         return;
 
-    for (int i = 0; i < _mouse_event_handlers_capacity; i++) {
-        if (_event_handlers[i].handler != NULL && _event_handlers[i].owner == task) {
-            _event_handlers[i].handler = NULL;
-            _event_handlers[i].owner = NULL;
-            if (_mouse_event_handlers_count > 0)
-                _mouse_event_handlers_count--;
-        }
-    }
+    state->x = _mouse_x;
+    state->y = _mouse_y;
+    state->left_button = _mouse_left_button;
+    state->right_button = _mouse_right_button;
+    state->middle_button = _mouse_middle_button;
+    state->delta_x = _mouse_delta_x;
+    state->delta_y = _mouse_delta_y;
+
+    /* Clear deltas after reading */
+    _mouse_delta_x = 0;
+    _mouse_delta_y = 0;
 }

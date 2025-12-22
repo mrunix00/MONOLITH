@@ -16,7 +16,6 @@
 #include <kernel/timer.h>
 #include <kernel/usermode/syscall.h>
 #include <kernel/usermode/task.h>
-#include <stdint.h>
 
 extern void _syscall_handler();
 
@@ -51,15 +50,19 @@ int sys_request_fb(void *fb_info)
     return 0;
 }
 
-int sys_register_mouse_handler(ps2_mouse_event_handler_t handler)
+int sys_get_keyboard_state(keyboard_action_t *key_states)
 {
-    ps2_mouse_register_event_handler(handler);
+    if (!key_states)
+        return -1;
+    ps2_keyboard_get_state(key_states);
     return 0;
 }
 
-int sys_register_keyboard_handler(keyboard_event_handler_t handler)
+int sys_get_mouse_state(mouse_state_t *state)
 {
-    ps2_keyboard_register_event_handler(handler);
+    if (!state)
+        return -1;
+    ps2_mouse_get_state(state);
     return 0;
 }
 
