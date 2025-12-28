@@ -13,9 +13,10 @@
 #include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
+#include <kernel/tasking/loader.h>
+#include <kernel/tasking/syscall.h>
+#include <kernel/tasking/task.h>
 #include <kernel/timer.h>
-#include <kernel/usermode/syscall.h>
-#include <kernel/usermode/task.h>
 
 extern void _syscall_handler();
 
@@ -142,6 +143,7 @@ int sys_exit()
         next = task_idle();
 
     task_switch(next);
+
     __builtin_unreachable();
     return 0;
 }
@@ -187,7 +189,7 @@ void *sys_alloc_pages(size_t num_pages, uint64_t flags)
         return NULL;
 
     task_t *current = task_get_current();
-    if (!current || !current->user_mode)
+    if (!current)
         return NULL;
 
     void *phys_mem = pmm_alloc(num_pages);
@@ -213,4 +215,23 @@ void *sys_alloc_pages(size_t num_pages, uint64_t flags)
 
     memset(vmm_get_hhdm_addr(phys_mem), 0, num_pages * PAGE_SIZE);
     return (void *) virt_addr;
+}
+
+void sys_spawn_task(const char *path)
+{
+    file_t file = file_open(path);
+    if (file.internal == NULL) {
+        debug_log_fmt("[-] Failed to open %s executable\n", path);
+        return;
+    }
+
+    if (load_elf(&file) < 0) {
+        debug_log_fmt("Failed to load %s!", path);
+        return;
+    }
+}
+
+void sys_test(void)
+{
+    debug_log_fmt("Test\n");
 }

@@ -57,7 +57,7 @@
 
 - [x] Loading user programs.
 - [x] System calls.
-- [ ] Task scheduler.
+- [x] Task scheduler.
 - [x] Run programs in userspace.
 
 ## Architecture support

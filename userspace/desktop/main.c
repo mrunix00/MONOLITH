@@ -411,6 +411,11 @@ static void _build_desktop_context_menu()
     }
 }
 
+static void _launch_demo()
+{
+    syscall1(SYSCALL_SPAWN_TASK, (long) "system:/sched_demo");
+}
+
 /* Setup the desktop environment */
 static void _setup_desktop(void)
 {
@@ -423,6 +428,7 @@ static void _setup_desktop(void)
 
     /* Set up the main menu items */
     desktop_add_menu_item("About MONOLITH...", _menu_about);
+    desktop_add_menu_item("Launch Demo", _launch_demo);
     desktop_add_menu_item("Exit", _menu_quit);
 
     /* Add desktop icons - arranged in grid */
@@ -462,7 +468,7 @@ int main(void)
     while (_running) {
         /* Wait for input events (sleep to avoid busy-waiting) */
         while (!input_has_events() && _running)
-            usleep(1);
+            usleep(1000 / 60);
 
         /* Update input state at start of frame */
         input_update();

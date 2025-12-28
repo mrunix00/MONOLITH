@@ -36,3 +36,8 @@ void gdt_flush();
  * https://wiki.osdev.org/Task_State_Segment#Loading_the_TSS
  */
 void gdt_flush_tss();
+
+/*
+ * Set the RSP0 value in the TSS.
+ */
+void gdt_tss_set_rsp0(uint64_t rsp0);

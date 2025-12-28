@@ -58,6 +58,8 @@ extern sys_getdrives
 extern sys_sleep
 extern sys_get_ticks
 extern sys_alloc_pages
+extern sys_spawn_task
+extern sys_test
 
 section .rodata
 syscall_table:
@@ -79,6 +81,8 @@ syscall_table:
     dq sys_sleep
     dq sys_get_ticks
     dq sys_alloc_pages
+    dq sys_spawn_task
+    dq sys_test
 syscall_table_end:
 
 section .text

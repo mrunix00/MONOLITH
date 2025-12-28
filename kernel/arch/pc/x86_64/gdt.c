@@ -81,6 +81,11 @@ void gdt_init()
     debug_log("[+] GDT initialized\n");
 }
 
+void gdt_tss_set_rsp0(uint64_t rsp0)
+{
+    _tss.rsp0 = rsp0;
+}
+
 void gdt_set_gate(int index, uint32_t base, uint32_t limit, uint8_t access, uint8_t gran)
 {
     gdt.entries[index].base_low = (base & 0xFFFF);
