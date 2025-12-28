@@ -38,6 +38,8 @@ typedef struct
     uintptr_t r15;
     uint16_t cs;
     uint16_t ss;
+    void *fx_state;
+    void *fx_state_aligned;
 } task_state_t;
 
 typedef struct
@@ -62,6 +64,9 @@ struct task
     task_t *next;
     task_state_t state;
     task_mem_t memory;
+    uintptr_t stack_bottom;
+    unsigned int quantum;
+    unsigned int quantum_remaining;
     bool user_mode;
     bool exiting;
 };

@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include "kernel/tasking/task.h"
+#include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/gdt.h>
 #include <kernel/arch/pc/idt.h>
 #include <kernel/arch/pc/sse.h>
@@ -16,10 +18,10 @@
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
 #include <kernel/serial.h>
+#include <kernel/tasking/loader.h>
+#include <kernel/tasking/scheduler.h>
+#include <kernel/tasking/syscall.h>
 #include <kernel/timer.h>
-#include <kernel/usermode/loader.h>
-#include <kernel/usermode/syscall.h>
-#include <kernel/usermode/task.h>
 #include <libs/flanterm/src/flanterm_backends/fb.h>
 #include <libs/limine-protocol/include/limine.h>
 
@@ -87,26 +89,26 @@ void kmain()
     ps2_init_keyboard();
     ps2_mouse_init();
 
-    while (1) {
-        debug_log("[*] Launching desktop...\n");
-
-        file_t file = file_open("system:/desktop");
-        if (file.internal == NULL) {
-            debug_log("[-] Failed to open desktop executable\n");
-            debug_log("[*] Retrying in 1 second...\n");
-            sleep(1000);
-            continue;
-        }
-
-        int result = load_elf(&file);
-        if (result < 0) {
-            debug_log("[-] Failed to load desktop ELF\n");
-            debug_log("[*] Retrying in 1 second...\n");
-            sleep(1000);
-            continue;
-        }
-
-        debug_log("[!] Desktop exited, relaunching...\n");
-        sleep(100);
+    file_t file = file_open("system:/desktop");
+    if (file.internal == NULL) {
+        debug_log("[-] Failed to open desktop executable\n");
+        while (1)
+            asm_hlt();
     }
+
+    debug_log("[*] Launching desktop...\n");
+
+    task_t *task = load_elf(&file);
+    if (task < 0) {
+        debug_log("[-] Failed to load desktop ELF\n");
+        while (1)
+            asm_hlt();
+    }
+
+    stop_debug_console();
+    scheduler_init();
+
+    task_get_current()->quantum = 0; /* De-prioritize the kernel task */
+    while (1)
+        asm_hlt();
 }

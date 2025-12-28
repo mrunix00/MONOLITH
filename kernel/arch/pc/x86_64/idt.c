@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-#include "kernel/usermode/task.h"
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/idt.h>
 #include <kernel/arch/pc/morse_debug.h>
 #include <kernel/debug.h>
 #include <kernel/klibc/memory.h>
 #include <kernel/klibc/string.h>
+#include <kernel/tasking/task.h>
 #include <kernel/video/panic.h>
 
 /*
@@ -290,10 +290,11 @@ void irq_unregister_handler(const uint8_t irq)
 
 void irq_handler(struct interrupt_registers *reg)
 {
-    void (*handler)(struct interrupt_registers *) = _irq_routines[reg->isr_number - 32];
-    if (handler)
-        handler(reg);
     if (reg->isr_number >= 40)
         asm_outb(0x20, 0xA0);
     asm_outb(0x20, 0x20);
+
+    void (*handler)(struct interrupt_registers *) = _irq_routines[reg->isr_number - 32];
+    if (handler)
+        handler(reg);
 }

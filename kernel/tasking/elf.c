@@ -6,7 +6,7 @@
 #include <kernel/debug.h>
 #include <kernel/fs/vfs.h>
 #include <kernel/klibc/string.h>
-#include <kernel/usermode/elf.h>
+#include <kernel/tasking/elf.h>
 
 int parse_elf_header(file_t *file, void *buffer)
 {

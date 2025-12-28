@@ -14,3 +14,13 @@ sse_init:
     or  ax, 3<<9
     mov cr4, rax
     ret
+
+global sse_save
+sse_save:
+    fxsave [rdi]
+    ret
+
+global sse_restore
+sse_restore:
+    fxrstor [rdi]
+    ret

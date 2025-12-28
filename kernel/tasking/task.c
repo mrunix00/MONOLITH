@@ -3,13 +3,17 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include "kernel/tasking/scheduler.h"
 #include <kernel/arch/pc/asm.h>
+#include <kernel/arch/pc/gdt.h>
 #include <kernel/arch/pc/idt.h>
+#include <kernel/arch/pc/sse.h>
 #include <kernel/klibc/memory.h>
 #include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
-#include <kernel/usermode/task.h>
+#include <kernel/tasking/task.h>
+#include <kernel/timer.h>
 #include <stdint.h>
 
 #define KERNEL_CODE_SELECTOR 0x08
@@ -17,6 +21,7 @@
 #define USER_CODE_SELECTOR 0x1B
 #define USER_DATA_SELECTOR 0x23
 #define DEFAULT_RFLAGS 0x202
+#define KERNEL_STACK_SIZE 0x4000
 
 static task_t _task_list_head;
 static task_t *_task_list_tail;
@@ -43,12 +48,34 @@ task_t *task_create(void *entry_point, task_mode_t mode)
     task->state.rflags = DEFAULT_RFLAGS;
     task->state.cs = task->user_mode ? USER_CODE_SELECTOR : KERNEL_CODE_SELECTOR;
     task->state.ss = task->user_mode ? USER_DATA_SELECTOR : KERNEL_DATA_SELECTOR;
-    task->state.rsp0 = asm_read_rsp();
+    task->quantum = DEFAULT_QUANTUM;
 
-    /* Create a new address space for this task, or use the kernel's for kernel tasks */
+    task->state.fx_state = kmalloc(512 + 16);
+    if (!task->state.fx_state) {
+        kfree(task);
+        return NULL;
+    }
+    uintptr_t fx_addr = (uintptr_t) task->state.fx_state;
+    task->state.fx_state_aligned = (void *) ((fx_addr + 15) & ~((uintptr_t) 0xF));
+    memset(task->state.fx_state_aligned, 0, 512);
+
+    /* Initialize FPU state with defaults */
+    uint8_t *fx_region = (uint8_t *) task->state.fx_state_aligned;
+    *((uint16_t *) &fx_region[0]) = 0x037F;  /* FCW */
+    *((uint32_t *) &fx_region[24]) = 0x1F80; /* MXCSR */
+
+    task->stack_bottom = (uintptr_t) kmalloc(KERNEL_STACK_SIZE);
+    if (!task->stack_bottom) {
+        kfree(task->state.fx_state);
+        kfree(task);
+        return NULL;
+    }
+    task->state.rsp0 = task->stack_bottom + KERNEL_STACK_SIZE;
+
     if (task->user_mode) {
         task->state.cr3 = vmm_create_address_space();
         if (task->state.cr3 == 0) {
+            kfree((void *) task->stack_bottom);
             kfree(task);
             return NULL;
         }
@@ -150,6 +177,8 @@ void _task_switch_gate(interrupt_registers_t *regs)
     _current_task = target;
     _next_task = NULL;
 
+    gdt_tss_set_rsp0(_current_task->state.rsp0);
+
     if (_current_task->state.cr3)
         asm_write_cr3(_current_task->state.cr3);
 
@@ -168,6 +197,16 @@ void task_switching_init()
     _task_list_head.state.rflags = DEFAULT_RFLAGS;
     _task_list_head.state.rsp = asm_read_rsp();
     _task_list_head.state.rsp0 = _task_list_head.state.rsp;
+
+    _task_list_head.state.fx_state = kmalloc(512 + 16);
+    if (_task_list_head.state.fx_state) {
+        uintptr_t fx_addr = (uintptr_t) _task_list_head.state.fx_state;
+        _task_list_head.state.fx_state_aligned = (void *) ((fx_addr + 15) & ~((uintptr_t) 0xF));
+        memset(_task_list_head.state.fx_state_aligned, 0, 512);
+        uint8_t *fx_region = (uint8_t *) _task_list_head.state.fx_state_aligned;
+        *((uint16_t *) &fx_region[0]) = 0x037F;  /* FCW */
+        *((uint32_t *) &fx_region[24]) = 0x1F80; /* MXCSR */
+    }
 
     _task_list_tail = &_task_list_head;
     _current_task = &_task_list_head;
@@ -200,6 +239,7 @@ task_t *task_next(task_t *task)
         cursor = cursor->next ? cursor->next : &_task_list_head;
         if (!cursor)
             return &_task_list_head;
+
         if (cursor != &_task_list_head && cursor != start && !cursor->exiting)
             return cursor;
     } while (cursor != start);
@@ -243,7 +283,6 @@ static void _task_state_save(task_t *task, interrupt_registers_t *regs)
     task->state.rsp = regs->rsp;
     task->state.rflags = regs->rflags ? regs->rflags : DEFAULT_RFLAGS;
     task->state.cr3 = asm_read_cr3();
-    task->state.rsp0 = asm_read_rsp();
 
     uint16_t cs = (uint16_t) regs->cs;
     uint16_t ss = (uint16_t) regs->ss;
@@ -254,6 +293,9 @@ static void _task_state_save(task_t *task, interrupt_registers_t *regs)
 
     task->state.cs = cs;
     task->state.ss = ss;
+
+    if (task->state.fx_state_aligned)
+        sse_save(task->state.fx_state_aligned);
 }
 
 static void _task_state_load(task_t *task, interrupt_registers_t *regs)
@@ -287,8 +329,17 @@ static void _task_state_load(task_t *task, interrupt_registers_t *regs)
     if (!ss)
         ss = task->user_mode ? USER_DATA_SELECTOR : KERNEL_DATA_SELECTOR;
 
+    /* Ensure SS.RPL matches the CPL from CS */
+    uint8_t cs_cpl = cs & 0x03;
+    uint8_t ss_rpl = ss & 0x03;
+    if (cs_cpl != ss_rpl)
+        ss = cs_cpl == 0 ? KERNEL_DATA_SELECTOR : USER_DATA_SELECTOR;
+
     regs->cs = cs;
     regs->ss = ss;
+
+    if (task->state.fx_state_aligned)
+        sse_restore(task->state.fx_state_aligned);
 }
 
 static void _task_unlink(task_t *task)
@@ -324,15 +375,16 @@ static void _task_destroy(task_t *task)
                 continue;
             if (memblock->phys_addr)
                 pmm_free((void *) memblock->phys_addr, memblock->page_count);
-            /* Note: We don't need to unmap individually since we'll destroy the entire address space */
         }
         kfree(task->memory.memblocks);
     }
 
-    /* Destroy the task's address space (only if it's a user task with its own address space) */
-    if (task->user_mode && task->state.cr3 != 0) {
+    if (task->user_mode && task->state.cr3 != 0)
         vmm_destroy_address_space(task->state.cr3);
-    }
 
+    if (task->state.fx_state)
+        kfree(task->state.fx_state);
+
+    kfree((void *) task->stack_bottom);
     kfree(task);
 }
