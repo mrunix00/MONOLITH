@@ -19,3 +19,4 @@ A WIP open source operating system with a focus on simplicity.
 - [Limine](https://github.com/limine-bootloader/limine): A modern, advanced, portable and multiprotocol bootloader.
 - [Flanterm by Mintsuki](https://codeberg.org/mintsuki/flanterm): A terminal emulator with support for multiple backends.
 - [Unity by ThrowTheSwitch](https://github.com/ThrowTheSwitch/Unity/): A unit testing framework for C.
+- [std_truetype by Sean Barrett](https://github.com/nothings/stb/blob/master/stb_truetype.h): A C library for rasterizing TrueType fonts.

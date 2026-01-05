@@ -269,6 +269,11 @@ static const uint8_t font_data[256][FONT_HEIGHT] = {
     { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }   /* 255 */
 };
 
+const uint8_t *font_get_data(void)
+{
+    return &font_data[0][0];
+}
+
 const uint8_t *font_get_glyph(char c)
 {
     unsigned char uc = (unsigned char)c;

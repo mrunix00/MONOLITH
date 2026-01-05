@@ -8,8 +8,12 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <libgfx/types.h>
 
-/* Framebuffer structure */
+/* Use libgfx types */
+typedef gfx_color_t color_t;
+
+/* Framebuffer structure (compatibility wrapper) */
 typedef struct
 {
     uint32_t *framebuffer;
@@ -17,7 +21,7 @@ typedef struct
     size_t height;
 } framebuffer_t;
 
-/* Rectangle structure */
+/* Rectangle structure - keeping local for now to avoid mass rename of w/h to width/height */
 typedef struct
 {
     int x, y, w, h;
@@ -29,14 +33,9 @@ typedef struct
     int x, y;
 } point_t;
 
-/* Color structure (ARGB format) */
-typedef struct
-{
-    uint8_t b, g, r, a;
-} color_t;
-
 /* Create a color from components */
-#define COLOR_MAKE(r, g, b, a) ((color_t){(b), (g), (r), (a)})
+/* gfx_color_t is {a, r, g, b} */
+#define COLOR_MAKE(r, g, b, a) ((color_t){(a), (r), (g), (b)})
 
 /* Convert color to uint32_t */
 #define COLOR_TO_UINT32(c) (((uint32_t)(c).a << 24) | ((uint32_t)(c).r << 16) | ((uint32_t)(c).g << 8) | (uint32_t)(c).b)
@@ -64,3 +63,11 @@ typedef struct
 #define PATTERN_LINES 2
 #define PATTERN_CHECKER 3
 #define PATTERN_SOLID 4
+
+/* Helper to convert rect_t to gfx_rect_t */
+#define TO_GFX_RECT(r) ((gfx_rect_t){(r).x, (r).y, (r).w, (r).h, {0,0,0,0}, 0})
+
+/* Global graphics context and font */
+#include <libgfx/fonts.h>
+extern gfx_context_t g_ctx;
+extern gfx_font_t g_font;

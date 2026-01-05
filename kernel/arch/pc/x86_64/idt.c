@@ -259,6 +259,7 @@ void isr_handler(struct interrupt_registers *regs)
         if (current != NULL && current->user_mode) {
             debug_log_fmt("[-] Task crashed!\n");
             debug_log_fmt("[-] %s\n", error_message);
+            debug_log_fmt("[-] RIP = 0x%x\n", regs->rip);
 
             task_t *next = task_next(current);
             task_mark_exiting(current);

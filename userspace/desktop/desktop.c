@@ -5,11 +5,16 @@
 
 #include "desktop.h"
 #include "font.h"
-#include "graphics.h"
 #include "input.h"
+#include "types.h"
 #include "window.h"
+#include <libgfx.h>
+#include <libgfx/fonts.h>
 #include <stdlib.h>
 #include <string.h>
+
+extern gfx_context_t g_ctx;
+extern gfx_font_t g_font;
 
 /* Taskbar button dimensions */
 #define TASKBAR_BUTTON_WIDTH 120
@@ -48,199 +53,233 @@ static context_menu_t _context_menu = {0};
 static context_menu_builder_t _context_menu_builder = NULL;
 
 /* Cursor bitmap (16x16 arrow) */
-static const uint8_t _cursor_data[16][2] = {
-    {0x00, 0x00}, /* ................ */
-    {0x40, 0x00}, /* .#.............. */
-    {0x60, 0x00}, /* .##............. */
-    {0x70, 0x00}, /* .###............ */
-    {0x78, 0x00}, /* .####........... */
-    {0x7C, 0x00}, /* .#####.......... */
-    {0x7E, 0x00}, /* .######......... */
-    {0x7F, 0x00}, /* .#######........ */
-    {0x7F, 0x80}, /* .########....... */
-    {0x7C, 0x00}, /* .#####.......... */
-    {0x6C, 0x00}, /* .##.##.......... */
-    {0x46, 0x00}, /* .#...##......... */
-    {0x06, 0x00}, /* .....##......... */
-    {0x03, 0x00}, /* ......##........ */
-    {0x03, 0x00}, /* ......##........ */
-    {0x00, 0x00}, /* ................ */
-};
-
-/* Cursor mask (where cursor is visible) */
-static const uint8_t _cursor_mask[16][2] = {
-    {0xC0, 0x00}, /* ##.............. */
-    {0xE0, 0x00}, /* ###............. */
-    {0xF0, 0x00}, /* ####............ */
-    {0xF8, 0x00}, /* #####........... */
-    {0xFC, 0x00}, /* ######.......... */
-    {0xFE, 0x00}, /* #######......... */
-    {0xFF, 0x00}, /* ########........ */
-    {0xFF, 0x80}, /* #########....... */
-    {0xFF, 0xC0}, /* ##########...... */
-    {0xFF, 0xC0}, /* ##########...... */
-    {0xFE, 0x00}, /* #######......... */
-    {0xEF, 0x00}, /* ###.####........ */
-    {0xCF, 0x00}, /* ##..####........ */
-    {0x07, 0x80}, /* .....####....... */
-    {0x07, 0x80}, /* .....####....... */
-    {0x03, 0x00}, /* ......##........ */
-};
+static const uint32_t _cursor_pixels[16 * 16]
+    = {0xFFFFFFFF, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000,
+       0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF,
+       0xFF000000, 0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0xFFFFFFFF, 0xFF000000,
+       0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFFFFFFFF, 0x00000000, 0x00000000,
+       0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFFFFFFFF,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000,
+       0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000};
 
 /* Resize NS cursor (vertical double arrow) - 16x16 */
-static const uint8_t _cursor_resize_ns_data[16][2] = {
-    {0x01, 0x80}, /* .......##....... */
-    {0x03, 0xC0}, /* ......####...... */
-    {0x07, 0xE0}, /* .....######..... */
-    {0x0F, 0xF0}, /* ....########.... */
-    {0x01, 0x80}, /* .......##....... */
-    {0x01, 0x80}, /* .......##....... */
-    {0x01, 0x80}, /* .......##....... */
-    {0x01, 0x80}, /* .......##....... */
-    {0x01, 0x80}, /* .......##....... */
-    {0x01, 0x80}, /* .......##....... */
-    {0x01, 0x80}, /* .......##....... */
-    {0x01, 0x80}, /* .......##....... */
-    {0x0F, 0xF0}, /* ....########.... */
-    {0x07, 0xE0}, /* .....######..... */
-    {0x03, 0xC0}, /* ......####...... */
-    {0x01, 0x80}, /* .......##....... */
-};
-
-static const uint8_t _cursor_resize_ns_mask[16][2] = {
-    {0x03, 0xC0}, /* ......####...... */
-    {0x07, 0xE0}, /* .....######..... */
-    {0x0F, 0xF0}, /* ....########.... */
-    {0x1F, 0xF8}, /* ...##########... */
-    {0x1F, 0xF8}, /* ...##########... */
-    {0x03, 0xC0}, /* ......####...... */
-    {0x03, 0xC0}, /* ......####...... */
-    {0x03, 0xC0}, /* ......####...... */
-    {0x03, 0xC0}, /* ......####...... */
-    {0x03, 0xC0}, /* ......####...... */
-    {0x03, 0xC0}, /* ......####...... */
-    {0x1F, 0xF8}, /* ...##########... */
-    {0x1F, 0xF8}, /* ...##########... */
-    {0x0F, 0xF0}, /* ....########.... */
-    {0x07, 0xE0}, /* .....######..... */
-    {0x03, 0xC0}, /* ......####...... */
-};
+static const uint32_t _cursor_resize_ns_pixels[16 * 16]
+    = {0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF,
+       0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+       0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000,
+       0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF,
+       0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFFFFFFFF,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000,
+       0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+       0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000};
 
 /* Resize EW cursor (horizontal double arrow) - 16x16 */
-static const uint8_t _cursor_resize_ew_data[16][2] = {
-    {0x00, 0x00}, /* ................ */
-    {0x00, 0x00}, /* ................ */
-    {0x00, 0x00}, /* ................ */
-    {0x04, 0x20}, /* .....#....#..... */
-    {0x0C, 0x30}, /* ....##....##.... */
-    {0x1C, 0x38}, /* ...###....###... */
-    {0x3F, 0xFC}, /* ..############.. */
-    {0x7F, 0xFE}, /* .##############. */
-    {0x3F, 0xFC}, /* ..############.. */
-    {0x1C, 0x38}, /* ...###....###... */
-    {0x0C, 0x30}, /* ....##....##.... */
-    {0x04, 0x20}, /* .....#....#..... */
-    {0x00, 0x00}, /* ................ */
-    {0x00, 0x00}, /* ................ */
-    {0x00, 0x00}, /* ................ */
-    {0x00, 0x00}, /* ................ */
-};
+static const uint32_t _cursor_resize_ew_pixels[16 * 16]
+    = {0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000,
+       0xFFFFFFFF, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFFFFFFFF,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000,
+       0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFFFFFFFF, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000,
+       0xFFFFFFFF, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000};
 
-static const uint8_t _cursor_resize_ew_mask[16][2] = {
-    {0x00, 0x00}, /* ................ */
-    {0x00, 0x00}, /* ................ */
-    {0x04, 0x20}, /* .....#....#..... */
-    {0x0E, 0x70}, /* ....###..###.... */
-    {0x1E, 0x78}, /* ...####..####... */
-    {0x3F, 0xFC}, /* ..############.. */
-    {0x7F, 0xFE}, /* .##############. */
-    {0xFF, 0xFF}, /* ################ */
-    {0x7F, 0xFE}, /* .##############. */
-    {0x3F, 0xFC}, /* ..############.. */
-    {0x1E, 0x78}, /* ...####..####... */
-    {0x0E, 0x70}, /* ....###..###.... */
-    {0x04, 0x20}, /* .....#....#..... */
-    {0x00, 0x00}, /* ................ */
-    {0x00, 0x00}, /* ................ */
-    {0x00, 0x00}, /* ................ */
-};
-
-/* Resize NWSE cursor (diagonal \ double arrow) - 16x16 */
-static const uint8_t _cursor_resize_nwse_data[16][2] = {
-    {0x00, 0x00}, /* ................ */
-    {0x7C, 0x00}, /* .#####.......... */
-    {0x78, 0x00}, /* .####........... */
-    {0x78, 0x00}, /* .####........... */
-    {0x7C, 0x00}, /* .#####.......... */
-    {0x4E, 0x00}, /* .#..###......... */
-    {0x07, 0x00}, /* .....###........ */
-    {0x03, 0x80}, /* ......###....... */
-    {0x01, 0xC0}, /* .......###...... */
-    {0x00, 0xE0}, /* ........###..... */
-    {0x00, 0x72}, /* .........###..#. */
-    {0x00, 0x3E}, /* ..........#####. */
-    {0x00, 0x1E}, /* ...........####. */
-    {0x00, 0x1E}, /* ...........####. */
-    {0x00, 0x3E}, /* ..........#####. */
-    {0x00, 0x00}, /* ................ */
-};
-
-static const uint8_t _cursor_resize_nwse_mask[16][2] = {
-    {0xFF, 0x00}, /* ########........ */
-    {0xFE, 0x00}, /* #######......... */
-    {0xFC, 0x00}, /* ######.......... */
-    {0xFC, 0x00}, /* ######.......... */
-    {0xFE, 0x00}, /* #######......... */
-    {0xFF, 0x00}, /* ########........ */
-    {0xCF, 0x80}, /* ##..#####....... */
-    {0x87, 0xC0}, /* #....#####...... */
-    {0x03, 0xE1}, /* ......#####....# */
-    {0x01, 0xF3}, /* .......#####..## */
-    {0x00, 0xFF}, /* ........######## */
-    {0x00, 0x7F}, /* .........####### */
-    {0x00, 0x3F}, /* ..........###### */
-    {0x00, 0x3F}, /* ..........###### */
-    {0x00, 0x7F}, /* .........####### */
-    {0x00, 0xFF}, /* ........######## */
-};
+/* Resize NWSE cursor (diagonal \\ double arrow) - 16x16 */
+static const uint32_t _cursor_resize_nwse_pixels[16 * 16]
+    = {0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+       0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFFFFFFFF,
+       0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFFFFFFFF, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000,
+       0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+       0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF};
 
 /* Resize NESW cursor (diagonal / double arrow) - 16x16 */
-static const uint8_t _cursor_resize_nesw_data[16][2] = {
-    {0x00, 0x00}, /* ................ */
-    {0x00, 0x3E}, /* ..........#####. */
-    {0x00, 0x1E}, /* ...........####. */
-    {0x00, 0x1E}, /* ...........####. */
-    {0x00, 0x3E}, /* ..........#####. */
-    {0x00, 0x72}, /* .........###..#. */
-    {0x00, 0xE0}, /* ........###..... */
-    {0x01, 0xC0}, /* .......###...... */
-    {0x03, 0x80}, /* ......###....... */
-    {0x07, 0x00}, /* .....###........ */
-    {0x4E, 0x00}, /* .#..###......... */
-    {0x7C, 0x00}, /* .#####.......... */
-    {0x78, 0x00}, /* .####........... */
-    {0x78, 0x00}, /* .####........... */
-    {0x7C, 0x00}, /* .#####.......... */
-    {0x00, 0x00}, /* ................ */
+static const uint32_t _cursor_resize_nesw_pixels[16 * 16]
+    = {0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+       0xFFFFFFFF, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFFFFFFFF,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFFFFFFFF, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF,
+       0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000,
+       0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000,
+       0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFFFFFFFF,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+       0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+       0x00000000, 0x00000000, 0x00000000, 0x00000000};
+
+static gfx_colored_bitmap_t _cursor_bitmap = {
+    .width = 16,
+    .height = 16,
+    .data = (uint32_t *) _cursor_pixels,
 };
 
-static const uint8_t _cursor_resize_nesw_mask[16][2] = {
-    {0x00, 0xFF}, /* ........######## */
-    {0x00, 0x7F}, /* .........####### */
-    {0x00, 0x3F}, /* ..........###### */
-    {0x00, 0x3F}, /* ..........###### */
-    {0x00, 0x7F}, /* .........####### */
-    {0x00, 0xFF}, /* ........######## */
-    {0x01, 0xF3}, /* .......#####..## */
-    {0x03, 0xE1}, /* ......#####....# */
-    {0x87, 0xC0}, /* #....#####...... */
-    {0xCF, 0x80}, /* ##..#####....... */
-    {0xFF, 0x00}, /* ########........ */
-    {0xFE, 0x00}, /* #######......... */
-    {0xFC, 0x00}, /* ######.......... */
-    {0xFC, 0x00}, /* ######.......... */
-    {0xFE, 0x00}, /* #######......... */
-    {0xFF, 0x00}, /* ########........ */
+static gfx_colored_bitmap_t _cursor_resize_ns_bitmap = {
+    .width = 16,
+    .height = 16,
+    .data = (uint32_t *) _cursor_resize_ns_pixels,
+};
+
+static gfx_colored_bitmap_t _cursor_resize_ew_bitmap = {
+    .width = 16,
+    .height = 16,
+    .data = (uint32_t *) _cursor_resize_ew_pixels,
+};
+
+static gfx_colored_bitmap_t _cursor_resize_nwse_bitmap = {
+    .width = 16,
+    .height = 16,
+    .data = (uint32_t *) _cursor_resize_nwse_pixels,
+};
+
+static gfx_colored_bitmap_t _cursor_resize_nesw_bitmap = {
+    .width = 16,
+    .height = 16,
+    .data = (uint32_t *) _cursor_resize_nesw_pixels,
 };
 
 /* Current cursor type */
@@ -258,6 +297,12 @@ static const uint8_t _menu_icon[10] = {
     0x00, /* ........ */
     0x00, /* ........ */
     0x00, /* ........ */
+};
+
+static gfx_bitmap_t _menu_icon_bitmap = {
+    .width = 8,
+    .height = 10,
+    .data = (uint8_t *) _menu_icon,
 };
 
 static bool _point_in_rect(int x, int y, rect_t r)
@@ -293,21 +338,60 @@ static void _draw_dropdown_menu(void)
 
     /* Draw shadow (dark theme - subtle shadow) */
     rect_t shadow = {dropdown.x + 3, dropdown.y + 3, dropdown.w, dropdown.h};
-    graphics_fill_rect(shadow, COLOR_BLACK);
+    gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(shadow), COLOR_BLACK);
 
     /* Draw _menu background - dark with 3D effect */
-    graphics_fill_rect(dropdown, COLOR_PLATINUM);
+    gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(dropdown), COLOR_PLATINUM);
 
     /* 3D border effect */
-    graphics_hline(dropdown.x, dropdown.x + dropdown.w - 1, dropdown.y, COLOR_BEVEL_LIGHT);
-    graphics_vline(dropdown.x, dropdown.y, dropdown.y + dropdown.h - 1, COLOR_BEVEL_LIGHT);
-    graphics_hline(
-        dropdown.x, dropdown.x + dropdown.w - 1, dropdown.y + dropdown.h - 1, COLOR_BEVEL_DARK);
-    graphics_vline(
-        dropdown.x + dropdown.w - 1, dropdown.y, dropdown.y + dropdown.h - 1, COLOR_BEVEL_DARK);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {
+            dropdown.x,
+            dropdown.y,
+            dropdown.x + dropdown.w - 1,
+            dropdown.y,
+            COLOR_BEVEL_LIGHT,
+            1,
+        },
+        COLOR_BEVEL_LIGHT);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {
+            dropdown.x,
+            dropdown.y,
+            dropdown.x,
+            dropdown.y + dropdown.h - 1,
+            COLOR_BEVEL_LIGHT,
+            1,
+        },
+        COLOR_BEVEL_LIGHT);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {
+            dropdown.x,
+            dropdown.y + dropdown.h - 1,
+            dropdown.x + dropdown.w - 1,
+            dropdown.y + dropdown.h - 1,
+            COLOR_BEVEL_DARK,
+            1,
+        },
+        COLOR_BEVEL_DARK);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {
+            dropdown.x + dropdown.w - 1,
+            dropdown.y,
+            dropdown.x + dropdown.w - 1,
+            dropdown.y + dropdown.h - 1,
+            COLOR_BEVEL_DARK,
+            1,
+        },
+        COLOR_BEVEL_DARK);
 
     /* Outer frame */
-    graphics_draw_rect(dropdown, COLOR_BLACK);
+    gfx_draw_rect(
+        &g_ctx, (gfx_rect_t) {dropdown.x, dropdown.y, dropdown.w, dropdown.h, COLOR_BLACK, 1});
 
     /* Draw items */
     int y = TASKBAR_HEIGHT + 2;
@@ -319,19 +403,44 @@ static void _draw_dropdown_menu(void)
 
         if (item->separator) {
             /* Draw separator line - dark theme etched line */
-            graphics_hline(dropdown.x + 2, dropdown.x + dropdown.w - 3, y + 9, COLOR_BEVEL_DARK);
-            graphics_hline(dropdown.x + 2, dropdown.x + dropdown.w - 3, y + 10, COLOR_BEVEL_LIGHT);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    dropdown.x + 2,
+                    y + 9,
+                    dropdown.x + dropdown.w - 3,
+                    y + 9,
+                    COLOR_BEVEL_DARK,
+                    1,
+                },
+                COLOR_BEVEL_DARK);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    dropdown.x + 2,
+                    y + 10,
+                    dropdown.x + dropdown.w - 3,
+                    y + 10,
+                    COLOR_BEVEL_LIGHT,
+                    1,
+                },
+                COLOR_BEVEL_LIGHT);
         } else {
             /* Check hover */
             rect_t item_rect = {dropdown.x + 2, y + 1, dropdown.w - 4, 18};
             bool hover = _point_in_rect(mx, my, item_rect);
 
             if (hover && item->enabled) {
-                graphics_fill_rect(item_rect, COLOR_HIGHLIGHT);
-                graphics_draw_text(item->label, dropdown.x + 8, y + 3, COLOR_WHITE);
+                gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(item_rect), COLOR_HIGHLIGHT);
+                gfx_draw_text(
+                    &g_ctx, &g_font, (gfx_pos_t) {dropdown.x + 8, y + 3}, COLOR_WHITE, item->label);
             } else {
-                graphics_draw_text(
-                    item->label, dropdown.x + 8, y + 3, item->enabled ? COLOR_TEXT : COLOR_TEXT_DIM);
+                gfx_draw_text(
+                    &g_ctx,
+                    &g_font,
+                    (gfx_pos_t) {dropdown.x + 8, y + 3},
+                    item->enabled ? COLOR_TEXT : COLOR_TEXT_DIM,
+                    item->label);
             }
         }
 
@@ -357,26 +466,59 @@ static void _draw_folder_icon(int x, int y, bool selected)
 
     /* Tab on top */
     rect_t tab = {x + 2, y, 14, 6};
-    graphics_fill_rect(tab, folder_color);
-    graphics_hline(x + 2, x + 15, y, folder_light); /* Top highlight */
-    graphics_vline(x + 2, y, y + 5, folder_light);  /* Left highlight */
-    graphics_draw_rect(tab, outline);
+    gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(tab), folder_color);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {x + 2, y, x + 15, y, folder_light, 1},
+        folder_light); /* Top highlight */
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {x + 2, y, x + 2, y + 5, folder_light, 1},
+        folder_light); /* Left highlight */
+    gfx_draw_rect(&g_ctx, (gfx_rect_t) {tab.x, tab.y, tab.w, tab.h, outline, 1});
 
     /* Main folder body */
     rect_t body = {x, y + 4, ICON_WIDTH, ICON_HEIGHT - 4};
-    graphics_fill_rect(body, folder_color);
+    gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(body), folder_color);
 
     /* 3D shading on folder body */
-    graphics_hline(x + 1, x + ICON_WIDTH - 2, y + 5, folder_light);  /* Top highlight */
-    graphics_vline(x + 1, y + 5, y + ICON_HEIGHT - 2, folder_light); /* Left highlight */
-    graphics_hline(x + 1, x + ICON_WIDTH - 2, y + ICON_HEIGHT - 2, folder_dark); /* Bottom shadow */
-    graphics_vline(x + ICON_WIDTH - 2, y + 5, y + ICON_HEIGHT - 2, folder_dark); /* Right shadow */
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {x + 1, y + 5, x + ICON_WIDTH - 2, y + 5, folder_light, 1},
+        folder_light); /* Top highlight */
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {x + 1, y + 5, x + 1, y + ICON_HEIGHT - 2, folder_light, 1},
+        folder_light); /* Left highlight */
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {
+            x + 1,
+            y + ICON_HEIGHT - 2,
+            x + ICON_WIDTH - 2,
+            y + ICON_HEIGHT - 2,
+            folder_dark,
+            1,
+        },
+        folder_dark); /* Bottom shadow */
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {
+            x + ICON_WIDTH - 2,
+            y + 5,
+            x + ICON_WIDTH - 2,
+            y + ICON_HEIGHT - 2,
+            folder_dark,
+            1,
+        },
+        folder_dark); /* Right shadow */
 
     /* Outline */
-    graphics_draw_rect(body, outline);
+    gfx_draw_rect(&g_ctx, (gfx_rect_t) {body.x, body.y, body.w, body.h, outline, 1});
 
     /* Inner fold line */
-    graphics_hline(x + 2, x + ICON_WIDTH - 3, y + 9, folder_dark);
+    gfx_draw_line(
+        &g_ctx, (gfx_line_t) {x + 2, y + 9, x + ICON_WIDTH - 3, y + 9, folder_dark, 1}, folder_dark);
 }
 
 static void _draw_icons(void)
@@ -398,88 +540,166 @@ static void _draw_icons(void)
         if (icon->selected) {
             /* Blue highlight background for selected text */
             rect_t label_bg = {label_x - 3, label_y - 1, label_w + 6, font_text_height() + 2};
-            graphics_fill_rect(label_bg, COLOR_HIGHLIGHT);
-            graphics_draw_text(icon->label, label_x, label_y, COLOR_WHITE);
+            gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(label_bg), COLOR_HIGHLIGHT);
+            gfx_draw_text(&g_ctx, &g_font, (gfx_pos_t) {label_x, label_y}, COLOR_WHITE, icon->label);
         } else {
             /* Light text on dark background */
-            graphics_draw_text(icon->label, label_x, label_y, COLOR_TEXT);
+            gfx_draw_text(&g_ctx, &g_font, (gfx_pos_t) {label_x, label_y}, COLOR_TEXT, icon->label);
         }
     }
 }
 
 static void draw_menu_icon(int x, int y)
 {
-    for (int row = 0; row < 10; row++) {
-        uint8_t bits = _menu_icon[row];
-        for (int col = 0; col < 8; col++) {
-            if (bits & (0x80 >> col)) {
-                graphics_pixel(x + col, y + row, COLOR_TEXT);
-            }
-        }
-    }
+    gfx_draw_bitmap(&g_ctx, &_menu_icon_bitmap, (gfx_pos_t) {x, y}, COLOR_TEXT);
 }
 
 static void _draw_taskbar(void)
 {
-    framebuffer_t *fb = graphics_get_fb();
+    gfx_context_t *fb = &g_ctx;
 
     /* Taskbar background - dark theme */
     rect_t taskbar = {0, 0, (int) fb->width, TASKBAR_HEIGHT};
-    graphics_fill_rect(taskbar, COLOR_PLATINUM);
+    gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(taskbar), COLOR_PLATINUM);
 
     /* Top highlight */
-    graphics_hline(0, (int) fb->width - 1, 0, COLOR_BEVEL_LIGHT);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {0, 0, (int) fb->width - 1, 0, COLOR_BEVEL_LIGHT, 1},
+        COLOR_BEVEL_LIGHT);
 
     /* Taskbar bottom border with shadow */
-    graphics_hline(0, (int) fb->width - 1, TASKBAR_HEIGHT - 2, COLOR_BEVEL_DARK);
-    graphics_hline(0, (int) fb->width - 1, TASKBAR_HEIGHT - 1, COLOR_BLACK);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {
+            0,
+            TASKBAR_HEIGHT - 2,
+            (int) fb->width - 1,
+            TASKBAR_HEIGHT - 2,
+            COLOR_BEVEL_DARK,
+            1,
+        },
+        COLOR_BEVEL_DARK);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {0, TASKBAR_HEIGHT - 1, (int) fb->width - 1, TASKBAR_HEIGHT - 1, COLOR_BLACK, 1},
+        COLOR_BLACK);
 
     /* Draw start/_menu button with 3D effect */
     rect_t start_btn = {2, 3, TASKBAR_START_BUTTON_WIDTH, TASKBAR_HEIGHT - 6};
     bool start_pressed = _menu_open;
 
     if (start_pressed) {
-        graphics_fill_rect(start_btn, COLOR_DARK_GRAY);
+        gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(start_btn), COLOR_DARK_GRAY);
         /* Inner bevel for pressed state */
-        graphics_hline(start_btn.x + 1, start_btn.x + start_btn.w - 2, start_btn.y + 1, COLOR_BLACK);
-        graphics_vline(start_btn.x + 1, start_btn.y + 1, start_btn.y + start_btn.h - 2, COLOR_BLACK);
-        graphics_hline(
-            start_btn.x + 1,
-            start_btn.x + start_btn.w - 2,
-            start_btn.y + start_btn.h - 2,
+        gfx_draw_line(
+            &g_ctx,
+            (gfx_line_t) {
+                start_btn.x + 1,
+                start_btn.y + 1,
+                start_btn.x + start_btn.w - 2,
+                start_btn.y + 1,
+                COLOR_BLACK,
+                1,
+            },
+            COLOR_BLACK);
+        gfx_draw_line(
+            &g_ctx,
+            (gfx_line_t) {
+                start_btn.x + 1,
+                start_btn.y + 1,
+                start_btn.x + 1,
+                start_btn.y + start_btn.h - 2,
+                COLOR_BLACK,
+                1,
+            },
+            COLOR_BLACK);
+        gfx_draw_line(
+            &g_ctx,
+            (gfx_line_t) {
+                start_btn.x + 1,
+                start_btn.y + start_btn.h - 2,
+                start_btn.x + start_btn.w - 2,
+                start_btn.y + start_btn.h - 2,
+                COLOR_BEVEL_LIGHT,
+                1,
+            },
             COLOR_BEVEL_LIGHT);
-        graphics_vline(
-            start_btn.x + start_btn.w - 2,
-            start_btn.y + 1,
-            start_btn.y + start_btn.h - 2,
+        gfx_draw_line(
+            &g_ctx,
+            (gfx_line_t) {
+                start_btn.x + start_btn.w - 2,
+                start_btn.y + 1,
+                start_btn.x + start_btn.w - 2,
+                start_btn.y + start_btn.h - 2,
+                COLOR_BEVEL_LIGHT,
+                1,
+            },
             COLOR_BEVEL_LIGHT);
     } else {
-        graphics_fill_rect(start_btn, COLOR_PLATINUM);
+        gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(start_btn), COLOR_PLATINUM);
         /* Inner bevel for raised state */
-        graphics_hline(
-            start_btn.x + 1, start_btn.x + start_btn.w - 2, start_btn.y + 1, COLOR_BEVEL_LIGHT);
-        graphics_vline(
-            start_btn.x + 1, start_btn.y + 1, start_btn.y + start_btn.h - 2, COLOR_BEVEL_LIGHT);
-        graphics_hline(
-            start_btn.x + 1,
-            start_btn.x + start_btn.w - 2,
-            start_btn.y + start_btn.h - 2,
+        gfx_draw_line(
+            &g_ctx,
+            (gfx_line_t) {
+                start_btn.x + 1,
+                start_btn.y + 1,
+                start_btn.x + start_btn.w - 2,
+                start_btn.y + 1,
+                COLOR_BEVEL_LIGHT,
+                1,
+            },
+            COLOR_BEVEL_LIGHT);
+        gfx_draw_line(
+            &g_ctx,
+            (gfx_line_t) {
+                start_btn.x + 1,
+                start_btn.y + 1,
+                start_btn.x + 1,
+                start_btn.y + start_btn.h - 2,
+                COLOR_BEVEL_LIGHT,
+                1,
+            },
+            COLOR_BEVEL_LIGHT);
+        gfx_draw_line(
+            &g_ctx,
+            (gfx_line_t) {
+                start_btn.x + 1,
+                start_btn.y + start_btn.h - 2,
+                start_btn.x + start_btn.w - 2,
+                start_btn.y + start_btn.h - 2,
+                COLOR_BEVEL_DARK,
+                1,
+            },
             COLOR_BEVEL_DARK);
-        graphics_vline(
-            start_btn.x + start_btn.w - 2,
-            start_btn.y + 1,
-            start_btn.y + start_btn.h - 2,
+        gfx_draw_line(
+            &g_ctx,
+            (gfx_line_t) {
+                start_btn.x + start_btn.w - 2,
+                start_btn.y + 1,
+                start_btn.x + start_btn.w - 2,
+                start_btn.y + start_btn.h - 2,
+                COLOR_BEVEL_DARK,
+                1,
+            },
             COLOR_BEVEL_DARK);
     }
-    graphics_draw_rect(start_btn, COLOR_BLACK);
+    gfx_draw_rect(
+        &g_ctx, (gfx_rect_t) {start_btn.x, start_btn.y, start_btn.w, start_btn.h, COLOR_BLACK, 1});
 
     /* Draw _menu icon centered in start button */
     draw_menu_icon(start_btn.x + (start_btn.w - 8) / 2, start_btn.y + (start_btn.h - 10) / 2);
 
     /* Separator after start button */
     int sep_x = TASKBAR_START_BUTTON_WIDTH + 6;
-    graphics_vline(sep_x, 3, TASKBAR_HEIGHT - 4, COLOR_BEVEL_DARK);
-    graphics_vline(sep_x + 1, 3, TASKBAR_HEIGHT - 4, COLOR_BEVEL_LIGHT);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {sep_x, 3, sep_x, TASKBAR_HEIGHT - 4, COLOR_BEVEL_DARK, 1},
+        COLOR_BEVEL_DARK);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {sep_x + 1, 3, sep_x + 1, TASKBAR_HEIGHT - 4, COLOR_BEVEL_LIGHT, 1},
+        COLOR_BEVEL_LIGHT);
 
     /* Draw window buttons */
     int btn_x = sep_x + 6;
@@ -512,38 +732,167 @@ static void _draw_taskbar(void)
         /* Draw button with distinct states */
         if (is_pressed && is_hovered) {
             /* Pressed state - deeply sunken */
-            graphics_fill_rect(btn, COLOR_MAKE(35, 35, 40, 255));
-            graphics_hline(btn.x + 1, btn.x + btn.w - 2, btn.y + 1, COLOR_BLACK);
-            graphics_vline(btn.x + 1, btn.y + 1, btn.y + btn.h - 2, COLOR_BLACK);
-            graphics_hline(btn.x + 1, btn.x + btn.w - 2, btn.y + btn.h - 2, COLOR_BEVEL_LIGHT);
-            graphics_vline(btn.x + btn.w - 2, btn.y + 1, btn.y + btn.h - 2, COLOR_BEVEL_LIGHT);
+            gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(btn), COLOR_MAKE(35, 35, 40, 255));
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {btn.x + 1, btn.y + 1, btn.x + btn.w - 2, btn.y + 1, COLOR_BLACK, 1},
+                COLOR_BLACK);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {btn.x + 1, btn.y + 1, btn.x + 1, btn.y + btn.h - 2, COLOR_BLACK, 1},
+                COLOR_BLACK);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    btn.x + 1,
+                    btn.y + btn.h - 2,
+                    btn.x + btn.w - 2,
+                    btn.y + btn.h - 2,
+                    COLOR_BEVEL_LIGHT,
+                    1,
+                },
+                COLOR_BEVEL_LIGHT);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    btn.x + btn.w - 2,
+                    btn.y + 1,
+                    btn.x + btn.w - 2,
+                    btn.y + btn.h - 2,
+                    COLOR_BEVEL_LIGHT,
+                    1,
+                },
+                COLOR_BEVEL_LIGHT);
         } else if (is_active) {
             /* Active/focused window - sunken with highlight color */
-            graphics_fill_rect(btn, COLOR_MAKE(50, 70, 100, 255)); /* Subtle blue tint */
-            graphics_hline(btn.x + 1, btn.x + btn.w - 2, btn.y + 1, COLOR_BEVEL_DARK);
-            graphics_vline(btn.x + 1, btn.y + 1, btn.y + btn.h - 2, COLOR_BEVEL_DARK);
-            graphics_hline(
-                btn.x + 1, btn.x + btn.w - 2, btn.y + btn.h - 2, COLOR_MAKE(70, 90, 120, 255));
-            graphics_vline(
-                btn.x + btn.w - 2, btn.y + 1, btn.y + btn.h - 2, COLOR_MAKE(70, 90, 120, 255));
+            gfx_draw_filled_rect(
+                &g_ctx, TO_GFX_RECT(btn), COLOR_MAKE(50, 70, 100, 255)); /* Subtle blue tint */
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {btn.x + 1, btn.y + 1, btn.x + btn.w - 2, btn.y + 1, COLOR_BEVEL_DARK, 1},
+                COLOR_BEVEL_DARK);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {btn.x + 1, btn.y + 1, btn.x + 1, btn.y + btn.h - 2, COLOR_BEVEL_DARK, 1},
+                COLOR_BEVEL_DARK);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    btn.x + 1,
+                    btn.y + btn.h - 2,
+                    btn.x + btn.w - 2,
+                    btn.y + btn.h - 2,
+                    COLOR_MAKE(70, 90, 120, 255),
+                    1,
+                },
+                COLOR_MAKE(70, 90, 120, 255));
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    btn.x + btn.w - 2,
+                    btn.y + 1,
+                    btn.x + btn.w - 2,
+                    btn.y + btn.h - 2,
+                    COLOR_MAKE(70, 90, 120, 255),
+                    1,
+                },
+                COLOR_MAKE(70, 90, 120, 255));
         } else if (is_minimized) {
             /* Minimized window - flatter, dimmer appearance */
-            graphics_fill_rect(btn, COLOR_MAKE(50, 50, 55, 255));
-            graphics_hline(btn.x + 1, btn.x + btn.w - 2, btn.y + 1, COLOR_MAKE(60, 60, 65, 255));
-            graphics_vline(btn.x + 1, btn.y + 1, btn.y + btn.h - 2, COLOR_MAKE(60, 60, 65, 255));
-            graphics_hline(
-                btn.x + 1, btn.x + btn.w - 2, btn.y + btn.h - 2, COLOR_MAKE(40, 40, 45, 255));
-            graphics_vline(
-                btn.x + btn.w - 2, btn.y + 1, btn.y + btn.h - 2, COLOR_MAKE(40, 40, 45, 255));
+            gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(btn), COLOR_MAKE(50, 50, 55, 255));
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    btn.x + 1,
+                    btn.y + 1,
+                    btn.x + btn.w - 2,
+                    btn.y + 1,
+                    COLOR_MAKE(60, 60, 65, 255),
+                    1,
+                },
+                COLOR_MAKE(60, 60, 65, 255));
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    btn.x + 1,
+                    btn.y + 1,
+                    btn.x + 1,
+                    btn.y + btn.h - 2,
+                    COLOR_MAKE(60, 60, 65, 255),
+                    1,
+                },
+                COLOR_MAKE(60, 60, 65, 255));
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    btn.x + 1,
+                    btn.y + btn.h - 2,
+                    btn.x + btn.w - 2,
+                    btn.y + btn.h - 2,
+                    COLOR_MAKE(40, 40, 45, 255),
+                    1,
+                },
+                COLOR_MAKE(40, 40, 45, 255));
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    btn.x + btn.w - 2,
+                    btn.y + 1,
+                    btn.x + btn.w - 2,
+                    btn.y + btn.h - 2,
+                    COLOR_MAKE(40, 40, 45, 255),
+                    1,
+                },
+                COLOR_MAKE(40, 40, 45, 255));
         } else {
             /* Inactive but visible window - raised look */
-            graphics_fill_rect(btn, COLOR_PLATINUM);
-            graphics_hline(btn.x + 1, btn.x + btn.w - 2, btn.y + 1, COLOR_BEVEL_LIGHT);
-            graphics_vline(btn.x + 1, btn.y + 1, btn.y + btn.h - 2, COLOR_BEVEL_LIGHT);
-            graphics_hline(btn.x + 1, btn.x + btn.w - 2, btn.y + btn.h - 2, COLOR_BEVEL_DARK);
-            graphics_vline(btn.x + btn.w - 2, btn.y + 1, btn.y + btn.h - 2, COLOR_BEVEL_DARK);
+            gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(btn), COLOR_PLATINUM);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    btn.x + 1,
+                    btn.y + 1,
+                    btn.x + btn.w - 2,
+                    btn.y + 1,
+                    COLOR_BEVEL_LIGHT,
+                    1,
+                },
+                COLOR_BEVEL_LIGHT);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    btn.x + 1,
+                    btn.y + 1,
+                    btn.x + 1,
+                    btn.y + btn.h - 2,
+                    COLOR_BEVEL_LIGHT,
+                    1,
+                },
+                COLOR_BEVEL_LIGHT);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    btn.x + 1,
+                    btn.y + btn.h - 2,
+                    btn.x + btn.w - 2,
+                    btn.y + btn.h - 2,
+                    COLOR_BEVEL_DARK,
+                    1,
+                },
+                COLOR_BEVEL_DARK);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    btn.x + btn.w - 2,
+                    btn.y + 1,
+                    btn.x + btn.w - 2,
+                    btn.y + btn.h - 2,
+                    COLOR_BEVEL_DARK,
+                    1,
+                },
+                COLOR_BEVEL_DARK);
         }
-        graphics_draw_rect(btn, COLOR_BLACK);
+        gfx_draw_rect(&g_ctx, (gfx_rect_t) {btn.x, btn.y, btn.w, btn.h, COLOR_BLACK, 1});
 
         /* Draw window title (truncated if needed) */
         int max_title_width = btn_width - 8;
@@ -571,7 +920,7 @@ static void _draw_taskbar(void)
         } else {
             text_color = COLOR_TEXT;
         }
-        graphics_draw_text(title, btn.x + 4, text_y, text_color);
+        gfx_draw_text(&g_ctx, &g_font, (gfx_pos_t) {btn.x + 4, text_y}, text_color, title);
 
         btn_x += btn_width + TASKBAR_BUTTON_MARGIN;
     }
@@ -617,26 +966,26 @@ static void _get_context_menu_dimensions(int *width, int *height)
 static void _draw_checkmark(int x, int y, color_t color)
 {
     /* Simple checkmark shape */
-    graphics_pixel(x + 2, y + 5, color);
-    graphics_pixel(x + 3, y + 6, color);
-    graphics_pixel(x + 4, y + 7, color);
-    graphics_pixel(x + 5, y + 8, color);
-    graphics_pixel(x + 6, y + 7, color);
-    graphics_pixel(x + 7, y + 6, color);
-    graphics_pixel(x + 8, y + 5, color);
-    graphics_pixel(x + 9, y + 4, color);
-    graphics_pixel(x + 10, y + 3, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 2, y + 5}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 3, y + 6}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 4, y + 7}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 5, y + 8}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 6, y + 7}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 7, y + 6}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 8, y + 5}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 9, y + 4}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 10, y + 3}, color);
 
     /* Make it thicker */
-    graphics_pixel(x + 2, y + 6, color);
-    graphics_pixel(x + 3, y + 7, color);
-    graphics_pixel(x + 4, y + 8, color);
-    graphics_pixel(x + 5, y + 9, color);
-    graphics_pixel(x + 6, y + 8, color);
-    graphics_pixel(x + 7, y + 7, color);
-    graphics_pixel(x + 8, y + 6, color);
-    graphics_pixel(x + 9, y + 5, color);
-    graphics_pixel(x + 10, y + 4, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 2, y + 6}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 3, y + 7}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 4, y + 8}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 5, y + 9}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 6, y + 8}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 7, y + 7}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 8, y + 6}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 9, y + 5}, color);
+    gfx_draw_pixel(&g_ctx, (gfx_pos_t) {x + 10, y + 4}, color);
 }
 
 /* Draw the context menu - Windows-like styling */
@@ -652,33 +1001,83 @@ static void _draw_context_menu(void)
 
     /* Draw shadow (offset by 2,2 for depth effect) */
     rect_t shadow = {menu_rect.x + 2, menu_rect.y + 2, menu_rect.w, menu_rect.h};
-    graphics_fill_rect(shadow, COLOR_MAKE(0, 0, 0, 180));
+    gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(shadow), COLOR_MAKE(0, 0, 0, 180));
 
     /* Draw _menu background - slightly lighter than taskbar for distinction */
     color_t menu_bg = COLOR_MAKE(55, 55, 60, 255);
-    graphics_fill_rect(menu_rect, menu_bg);
+    gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(menu_rect), menu_bg);
 
     /* Draw 3D border effect - Windows style raised edge */
     /* Outer light edge (top and left) */
-    graphics_hline(menu_rect.x, menu_rect.x + menu_rect.w - 1, menu_rect.y, COLOR_BEVEL_LIGHT);
-    graphics_vline(menu_rect.x, menu_rect.y, menu_rect.y + menu_rect.h - 1, COLOR_BEVEL_LIGHT);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {
+            menu_rect.x,
+            menu_rect.y,
+            menu_rect.x + menu_rect.w - 1,
+            menu_rect.y,
+            COLOR_BEVEL_LIGHT,
+            1,
+        },
+        COLOR_BEVEL_LIGHT);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {
+            menu_rect.x,
+            menu_rect.y,
+            menu_rect.x,
+            menu_rect.y + menu_rect.h - 1,
+            COLOR_BEVEL_LIGHT,
+            1,
+        },
+        COLOR_BEVEL_LIGHT);
 
     /* Outer dark edge (bottom and right) */
-    graphics_hline(
-        menu_rect.x, menu_rect.x + menu_rect.w - 1, menu_rect.y + menu_rect.h - 1, COLOR_BLACK);
-    graphics_vline(
-        menu_rect.x + menu_rect.w - 1, menu_rect.y, menu_rect.y + menu_rect.h - 1, COLOR_BLACK);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {
+            menu_rect.x,
+            menu_rect.y + menu_rect.h - 1,
+            menu_rect.x + menu_rect.w - 1,
+            menu_rect.y + menu_rect.h - 1,
+            COLOR_BLACK,
+            1,
+        },
+        COLOR_BLACK);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {
+            menu_rect.x + menu_rect.w - 1,
+            menu_rect.y,
+            menu_rect.x + menu_rect.w - 1,
+            menu_rect.y + menu_rect.h - 1,
+            COLOR_BLACK,
+            1,
+        },
+        COLOR_BLACK);
 
     /* Inner light edge (bottom and right - gives 3D depth) */
-    graphics_hline(
-        menu_rect.x + 1,
-        menu_rect.x + menu_rect.w - 2,
-        menu_rect.y + menu_rect.h - 2,
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {
+            menu_rect.x + 1,
+            menu_rect.y + menu_rect.h - 2,
+            menu_rect.x + menu_rect.w - 2,
+            menu_rect.y + menu_rect.h - 2,
+            COLOR_BEVEL_DARK,
+            1,
+        },
         COLOR_BEVEL_DARK);
-    graphics_vline(
-        menu_rect.x + menu_rect.w - 2,
-        menu_rect.y + 1,
-        menu_rect.y + menu_rect.h - 2,
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {
+            menu_rect.x + menu_rect.w - 2,
+            menu_rect.y + 1,
+            menu_rect.x + menu_rect.w - 2,
+            menu_rect.y + menu_rect.h - 2,
+            COLOR_BEVEL_DARK,
+            1,
+        },
         COLOR_BEVEL_DARK);
 
     /* Draw items */
@@ -692,10 +1091,30 @@ static void _draw_context_menu(void)
         if (item->separator) {
             /* Draw separator - Windows style etched line */
             int sep_y = y + CONTEXT_MENU_SEPARATOR_HEIGHT / 2;
-            graphics_hline(menu_rect.x + 3, menu_rect.x + menu_rect.w - 4, sep_y, COLOR_BEVEL_DARK);
-            graphics_hline(
-                menu_rect.x + 3, menu_rect.x + menu_rect.w - 4, sep_y + 1, COLOR_BEVEL_LIGHT);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    menu_rect.x + 3,
+                    sep_y,
+                    menu_rect.x + menu_rect.w - 4,
+                    sep_y,
+                    COLOR_BEVEL_DARK,
+                    1,
+                },
+                COLOR_BEVEL_DARK);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {
+                    menu_rect.x + 3,
+                    sep_y + 1,
+                    menu_rect.x + menu_rect.w - 4,
+                    sep_y + 1,
+                    COLOR_BEVEL_LIGHT,
+                    1,
+                },
+                COLOR_BEVEL_LIGHT);
             y += CONTEXT_MENU_SEPARATOR_HEIGHT;
+
         } else {
             /* Calculate item rect for hover detection */
             rect_t item_rect = {menu_rect.x + 2, y, menu_rect.w - 4, CONTEXT_MENU_ITEM_HEIGHT};
@@ -704,7 +1123,7 @@ static void _draw_context_menu(void)
 
             /* Draw item background on hover */
             if (hover) {
-                graphics_fill_rect(item_rect, COLOR_HIGHLIGHT);
+                gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(item_rect), COLOR_HIGHLIGHT);
                 _context_menu.hover_index = i;
             }
 
@@ -726,14 +1145,19 @@ static void _draw_context_menu(void)
             /* Draw label */
             int text_x = menu_rect.x + CONTEXT_MENU_CHECKMARK_WIDTH;
             int text_y = y + (CONTEXT_MENU_ITEM_HEIGHT - font_text_height()) / 2;
-            graphics_draw_text(item->label, text_x, text_y, text_color);
+            gfx_draw_text(&g_ctx, &g_font, (gfx_pos_t) {text_x, text_y}, text_color, item->label);
 
             /* Draw shortcut (right-aligned, dimmer) */
             if (item->shortcut[0] != '\0') {
                 int shortcut_w = font_text_width(item->shortcut);
                 int shortcut_x = menu_rect.x + menu_rect.w - shortcut_w - CONTEXT_MENU_PADDING - 3;
                 color_t shortcut_color = hover ? COLOR_WHITE : COLOR_TEXT_DIM;
-                graphics_draw_text(item->shortcut, shortcut_x, text_y, shortcut_color);
+                gfx_draw_text(
+                    &g_ctx,
+                    &g_font,
+                    (gfx_pos_t) {shortcut_x, text_y},
+                    shortcut_color,
+                    item->shortcut);
             }
 
             y += CONTEXT_MENU_ITEM_HEIGHT;
@@ -792,27 +1216,10 @@ static bool _process_context_menu_input(void)
 }
 
 static void _draw_cursor_bitmap(
-    int mx,
-    int my,
-    const uint8_t data[16][2],
-    const uint8_t mask[16][2],
-    int hotspot_x,
-    int hotspot_y)
+    int mx, int my, gfx_colored_bitmap_t *bitmap, int hotspot_x, int hotspot_y)
 {
-    for (int row = 0; row < 16; row++) {
-        for (int col = 0; col < 16; col++) {
-            int byte_idx = col / 8;
-            int bit_idx = 7 - (col % 8);
-
-            uint8_t mask_bit = (mask[row][byte_idx] >> bit_idx) & 1;
-            uint8_t data_bit = (data[row][byte_idx] >> bit_idx) & 1;
-
-            if (mask_bit) {
-                color_t c = data_bit ? COLOR_BLACK : COLOR_WHITE;
-                graphics_pixel(mx + col - hotspot_x, my + row - hotspot_y, c);
-            }
-        }
-    }
+    gfx_pos_t pos = {mx - hotspot_x, my - hotspot_y};
+    gfx_draw_colored_bitmap(&g_ctx, bitmap, pos, COLOR_WHITE);
 }
 
 /* Grow the icons array if needed */
@@ -878,7 +1285,7 @@ static bool _is_grid_cell_occupied(int grid_x, int grid_y)
 
 static void _desktop_get_next_grid_position(int *x, int *y)
 {
-    framebuffer_t *fb = graphics_get_fb();
+    gfx_context_t *fb = &g_ctx;
 
     /* Calculate how many rows and columns fit on the desktop */
     int desktop_height = (int) fb->height - ICON_GRID_START_Y - 20;
@@ -911,7 +1318,7 @@ static void _desktop_get_next_grid_position(int *x, int *y)
 
 static void _desktop_snap_to_grid(int *x, int *y)
 {
-    framebuffer_t *fb = graphics_get_fb();
+    gfx_context_t *fb = &g_ctx;
 
     /* Calculate which grid cell this position is closest to */
     int rel_x = *x - ICON_GRID_START_X + ICON_GRID_CELL_WIDTH / 2;
@@ -1134,7 +1541,7 @@ void desktop_set_context_menu_builder(context_menu_builder_t builder)
 
 void _desktop_show_context_menu(int x, int y)
 {
-    framebuffer_t *fb = graphics_get_fb();
+    gfx_context_t *fb = &g_ctx;
 
     /* Close any open dropdown _menu */
     _menu_open = false;
@@ -1180,7 +1587,7 @@ bool desktop_process_input(void)
     bool clicked = input_mouse_left_clicked();
     bool right_clicked = input_mouse_right_clicked();
     bool left_down = input_mouse_left();
-    framebuffer_t *fb = graphics_get_fb();
+    gfx_context_t *fb = &g_ctx;
 
     /* Process context _menu input first (it may consume clicks) */
     if (_process_context_menu_input()) {
@@ -1345,7 +1752,7 @@ bool desktop_process_input(void)
             int new_y = my - _drag_offset_y;
 
             /* Keep icon on screen */
-            framebuffer_t *fb = graphics_get_fb();
+            gfx_context_t *fb = &g_ctx;
             if (new_x < 0)
                 new_x = 0;
             if (new_y < TASKBAR_HEIGHT)
@@ -1409,11 +1816,11 @@ bool desktop_process_input(void)
 
 void desktop_draw(void)
 {
-    framebuffer_t *fb = graphics_get_fb();
+    gfx_context_t *fb = &g_ctx;
 
     /* Draw desktop background */
     rect_t desktop = {0, TASKBAR_HEIGHT, (int) fb->width, (int) fb->height - TASKBAR_HEIGHT};
-    graphics_fill_rect(desktop, COLOR_DESKTOP);
+    gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(desktop), COLOR_DESKTOP);
 
     /* Draw icons */
     _draw_icons();
@@ -1463,21 +1870,21 @@ void desktop_draw_cursor(void)
 
     switch (_current_cursor) {
     case CURSOR_RESIZE_NS:
-        _draw_cursor_bitmap(mx, my, _cursor_resize_ns_data, _cursor_resize_ns_mask, 7, 7);
+        _draw_cursor_bitmap(mx, my, &_cursor_resize_ns_bitmap, 7, 7);
         break;
     case CURSOR_RESIZE_EW:
-        _draw_cursor_bitmap(mx, my, _cursor_resize_ew_data, _cursor_resize_ew_mask, 7, 7);
+        _draw_cursor_bitmap(mx, my, &_cursor_resize_ew_bitmap, 7, 7);
         break;
     case CURSOR_RESIZE_NWSE:
-        _draw_cursor_bitmap(mx, my, _cursor_resize_nwse_data, _cursor_resize_nwse_mask, 7, 7);
+        _draw_cursor_bitmap(mx, my, &_cursor_resize_nwse_bitmap, 7, 7);
         break;
     case CURSOR_RESIZE_NESW:
-        _draw_cursor_bitmap(mx, my, _cursor_resize_nesw_data, _cursor_resize_nesw_mask, 7, 7);
+        _draw_cursor_bitmap(mx, my, &_cursor_resize_nesw_bitmap, 7, 7);
         break;
     case CURSOR_ARROW:
     default:
         /* Draw cursor with mask (hotspot at top-left) */
-        _draw_cursor_bitmap(mx, my, _cursor_data, _cursor_mask, 0, 0);
+        _draw_cursor_bitmap(mx, my, &_cursor_bitmap, 0, 0);
         break;
     }
 }

@@ -13,6 +13,9 @@
 #define FONT_FIRST_CHAR 0
 #define FONT_LAST_CHAR 255
 
+/* Get raw font data */
+const uint8_t *font_get_data(void);
+
 /* Get font bitmap for a character (returns pointer to 12 bytes, each byte is a row) */
 const uint8_t *font_get_glyph(char c);
 

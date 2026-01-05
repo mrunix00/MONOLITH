@@ -21,6 +21,7 @@
 - [x] PS/2 keyboard driver.
 - [ ] PS/2 Mouse driver.
 - [ ] USB keyboard driver.
+- [ ] USB mouse driver.
 
 ## Memory Management
 
@@ -79,7 +80,7 @@
 
 - [ ] Bochs Display Adapter.
 - [x] GUI.
-- [ ] Graphics library.
+- [x] Graphics library.
 - [x] Font rendering.
 - [x] Window manager.
 
