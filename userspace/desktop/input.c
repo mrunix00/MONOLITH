@@ -4,7 +4,8 @@
  */
 
 #include "input.h"
-#include "graphics.h"
+#include <libgfx.h>
+#include "types.h"
 #include <string.h>
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -138,7 +139,7 @@ bool input_key_pressed(keyboard_scancode_t key)
 
 void input_update(void)
 {
-    framebuffer_t *fb = graphics_get_fb();
+    gfx_context_t *fb = &g_ctx;
     mouse_state_t mouse_state;
     bool mouse_changed = false;
     bool keyboard_changed = false;
@@ -270,7 +271,7 @@ bool input_has_events(void)
 
     /* Check mouse state */
     if (syscall1(SYSCALL_GET_MOUSE_STATE, (long) &mouse_state) == 0) {
-        framebuffer_t *fb = graphics_get_fb();
+        gfx_context_t *fb = &g_ctx;
         int new_x = mouse_state.x;
         int new_y = mouse_state.y;
 

@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-#include "kernel/tasking/task.h"
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/gdt.h>
 #include <kernel/arch/pc/idt.h>
