@@ -10,39 +10,39 @@ extern void _ttf_unload_font(gfx_font_t *font);
 void gfx_unload_font(gfx_font_t *font)
 {
     switch (font->type) {
-    case GFX_FONT_VGA:
+    case GFX_FONT_MONOSPACE:
+    case GFX_FONT_POLYSPACE:
     case GFX_FONT_INVALID:
         return;
-    case GFX_FONT_TTF:
-        return _ttf_unload_font(font);
     }
 }
 
 extern void _ttf_draw_char(gfx_context_t *, gfx_font_t *, gfx_pos_t, gfx_color_t, char);
-extern void _vga_draw_char(gfx_context_t *, gfx_font_t *, gfx_pos_t, gfx_color_t, char);
+extern void _monospace_draw_char(gfx_context_t *, gfx_font_t *, gfx_pos_t, gfx_color_t, char);
+extern void _polyspace_draw_char(gfx_context_t *, gfx_font_t *, gfx_pos_t, gfx_color_t, char);
 void gfx_draw_char(gfx_context_t *ctx, gfx_font_t *font, gfx_pos_t pos, gfx_color_t color, char c)
 {
     switch (font->type) {
     case GFX_FONT_INVALID:
         return;
-    case GFX_FONT_VGA:
-        return _vga_draw_char(ctx, font, pos, color, c);
-    case GFX_FONT_TTF:
-        return _ttf_draw_char(ctx, font, pos, color, c);
+    case GFX_FONT_MONOSPACE:
+        return _monospace_draw_char(ctx, font, pos, color, c);
+    case GFX_FONT_POLYSPACE:
+        return _polyspace_draw_char(ctx, font, pos, color, c);
     }
 }
 
-extern int _ttf_get_char_width(gfx_font_t *, char);
-extern int _vga_get_char_width(gfx_font_t *, char);
+extern int _monospace_get_char_width(gfx_font_t *);
+extern int _polyspace_get_char_width(gfx_font_t *, char);
 int gfx_get_char_width(gfx_font_t *font, char c)
 {
     switch (font->type) {
     case GFX_FONT_INVALID:
         return 0;
-    case GFX_FONT_VGA:
-        return _vga_get_char_width(font, c);
-    case GFX_FONT_TTF:
-        return _ttf_get_char_width(font, c);
+    case GFX_FONT_MONOSPACE:
+        return _monospace_get_char_width(font);
+    case GFX_FONT_POLYSPACE:
+        return _polyspace_get_char_width(font, c);
     }
     return 0;
 }
@@ -70,10 +70,15 @@ void gfx_draw_text_centered(
 {
     int text_w = gfx_get_text_width(font, text);
     int text_h = 0;
-    if (font->type == GFX_FONT_VGA) {
-        text_h = font->params.vga_params.height;
-    } else {
-        text_h = font->params.ttf_params.ascent + font->params.ttf_params.descent;
+    switch (font->type) {
+    case GFX_FONT_INVALID:
+        break;
+    case GFX_FONT_MONOSPACE:
+        text_h = font->params.monospace.size.height;
+        break;
+    case GFX_FONT_POLYSPACE:
+        text_h = font->params.polyspace.size.height;
+        break;
     }
 
     int x = rect.x + (rect.width - text_w) / 2;

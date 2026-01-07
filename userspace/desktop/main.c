@@ -491,7 +491,7 @@ int main(void)
 {
     /* Initialize graphics */
     g_ctx = gfx_init_screen();
-    g_font = gfx_load_vga_font(font_get_data(), FONT_WIDTH, FONT_HEIGHT);
+    g_font = gfx_load_monospace_font(font_get_data(), FONT_WIDTH, FONT_HEIGHT);
 
     input_init();
     _setup_desktop();

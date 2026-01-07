@@ -10,19 +10,25 @@
 
 typedef enum {
     GFX_FONT_INVALID = 0,
-    GFX_FONT_VGA,
-    GFX_FONT_TTF,
+    GFX_FONT_MONOSPACE,
+    GFX_FONT_POLYSPACE,
 } gfx_font_type_t;
 
 typedef struct
 {
-    int width;
-    int height;
-    int xoff;
-    int yoff;
-    int advance;
-    uint8_t *bitmap;
-} gfx_ttf_glyph_t;
+    int width, height;
+} gfx_font_size_t;
+
+typedef struct
+{
+    uint16_t x;
+    uint16_t y;
+    uint8_t width;
+    uint8_t height;
+    int8_t x_offset;
+    int8_t y_offset;
+    uint8_t x_advance;
+} gfx_glyph_t;
 
 typedef struct
 {
@@ -30,22 +36,37 @@ typedef struct
     union {
         struct
         {
-            int ascent, descent, lineGap;
-        } ttf_params;
+            gfx_font_size_t size;
+        } monospace;
         struct
         {
-            int width, height;
-        } vga_params;
+            gfx_font_size_t size;
+            uint8_t first_char;
+            uint8_t last_char;
+        } polyspace;
     } params;
     union {
-        uint8_t *vga_atlas;
-        gfx_ttf_glyph_t *ttf_glyphs;
+        const uint8_t *monospace_atlas;
+        struct
+        {
+            const uint8_t *atlas;
+            gfx_font_size_t atlas_size;
+            const gfx_glyph_t *glyphs;
+        } polyspace;
     } data;
 } gfx_font_t;
 
 gfx_font_t gfx_load_ttf(void *data, float size);
 
-gfx_font_t gfx_load_vga_font(uint8_t *atlas, uint8_t width, uint8_t height);
+gfx_font_t gfx_load_monospace_font(const uint8_t *atlas, uint8_t width, uint8_t height);
+
+gfx_font_t gfx_load_polyspace_font(
+    const uint8_t *atlas,
+    gfx_font_size_t atlas_size,
+    const gfx_glyph_t *glyphs,
+    uint8_t first_char,
+    uint8_t last_char,
+    gfx_font_size_t size);
 
 void gfx_unload_font(gfx_font_t *font);
 
