@@ -351,7 +351,6 @@ static void _draw_dropdown_menu(void)
             dropdown.y,
             dropdown.x + dropdown.w - 1,
             dropdown.y,
-            COLOR_BEVEL_LIGHT,
             1,
         },
         COLOR_BEVEL_LIGHT);
@@ -362,7 +361,6 @@ static void _draw_dropdown_menu(void)
             dropdown.y,
             dropdown.x,
             dropdown.y + dropdown.h - 1,
-            COLOR_BEVEL_LIGHT,
             1,
         },
         COLOR_BEVEL_LIGHT);
@@ -373,7 +371,6 @@ static void _draw_dropdown_menu(void)
             dropdown.y + dropdown.h - 1,
             dropdown.x + dropdown.w - 1,
             dropdown.y + dropdown.h - 1,
-            COLOR_BEVEL_DARK,
             1,
         },
         COLOR_BEVEL_DARK);
@@ -384,7 +381,6 @@ static void _draw_dropdown_menu(void)
             dropdown.y,
             dropdown.x + dropdown.w - 1,
             dropdown.y + dropdown.h - 1,
-            COLOR_BEVEL_DARK,
             1,
         },
         COLOR_BEVEL_DARK);
@@ -410,7 +406,6 @@ static void _draw_dropdown_menu(void)
                     y + 9,
                     dropdown.x + dropdown.w - 3,
                     y + 9,
-                    COLOR_BEVEL_DARK,
                     1,
                 },
                 COLOR_BEVEL_DARK);
@@ -421,7 +416,6 @@ static void _draw_dropdown_menu(void)
                     y + 10,
                     dropdown.x + dropdown.w - 3,
                     y + 10,
-                    COLOR_BEVEL_LIGHT,
                     1,
                 },
                 COLOR_BEVEL_LIGHT);
@@ -467,14 +461,8 @@ static void _draw_folder_icon(int x, int y, bool selected)
     /* Tab on top */
     rect_t tab = {x + 2, y, 14, 6};
     gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(tab), folder_color);
-    gfx_draw_line(
-        &g_ctx,
-        (gfx_line_t) {x + 2, y, x + 15, y, folder_light, 1},
-        folder_light); /* Top highlight */
-    gfx_draw_line(
-        &g_ctx,
-        (gfx_line_t) {x + 2, y, x + 2, y + 5, folder_light, 1},
-        folder_light); /* Left highlight */
+    gfx_draw_line(&g_ctx, (gfx_line_t) {x + 2, y, x + 15, y, 1}, folder_light); /* Top highlight */
+    gfx_draw_line(&g_ctx, (gfx_line_t) {x + 2, y, x + 2, y + 5, 1}, folder_light); /* Left highlight */
     gfx_draw_rect(&g_ctx, (gfx_rect_t) {tab.x, tab.y, tab.w, tab.h, outline, 1});
 
     /* Main folder body */
@@ -484,11 +472,11 @@ static void _draw_folder_icon(int x, int y, bool selected)
     /* 3D shading on folder body */
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t) {x + 1, y + 5, x + ICON_WIDTH - 2, y + 5, folder_light, 1},
+        (gfx_line_t) {x + 1, y + 5, x + ICON_WIDTH - 2, y + 5, 1},
         folder_light); /* Top highlight */
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t) {x + 1, y + 5, x + 1, y + ICON_HEIGHT - 2, folder_light, 1},
+        (gfx_line_t) {x + 1, y + 5, x + 1, y + ICON_HEIGHT - 2, 1},
         folder_light); /* Left highlight */
     gfx_draw_line(
         &g_ctx,
@@ -497,7 +485,6 @@ static void _draw_folder_icon(int x, int y, bool selected)
             y + ICON_HEIGHT - 2,
             x + ICON_WIDTH - 2,
             y + ICON_HEIGHT - 2,
-            folder_dark,
             1,
         },
         folder_dark); /* Bottom shadow */
@@ -508,7 +495,6 @@ static void _draw_folder_icon(int x, int y, bool selected)
             y + 5,
             x + ICON_WIDTH - 2,
             y + ICON_HEIGHT - 2,
-            folder_dark,
             1,
         },
         folder_dark); /* Right shadow */
@@ -517,8 +503,7 @@ static void _draw_folder_icon(int x, int y, bool selected)
     gfx_draw_rect(&g_ctx, (gfx_rect_t) {body.x, body.y, body.w, body.h, outline, 1});
 
     /* Inner fold line */
-    gfx_draw_line(
-        &g_ctx, (gfx_line_t) {x + 2, y + 9, x + ICON_WIDTH - 3, y + 9, folder_dark, 1}, folder_dark);
+    gfx_draw_line(&g_ctx, (gfx_line_t) {x + 2, y + 9, x + ICON_WIDTH - 3, y + 9, 1}, folder_dark);
 }
 
 static void _draw_icons(void)
@@ -563,10 +548,7 @@ static void _draw_taskbar(void)
     gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(taskbar), COLOR_PLATINUM);
 
     /* Top highlight */
-    gfx_draw_line(
-        &g_ctx,
-        (gfx_line_t) {0, 0, (int) fb->width - 1, 0, COLOR_BEVEL_LIGHT, 1},
-        COLOR_BEVEL_LIGHT);
+    gfx_draw_line(&g_ctx, (gfx_line_t) {0, 0, (int) fb->width - 1, 0, 1}, COLOR_BEVEL_LIGHT);
 
     /* Taskbar bottom border with shadow */
     gfx_draw_line(
@@ -576,13 +558,12 @@ static void _draw_taskbar(void)
             TASKBAR_HEIGHT - 2,
             (int) fb->width - 1,
             TASKBAR_HEIGHT - 2,
-            COLOR_BEVEL_DARK,
             1,
         },
         COLOR_BEVEL_DARK);
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t) {0, TASKBAR_HEIGHT - 1, (int) fb->width - 1, TASKBAR_HEIGHT - 1, COLOR_BLACK, 1},
+        (gfx_line_t) {0, TASKBAR_HEIGHT - 1, (int) fb->width - 1, TASKBAR_HEIGHT - 1, 1},
         COLOR_BLACK);
 
     /* Draw start/_menu button with 3D effect */
@@ -599,7 +580,6 @@ static void _draw_taskbar(void)
                 start_btn.y + 1,
                 start_btn.x + start_btn.w - 2,
                 start_btn.y + 1,
-                COLOR_BLACK,
                 1,
             },
             COLOR_BLACK);
@@ -610,7 +590,6 @@ static void _draw_taskbar(void)
                 start_btn.y + 1,
                 start_btn.x + 1,
                 start_btn.y + start_btn.h - 2,
-                COLOR_BLACK,
                 1,
             },
             COLOR_BLACK);
@@ -621,7 +600,6 @@ static void _draw_taskbar(void)
                 start_btn.y + start_btn.h - 2,
                 start_btn.x + start_btn.w - 2,
                 start_btn.y + start_btn.h - 2,
-                COLOR_BEVEL_LIGHT,
                 1,
             },
             COLOR_BEVEL_LIGHT);
@@ -632,7 +610,6 @@ static void _draw_taskbar(void)
                 start_btn.y + 1,
                 start_btn.x + start_btn.w - 2,
                 start_btn.y + start_btn.h - 2,
-                COLOR_BEVEL_LIGHT,
                 1,
             },
             COLOR_BEVEL_LIGHT);
@@ -646,7 +623,6 @@ static void _draw_taskbar(void)
                 start_btn.y + 1,
                 start_btn.x + start_btn.w - 2,
                 start_btn.y + 1,
-                COLOR_BEVEL_LIGHT,
                 1,
             },
             COLOR_BEVEL_LIGHT);
@@ -657,7 +633,6 @@ static void _draw_taskbar(void)
                 start_btn.y + 1,
                 start_btn.x + 1,
                 start_btn.y + start_btn.h - 2,
-                COLOR_BEVEL_LIGHT,
                 1,
             },
             COLOR_BEVEL_LIGHT);
@@ -668,7 +643,6 @@ static void _draw_taskbar(void)
                 start_btn.y + start_btn.h - 2,
                 start_btn.x + start_btn.w - 2,
                 start_btn.y + start_btn.h - 2,
-                COLOR_BEVEL_DARK,
                 1,
             },
             COLOR_BEVEL_DARK);
@@ -679,7 +653,6 @@ static void _draw_taskbar(void)
                 start_btn.y + 1,
                 start_btn.x + start_btn.w - 2,
                 start_btn.y + start_btn.h - 2,
-                COLOR_BEVEL_DARK,
                 1,
             },
             COLOR_BEVEL_DARK);
@@ -692,14 +665,9 @@ static void _draw_taskbar(void)
 
     /* Separator after start button */
     int sep_x = TASKBAR_START_BUTTON_WIDTH + 6;
+    gfx_draw_line(&g_ctx, (gfx_line_t) {sep_x, 3, sep_x, TASKBAR_HEIGHT - 4, 1}, COLOR_BEVEL_DARK);
     gfx_draw_line(
-        &g_ctx,
-        (gfx_line_t) {sep_x, 3, sep_x, TASKBAR_HEIGHT - 4, COLOR_BEVEL_DARK, 1},
-        COLOR_BEVEL_DARK);
-    gfx_draw_line(
-        &g_ctx,
-        (gfx_line_t) {sep_x + 1, 3, sep_x + 1, TASKBAR_HEIGHT - 4, COLOR_BEVEL_LIGHT, 1},
-        COLOR_BEVEL_LIGHT);
+        &g_ctx, (gfx_line_t) {sep_x + 1, 3, sep_x + 1, TASKBAR_HEIGHT - 4, 1}, COLOR_BEVEL_LIGHT);
 
     /* Draw window buttons */
     int btn_x = sep_x + 6;
@@ -735,11 +703,11 @@ static void _draw_taskbar(void)
             gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(btn), COLOR_MAKE(35, 35, 40, 255));
             gfx_draw_line(
                 &g_ctx,
-                (gfx_line_t) {btn.x + 1, btn.y + 1, btn.x + btn.w - 2, btn.y + 1, COLOR_BLACK, 1},
+                (gfx_line_t) {btn.x + 1, btn.y + 1, btn.x + btn.w - 2, btn.y + 1, 1},
                 COLOR_BLACK);
             gfx_draw_line(
                 &g_ctx,
-                (gfx_line_t) {btn.x + 1, btn.y + 1, btn.x + 1, btn.y + btn.h - 2, COLOR_BLACK, 1},
+                (gfx_line_t) {btn.x + 1, btn.y + 1, btn.x + 1, btn.y + btn.h - 2, 1},
                 COLOR_BLACK);
             gfx_draw_line(
                 &g_ctx,
@@ -748,7 +716,6 @@ static void _draw_taskbar(void)
                     btn.y + btn.h - 2,
                     btn.x + btn.w - 2,
                     btn.y + btn.h - 2,
-                    COLOR_BEVEL_LIGHT,
                     1,
                 },
                 COLOR_BEVEL_LIGHT);
@@ -759,7 +726,6 @@ static void _draw_taskbar(void)
                     btn.y + 1,
                     btn.x + btn.w - 2,
                     btn.y + btn.h - 2,
-                    COLOR_BEVEL_LIGHT,
                     1,
                 },
                 COLOR_BEVEL_LIGHT);
@@ -769,11 +735,11 @@ static void _draw_taskbar(void)
                 &g_ctx, TO_GFX_RECT(btn), COLOR_MAKE(50, 70, 100, 255)); /* Subtle blue tint */
             gfx_draw_line(
                 &g_ctx,
-                (gfx_line_t) {btn.x + 1, btn.y + 1, btn.x + btn.w - 2, btn.y + 1, COLOR_BEVEL_DARK, 1},
+                (gfx_line_t) {btn.x + 1, btn.y + 1, btn.x + btn.w - 2, btn.y + 1, 1},
                 COLOR_BEVEL_DARK);
             gfx_draw_line(
                 &g_ctx,
-                (gfx_line_t) {btn.x + 1, btn.y + 1, btn.x + 1, btn.y + btn.h - 2, COLOR_BEVEL_DARK, 1},
+                (gfx_line_t) {btn.x + 1, btn.y + 1, btn.x + 1, btn.y + btn.h - 2, 1},
                 COLOR_BEVEL_DARK);
             gfx_draw_line(
                 &g_ctx,
@@ -782,7 +748,6 @@ static void _draw_taskbar(void)
                     btn.y + btn.h - 2,
                     btn.x + btn.w - 2,
                     btn.y + btn.h - 2,
-                    COLOR_MAKE(70, 90, 120, 255),
                     1,
                 },
                 COLOR_MAKE(70, 90, 120, 255));
@@ -793,7 +758,6 @@ static void _draw_taskbar(void)
                     btn.y + 1,
                     btn.x + btn.w - 2,
                     btn.y + btn.h - 2,
-                    COLOR_MAKE(70, 90, 120, 255),
                     1,
                 },
                 COLOR_MAKE(70, 90, 120, 255));
@@ -807,7 +771,6 @@ static void _draw_taskbar(void)
                     btn.y + 1,
                     btn.x + btn.w - 2,
                     btn.y + 1,
-                    COLOR_MAKE(60, 60, 65, 255),
                     1,
                 },
                 COLOR_MAKE(60, 60, 65, 255));
@@ -818,7 +781,6 @@ static void _draw_taskbar(void)
                     btn.y + 1,
                     btn.x + 1,
                     btn.y + btn.h - 2,
-                    COLOR_MAKE(60, 60, 65, 255),
                     1,
                 },
                 COLOR_MAKE(60, 60, 65, 255));
@@ -829,7 +791,6 @@ static void _draw_taskbar(void)
                     btn.y + btn.h - 2,
                     btn.x + btn.w - 2,
                     btn.y + btn.h - 2,
-                    COLOR_MAKE(40, 40, 45, 255),
                     1,
                 },
                 COLOR_MAKE(40, 40, 45, 255));
@@ -840,7 +801,6 @@ static void _draw_taskbar(void)
                     btn.y + 1,
                     btn.x + btn.w - 2,
                     btn.y + btn.h - 2,
-                    COLOR_MAKE(40, 40, 45, 255),
                     1,
                 },
                 COLOR_MAKE(40, 40, 45, 255));
@@ -854,7 +814,6 @@ static void _draw_taskbar(void)
                     btn.y + 1,
                     btn.x + btn.w - 2,
                     btn.y + 1,
-                    COLOR_BEVEL_LIGHT,
                     1,
                 },
                 COLOR_BEVEL_LIGHT);
@@ -865,7 +824,6 @@ static void _draw_taskbar(void)
                     btn.y + 1,
                     btn.x + 1,
                     btn.y + btn.h - 2,
-                    COLOR_BEVEL_LIGHT,
                     1,
                 },
                 COLOR_BEVEL_LIGHT);
@@ -876,7 +834,6 @@ static void _draw_taskbar(void)
                     btn.y + btn.h - 2,
                     btn.x + btn.w - 2,
                     btn.y + btn.h - 2,
-                    COLOR_BEVEL_DARK,
                     1,
                 },
                 COLOR_BEVEL_DARK);
@@ -887,7 +844,6 @@ static void _draw_taskbar(void)
                     btn.y + 1,
                     btn.x + btn.w - 2,
                     btn.y + btn.h - 2,
-                    COLOR_BEVEL_DARK,
                     1,
                 },
                 COLOR_BEVEL_DARK);
@@ -1016,7 +972,6 @@ static void _draw_context_menu(void)
             menu_rect.y,
             menu_rect.x + menu_rect.w - 1,
             menu_rect.y,
-            COLOR_BEVEL_LIGHT,
             1,
         },
         COLOR_BEVEL_LIGHT);
@@ -1027,7 +982,6 @@ static void _draw_context_menu(void)
             menu_rect.y,
             menu_rect.x,
             menu_rect.y + menu_rect.h - 1,
-            COLOR_BEVEL_LIGHT,
             1,
         },
         COLOR_BEVEL_LIGHT);
@@ -1040,7 +994,6 @@ static void _draw_context_menu(void)
             menu_rect.y + menu_rect.h - 1,
             menu_rect.x + menu_rect.w - 1,
             menu_rect.y + menu_rect.h - 1,
-            COLOR_BLACK,
             1,
         },
         COLOR_BLACK);
@@ -1051,7 +1004,6 @@ static void _draw_context_menu(void)
             menu_rect.y,
             menu_rect.x + menu_rect.w - 1,
             menu_rect.y + menu_rect.h - 1,
-            COLOR_BLACK,
             1,
         },
         COLOR_BLACK);
@@ -1064,7 +1016,6 @@ static void _draw_context_menu(void)
             menu_rect.y + menu_rect.h - 2,
             menu_rect.x + menu_rect.w - 2,
             menu_rect.y + menu_rect.h - 2,
-            COLOR_BEVEL_DARK,
             1,
         },
         COLOR_BEVEL_DARK);
@@ -1075,7 +1026,6 @@ static void _draw_context_menu(void)
             menu_rect.y + 1,
             menu_rect.x + menu_rect.w - 2,
             menu_rect.y + menu_rect.h - 2,
-            COLOR_BEVEL_DARK,
             1,
         },
         COLOR_BEVEL_DARK);
@@ -1098,7 +1048,6 @@ static void _draw_context_menu(void)
                     sep_y,
                     menu_rect.x + menu_rect.w - 4,
                     sep_y,
-                    COLOR_BEVEL_DARK,
                     1,
                 },
                 COLOR_BEVEL_DARK);
@@ -1109,7 +1058,6 @@ static void _draw_context_menu(void)
                     sep_y + 1,
                     menu_rect.x + menu_rect.w - 4,
                     sep_y + 1,
-                    COLOR_BEVEL_LIGHT,
                     1,
                 },
                 COLOR_BEVEL_LIGHT);
