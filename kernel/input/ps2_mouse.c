@@ -5,6 +5,7 @@
 
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/idt.h>
+#include <kernel/input/input_events.h>
 #include <kernel/input/ps2_mouse.h>
 #include <stdint.h>
 
@@ -73,6 +74,15 @@ static void _mouse_irq()
         /* Store deltas for polling */
         _mouse_delta_x = delta_x;
         _mouse_delta_y = delta_y;
+
+        uint8_t buttons = 0;
+        if (_mouse_left_button)
+            buttons |= 1 << 0;
+        if (_mouse_right_button)
+            buttons |= 1 << 1;
+        if (_mouse_middle_button)
+            buttons |= 1 << 2;
+        input_push_mouse_event(_mouse_x, _mouse_y, delta_x, delta_y, buttons);
         break;
     }
 }

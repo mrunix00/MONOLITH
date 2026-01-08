@@ -5,6 +5,7 @@
 
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/idt.h>
+#include <kernel/input/input_events.h>
 #include <kernel/input/ps2_keyboard.h>
 #include <kernel/klibc/memory.h>
 #include <stdint.h>
@@ -41,6 +42,8 @@ static void _ps2_irq()
             _key_state[scancode] = KEYBOARD_PRESSED;
             action = KEYBOARD_PRESSED;
         }
+
+        input_push_keyboard_event(scancode, action);
 
         if (action == KEYBOARD_PRESSED && scancode == KEY_CAPSLOCK) {
             /* Wait until input buffer is empty */

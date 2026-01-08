@@ -11,6 +11,7 @@
 #include <kernel/fs/tmpfs.h>
 #include <kernel/fs/ustar.h>
 #include <kernel/fs/vfs.h>
+#include <kernel/input/input_events.h>
 #include <kernel/input/ps2_keyboard.h>
 #include <kernel/input/ps2_mouse.h>
 #include <kernel/memory/heap.h>
@@ -85,6 +86,7 @@ void kmain()
         }
     }
 
+    input_events_init();
     ps2_init_keyboard();
     ps2_mouse_init();
 
