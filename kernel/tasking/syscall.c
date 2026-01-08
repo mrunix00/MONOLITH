@@ -7,8 +7,7 @@
 #include <kernel/arch/pc/idt.h>
 #include <kernel/debug.h>
 #include <kernel/fs/vfs.h>
-#include <kernel/input/ps2_keyboard.h>
-#include <kernel/input/ps2_mouse.h>
+#include <kernel/input/input_events.h>
 #include <kernel/klibc/memory.h>
 #include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
@@ -51,19 +50,12 @@ int sys_request_fb(void *fb_info)
     return 0;
 }
 
-int sys_get_keyboard_state(keyboard_action_t *key_states)
+int sys_poll_input_event(input_event_t *event)
 {
-    if (!key_states)
+    if (!event)
         return -1;
-    ps2_keyboard_get_state(key_states);
-    return 0;
-}
-
-int sys_get_mouse_state(mouse_state_t *state)
-{
-    if (!state)
-        return -1;
-    ps2_mouse_get_state(state);
+    if (!input_poll_event(event))
+        return 1;
     return 0;
 }
 
