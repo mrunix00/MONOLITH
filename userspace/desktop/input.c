@@ -10,28 +10,12 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-/* Mouse state structure matching kernel */
-typedef struct
-{
-    int32_t x;
-    int32_t y;
-    bool left_button;
-    bool right_button;
-    bool middle_button;
-    int8_t delta_x;
-    int8_t delta_y;
-} mouse_state_t;
-
 /* Mouse state */
 static int mouse_x = 100;
 static int mouse_y = 100;
-static int prev_mouse_x = 100;
-static int prev_mouse_y = 100;
 static bool mouse_left = false;
 static bool mouse_right = false;
 static bool mouse_middle = false;
-static bool prev_mouse_left = false;
-static bool prev_mouse_right = false;
 
 /* Click events (detected by polling, cleared by input_update) */
 static bool left_click_event = false;
@@ -45,13 +29,14 @@ static bool frame_right_clicked = false;
 static bool events_pending = false;
 
 /* Keyboard state */
-static keyboard_action_t prev_key_state[256];
 static keyboard_action_t current_key_state[256];
 static bool shift_held = false;
 static bool capslock_on = false;
 static char last_char = 0;
 static bool char_available = false; /* Flag to indicate new char available */
 static keyboard_scancode_t last_key_pressed = 0;
+static input_event_t pending_event;
+static bool pending_event_valid = false;
 
 /* Scancode to ASCII mapping */
 static const char scancode_to_ascii[256] = {0,    0,   '1', '2',  '3',  '4',  '5', '6', '7',  '8',
@@ -74,12 +59,7 @@ static const char scancode_to_ascii_shifted[256]
 void input_init(void)
 {
     /* Initialize keyboard state */
-    memset(prev_key_state, KEYBOARD_RELEASED, sizeof(prev_key_state));
     memset(current_key_state, KEYBOARD_RELEASED, sizeof(current_key_state));
-
-    /* Poll initial state */
-    syscall1(SYSCALL_GET_KEYBOARD_STATE, (long) current_key_state);
-    memcpy(prev_key_state, current_key_state, sizeof(current_key_state));
 }
 
 int input_get_mouse_x(void)
@@ -140,109 +120,89 @@ bool input_key_pressed(keyboard_scancode_t key)
 void input_update(void)
 {
     gfx_context_t *fb = &g_ctx;
-    mouse_state_t mouse_state;
     bool mouse_changed = false;
     bool keyboard_changed = false;
+    bool processed_event = false;
 
-    /* Poll mouse state */
-    if (syscall1(SYSCALL_GET_MOUSE_STATE, (long) &mouse_state) == 0) {
-        /* Update mouse position with clamping */
-        int new_x = mouse_state.x;
-        int new_y = mouse_state.y;
-
-        /* Clamp to screen bounds */
-        if (new_x < 0)
-            new_x = 0;
-        if (new_y < 0)
-            new_y = 0;
-        if (new_x >= (int) fb->width)
-            new_x = (int) fb->width - 1;
-        if (new_y >= (int) fb->height)
-            new_y = (int) fb->height - 1;
-
-        /* Detect position or button changes */
-        if (new_x != mouse_x || new_y != mouse_y || mouse_state.left_button != mouse_left
-            || mouse_state.right_button != mouse_right
-            || mouse_state.middle_button != mouse_middle) {
-            mouse_changed = true;
-        }
-
-        /* Detect click events (button just pressed) */
-        if (mouse_state.left_button && !mouse_left) {
-            left_click_event = true;
-        }
-        if (mouse_state.right_button && !mouse_right) {
-            right_click_event = true;
-        }
-
-        mouse_x = new_x;
-        mouse_y = new_y;
-        mouse_left = mouse_state.left_button;
-        mouse_right = mouse_state.right_button;
-        mouse_middle = mouse_state.middle_button;
+    input_event_t event;
+    if (pending_event_valid) {
+        event = pending_event;
+        pending_event_valid = false;
+        processed_event = true;
     }
 
-    /* Poll keyboard state */
-    syscall1(SYSCALL_GET_KEYBOARD_STATE, (long) current_key_state);
+    while (processed_event || syscall1(SYSCALL_POLL_INPUT_EVENT, (long) &event) == 0) {
+        processed_event = false;
+        if (event.type == INPUT_EVENT_MOUSE) {
+            int new_x = event.data.mouse.x;
+            int new_y = event.data.mouse.y;
 
-    /* Check for changes */
-    for (int i = 0; i < 256; i++) {
-        if (current_key_state[i] != prev_key_state[i]) {
-            keyboard_changed = true;
-            break;
-        }
-    }
+            if (new_x < 0)
+                new_x = 0;
+            if (new_y < 0)
+                new_y = 0;
+            if (new_x >= (int) fb->width)
+                new_x = (int) fb->width - 1;
+            if (new_y >= (int) fb->height)
+                new_y = (int) fb->height - 1;
 
-    /* Process keyboard state changes */
-    if (keyboard_changed) {
-        /* Handle modifier keys */
-        bool new_shift_held
-            = (current_key_state[KEY_LSHIFT] == KEYBOARD_PRESSED
-               || current_key_state[KEY_LSHIFT] == KEYBOARD_HOLD
-               || current_key_state[KEY_RSHIFT] == KEYBOARD_PRESSED
-               || current_key_state[KEY_RSHIFT] == KEYBOARD_HOLD);
+            bool new_left = (event.data.mouse.buttons & (1 << 0)) != 0;
+            bool new_right = (event.data.mouse.buttons & (1 << 1)) != 0;
+            bool new_middle = (event.data.mouse.buttons & (1 << 2)) != 0;
 
-        if (new_shift_held != shift_held) {
-            shift_held = new_shift_held;
-        }
-
-        /* Handle capslock toggle */
-        if (current_key_state[KEY_CAPSLOCK] == KEYBOARD_PRESSED
-            && prev_key_state[KEY_CAPSLOCK] != KEYBOARD_PRESSED) {
-            capslock_on = !capslock_on;
-        }
-
-        /* Process key presses and holds (for key repeat) */
-        for (int i = 0; i < 256; i++) {
-            keyboard_action_t prev_action = prev_key_state[i];
-            keyboard_action_t curr_action = current_key_state[i];
-
-            if ((curr_action == KEYBOARD_PRESSED || curr_action == KEYBOARD_HOLD)
-                && (prev_action != KEYBOARD_PRESSED && prev_action != KEYBOARD_HOLD)) {
-                /* Key was just pressed */
-                last_key_pressed = (keyboard_scancode_t) i;
-
-                /* Convert to ASCII */
-                uint8_t scancode = (uint8_t) i;
-                bool use_shifted = shift_held;
-
-                /* For letters, also consider capslock */
-                char base = scancode_to_ascii[scancode];
-                if (base >= 'a' && base <= 'z') {
-                    use_shifted = shift_held ^ capslock_on;
-                }
-
-                if (use_shifted) {
-                    last_char = scancode_to_ascii_shifted[scancode];
-                } else {
-                    last_char = scancode_to_ascii[scancode];
-                }
-                char_available = true;
+            if (new_x != mouse_x || new_y != mouse_y || new_left != mouse_left || new_right != mouse_right
+                || new_middle != mouse_middle) {
+                mouse_changed = true;
             }
-        }
 
-        /* Update previous state */
-        memcpy(prev_key_state, current_key_state, sizeof(current_key_state));
+            if (new_left && !mouse_left) {
+                left_click_event = true;
+            }
+            if (new_right && !mouse_right) {
+                right_click_event = true;
+            }
+
+            mouse_x = new_x;
+            mouse_y = new_y;
+            mouse_left = new_left;
+            mouse_right = new_right;
+            mouse_middle = new_middle;
+        } else if (event.type == INPUT_EVENT_KEYBOARD) {
+            uint8_t scancode = event.data.keyboard.scancode;
+            keyboard_action_t action = (keyboard_action_t) event.data.keyboard.action;
+
+            if (scancode < 256) {
+                current_key_state[scancode] = action;
+                keyboard_changed = true;
+
+                if (action == KEYBOARD_PRESSED && scancode == KEY_CAPSLOCK) {
+                    capslock_on = !capslock_on;
+                }
+
+                if (action == KEYBOARD_PRESSED || action == KEYBOARD_HOLD) {
+                    last_key_pressed = (keyboard_scancode_t) scancode;
+
+                    bool use_shifted = shift_held;
+                    char base = scancode_to_ascii[scancode];
+                    if (base >= 'a' && base <= 'z') {
+                        use_shifted = shift_held ^ capslock_on;
+                    }
+
+                    if (use_shifted) {
+                        last_char = scancode_to_ascii_shifted[scancode];
+                    } else {
+                        last_char = scancode_to_ascii[scancode];
+                    }
+                    char_available = true;
+                }
+            }
+
+            shift_held
+                = (current_key_state[KEY_LSHIFT] == KEYBOARD_PRESSED
+                   || current_key_state[KEY_LSHIFT] == KEYBOARD_HOLD
+                   || current_key_state[KEY_RSHIFT] == KEYBOARD_PRESSED
+                   || current_key_state[KEY_RSHIFT] == KEYBOARD_HOLD);
+        }
     }
 
     /* Capture click events for this frame */
@@ -255,55 +215,20 @@ void input_update(void)
 
     /* Update events_pending flag */
     events_pending = mouse_changed || keyboard_changed;
-
-    prev_mouse_x = mouse_x;
-    prev_mouse_y = mouse_y;
-    prev_mouse_left = mouse_left;
-    prev_mouse_right = mouse_right;
     last_key_pressed = 0;
 }
 
 bool input_has_events(void)
 {
-    /* Poll kernel state to check for changes without modifying local state */
-    mouse_state_t mouse_state;
-    keyboard_action_t key_state[256];
+    if (pending_event_valid)
+        return true;
 
-    /* Check mouse state */
-    if (syscall1(SYSCALL_GET_MOUSE_STATE, (long) &mouse_state) == 0) {
-        gfx_context_t *fb = &g_ctx;
-        int new_x = mouse_state.x;
-        int new_y = mouse_state.y;
-
-        /* Clamp to screen bounds */
-        if (new_x < 0)
-            new_x = 0;
-        if (new_y < 0)
-            new_y = 0;
-        if (new_x >= (int) fb->width)
-            new_x = (int) fb->width - 1;
-        if (new_y >= (int) fb->height)
-            new_y = (int) fb->height - 1;
-
-        /* Check if mouse state changed */
-        if (new_x != mouse_x || new_y != mouse_y || mouse_state.left_button != mouse_left
-            || mouse_state.right_button != mouse_right
-            || mouse_state.middle_button != mouse_middle) {
-            return true;
-        }
+    if (syscall1(SYSCALL_POLL_INPUT_EVENT, (long) &pending_event) == 0) {
+        pending_event_valid = true;
+        return true;
     }
 
-    /* Check keyboard state */
-    if (syscall1(SYSCALL_GET_KEYBOARD_STATE, (long) key_state) == 0) {
-        /* Compare with previous state */
-        for (int i = 0; i < 256; i++) {
-            if (key_state[i] != prev_key_state[i]) {
-                return true;
-            }
-        }
-    }
-
-    return false;
+    return events_pending;
 }
 
 void input_clear_events(void)

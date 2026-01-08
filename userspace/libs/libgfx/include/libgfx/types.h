@@ -51,6 +51,5 @@ typedef struct
 {
     int x1, y1;
     int x2, y2;
-    gfx_color_t color;
     int thickness;
 } gfx_line_t;

@@ -5,9 +5,9 @@
 
 #include "window.h"
 #include "font.h"
-#include <libgfx.h>
-#include "types.h"
 #include "input.h"
+#include "types.h"
+#include <libgfx.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -752,34 +752,44 @@ static void draw_window_button(int x, int y, bool pressed, bool active)
 
     if (pressed) {
         gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(btn), COLOR_DARK_GRAY);
-        gfx_draw_line(&g_ctx, (gfx_line_t){x + 1, y + 1, x + WINDOW_BUTTON_SIZE - 2, y + 1, COLOR_BEVEL_DARK, 1}, COLOR_BEVEL_DARK);
-        gfx_draw_line(&g_ctx, (gfx_line_t){x + 1, y + 1, x + 1, y + WINDOW_BUTTON_SIZE - 2, COLOR_BEVEL_DARK, 1}, COLOR_BEVEL_DARK);
+        gfx_draw_line(
+            &g_ctx,
+            (gfx_line_t) {x + 1, y + 1, x + WINDOW_BUTTON_SIZE - 2, y + 1, 1},
+            COLOR_BEVEL_DARK);
+        gfx_draw_line(
+            &g_ctx,
+            (gfx_line_t) {x + 1, y + 1, x + 1, y + WINDOW_BUTTON_SIZE - 2, 1},
+            COLOR_BEVEL_DARK);
     } else {
         gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(btn), COLOR_PLATINUM);
         if (active) {
-            gfx_draw_line(&g_ctx, (gfx_line_t){x + 1, y + 1, x + WINDOW_BUTTON_SIZE - 2, y + 1, COLOR_BEVEL_LIGHT, 1}, COLOR_BEVEL_LIGHT);
-            gfx_draw_line(&g_ctx, (gfx_line_t){x + 1, y + 1, x + 1, y + WINDOW_BUTTON_SIZE - 2, COLOR_BEVEL_LIGHT, 1}, COLOR_BEVEL_LIGHT);
             gfx_draw_line(
                 &g_ctx,
-                (gfx_line_t){
-                    x + 1,
-                    y + WINDOW_BUTTON_SIZE - 2,
-                    x + WINDOW_BUTTON_SIZE - 2,
-                    y + WINDOW_BUTTON_SIZE - 2,
-                    COLOR_BEVEL_DARK, 1},
+                (gfx_line_t) {x + 1, y + 1, x + WINDOW_BUTTON_SIZE - 2, y + 1, 1},
+                COLOR_BEVEL_LIGHT);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {x + 1, y + 1, x + 1, y + WINDOW_BUTTON_SIZE - 2, 1},
+                COLOR_BEVEL_LIGHT);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {x + 1,
+                              y + WINDOW_BUTTON_SIZE - 2,
+                              x + WINDOW_BUTTON_SIZE - 2,
+                              y + WINDOW_BUTTON_SIZE - 2,
+                              1},
                 COLOR_BEVEL_DARK);
             gfx_draw_line(
                 &g_ctx,
-                (gfx_line_t){
-                    x + WINDOW_BUTTON_SIZE - 2,
-                    y + 1,
-                    x + WINDOW_BUTTON_SIZE - 2,
-                    y + WINDOW_BUTTON_SIZE - 2,
-                    COLOR_BEVEL_DARK, 1},
+                (gfx_line_t) {x + WINDOW_BUTTON_SIZE - 2,
+                              y + 1,
+                              x + WINDOW_BUTTON_SIZE - 2,
+                              y + WINDOW_BUTTON_SIZE - 2,
+                              1},
                 COLOR_BEVEL_DARK);
         }
     }
-    gfx_draw_rect(&g_ctx, (gfx_rect_t){btn.x, btn.y, btn.w, btn.h, COLOR_BLACK, 1});
+    gfx_draw_rect(&g_ctx, (gfx_rect_t) {btn.x, btn.y, btn.w, btn.h, COLOR_BLACK, 1});
 }
 
 static void draw_window(window_t *win)
@@ -803,7 +813,10 @@ static void draw_window(window_t *win)
             int progress = y - win->bounds.y;
             int gray_val = 75 - (progress * 25 / TITLEBAR_HEIGHT);
             color_t line_color = COLOR_MAKE(gray_val, gray_val, gray_val + 5, 255);
-            gfx_draw_line(&g_ctx, (gfx_line_t){win->bounds.x + 1, y, win->bounds.x + win->bounds.w - 2, y, line_color, 1}, line_color);
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {win->bounds.x + 1, y, win->bounds.x + win->bounds.w - 2, y, 1},
+                line_color);
         }
         /* Add subtle stripes for active window - start after buttons */
         int num_buttons = 0;
@@ -817,7 +830,7 @@ static void draw_window(window_t *win)
                            + num_buttons * (WINDOW_BUTTON_SIZE + WINDOW_BUTTON_SPACING) + 4;
         int stripe_end = win->bounds.x + win->bounds.w - 10;
         for (int y = win->bounds.y + 2; y < win->bounds.y + TITLEBAR_HEIGHT - 2; y += 2) {
-            gfx_draw_line(&g_ctx, (gfx_line_t){stripe_start, y, stripe_end, y, COLOR_BEVEL_LIGHT, 1}, COLOR_BEVEL_LIGHT);
+            gfx_draw_line(&g_ctx, (gfx_line_t) {stripe_start, y, stripe_end, y, 1}, COLOR_BEVEL_LIGHT);
         }
     } else {
         /* Inactive window has plain dark title bar */
@@ -825,26 +838,52 @@ static void draw_window(window_t *win)
     }
 
     /* Draw outer frame */
-    gfx_draw_rect(&g_ctx, (gfx_rect_t){win->bounds.x, win->bounds.y, win->bounds.w, win->bounds.h, COLOR_BLACK, 1});
+    gfx_draw_rect(
+        &g_ctx,
+        (gfx_rect_t) {win->bounds.x, win->bounds.y, win->bounds.w, win->bounds.h, COLOR_BLACK, 1});
 
     /* Draw 3D bevel on outer edge */
     gfx_draw_line(
-        &g_ctx, (gfx_line_t){win->bounds.x + 1, win->bounds.y + 1, win->bounds.x + win->bounds.w - 2, win->bounds.y + 1, COLOR_BEVEL_LIGHT, 1}, COLOR_BEVEL_LIGHT);
-    gfx_draw_line(
-        &g_ctx, (gfx_line_t){win->bounds.x + 1, win->bounds.y + 1, win->bounds.x + 1, win->bounds.y + win->bounds.h - 2, COLOR_BEVEL_LIGHT, 1}, COLOR_BEVEL_LIGHT);
+        &g_ctx,
+        (gfx_line_t) {win->bounds.x + 1,
+                      win->bounds.y + 1,
+                      win->bounds.x + win->bounds.w - 2,
+                      win->bounds.y + 1,
+                      1},
+        COLOR_BEVEL_LIGHT);
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t){win->bounds.x + 1, win->bounds.y + win->bounds.h - 2, win->bounds.x + win->bounds.w - 2, win->bounds.y + win->bounds.h - 2, COLOR_BEVEL_DARK, 1},
+        (gfx_line_t) {win->bounds.x + 1,
+                      win->bounds.y + 1,
+                      win->bounds.x + 1,
+                      win->bounds.y + win->bounds.h - 2,
+                      1},
+        COLOR_BEVEL_LIGHT);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {win->bounds.x + 1,
+                      win->bounds.y + win->bounds.h - 2,
+                      win->bounds.x + win->bounds.w - 2,
+                      win->bounds.y + win->bounds.h - 2,
+                      1},
         COLOR_BEVEL_DARK);
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t){win->bounds.x + win->bounds.w - 2, win->bounds.y + 1, win->bounds.x + win->bounds.w - 2, win->bounds.y + win->bounds.h - 2, COLOR_BEVEL_DARK, 1},
+        (gfx_line_t) {win->bounds.x + win->bounds.w - 2,
+                      win->bounds.y + 1,
+                      win->bounds.x + win->bounds.w - 2,
+                      win->bounds.y + win->bounds.h - 2,
+                      1},
         COLOR_BEVEL_DARK);
 
     /* Draw title bar bottom border */
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t){win->bounds.x, win->bounds.y + TITLEBAR_HEIGHT - 1, win->bounds.x + win->bounds.w - 1, win->bounds.y + TITLEBAR_HEIGHT - 1, COLOR_BLACK, 1},
+        (gfx_line_t) {win->bounds.x,
+                      win->bounds.y + TITLEBAR_HEIGHT - 1,
+                      win->bounds.x + win->bounds.w - 1,
+                      win->bounds.y + TITLEBAR_HEIGHT - 1,
+                      1},
         COLOR_BLACK);
 
     /* Draw window control buttons on the left side */
@@ -859,21 +898,19 @@ static void draw_window(window_t *win)
         /* Draw X with two crossing lines */
         gfx_draw_line(
             &g_ctx,
-            (gfx_line_t){
-                btn_x + 4,
-                btn_y + 4,
-                btn_x + WINDOW_BUTTON_SIZE - 5,
-                btn_y + WINDOW_BUTTON_SIZE - 5,
-                icon_color, 1},
+            (gfx_line_t) {btn_x + 4,
+                          btn_y + 4,
+                          btn_x + WINDOW_BUTTON_SIZE - 5,
+                          btn_y + WINDOW_BUTTON_SIZE - 5,
+                          1},
             icon_color);
         gfx_draw_line(
             &g_ctx,
-            (gfx_line_t){
-                btn_x + 4,
-                btn_y + WINDOW_BUTTON_SIZE - 5,
-                btn_x + WINDOW_BUTTON_SIZE - 5,
-                btn_y + 4,
-                icon_color, 1},
+            (gfx_line_t) {btn_x + 4,
+                          btn_y + WINDOW_BUTTON_SIZE - 5,
+                          btn_x + WINDOW_BUTTON_SIZE - 5,
+                          btn_y + 4,
+                          1},
             icon_color);
         btn_x += WINDOW_BUTTON_SIZE + WINDOW_BUTTON_SPACING;
     }
@@ -886,15 +923,24 @@ static void draw_window(window_t *win)
         if (win->flags
             & (WINDOW_FLAG_MAXIMIZED | WINDOW_FLAG_SNAPPED_LEFT | WINDOW_FLAG_SNAPPED_RIGHT)) {
             /* Restore icon - two overlapping squares (shown when maximized or snapped) */
-            gfx_draw_rect(&g_ctx, (gfx_rect_t){btn_x + 5, btn_y + 3, 6, 6, icon_color, 1});
-            gfx_draw_rect(&g_ctx, (gfx_rect_t){btn_x + 3, btn_y + 5, 6, 6, icon_color, 1});
-            gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(((rect_t){btn_x + 4, btn_y + 6, 4, 4})), COLOR_PLATINUM);
+            gfx_draw_rect(&g_ctx, (gfx_rect_t) {btn_x + 5, btn_y + 3, 6, 6, icon_color, 1});
+            gfx_draw_rect(&g_ctx, (gfx_rect_t) {btn_x + 3, btn_y + 5, 6, 6, icon_color, 1});
+            gfx_draw_filled_rect(
+                &g_ctx, TO_GFX_RECT(((rect_t) {btn_x + 4, btn_y + 6, 4, 4})), COLOR_PLATINUM);
         } else {
             /* Maximize icon - single square */
             gfx_draw_rect(
                 &g_ctx,
-                (gfx_rect_t){btn_x + 3, btn_y + 3, WINDOW_BUTTON_SIZE - 6, WINDOW_BUTTON_SIZE - 6, icon_color, 1});
-            gfx_draw_line(&g_ctx, (gfx_line_t){btn_x + 3, btn_y + 4, btn_x + WINDOW_BUTTON_SIZE - 4, btn_y + 4, icon_color, 1}, icon_color);
+                (gfx_rect_t) {btn_x + 3,
+                              btn_y + 3,
+                              WINDOW_BUTTON_SIZE - 6,
+                              WINDOW_BUTTON_SIZE - 6,
+                              icon_color,
+                              1});
+            gfx_draw_line(
+                &g_ctx,
+                (gfx_line_t) {btn_x + 3, btn_y + 4, btn_x + WINDOW_BUTTON_SIZE - 4, btn_y + 4, 1},
+                icon_color);
         }
         btn_x += WINDOW_BUTTON_SIZE + WINDOW_BUTTON_SPACING;
     }
@@ -905,9 +951,21 @@ static void draw_window(window_t *win)
         /* Draw underscore icon */
         color_t icon_color = active ? COLOR_TEXT : COLOR_TEXT_DIM;
         gfx_draw_line(
-            &g_ctx, (gfx_line_t){btn_x + 3, btn_y + WINDOW_BUTTON_SIZE - 5, btn_x + WINDOW_BUTTON_SIZE - 4, btn_y + WINDOW_BUTTON_SIZE - 5, icon_color, 1}, icon_color);
+            &g_ctx,
+            (gfx_line_t) {btn_x + 3,
+                          btn_y + WINDOW_BUTTON_SIZE - 5,
+                          btn_x + WINDOW_BUTTON_SIZE - 4,
+                          btn_y + WINDOW_BUTTON_SIZE - 5,
+                          1},
+            icon_color);
         gfx_draw_line(
-            &g_ctx, (gfx_line_t){btn_x + 3, btn_y + WINDOW_BUTTON_SIZE - 4, btn_x + WINDOW_BUTTON_SIZE - 4, btn_y + WINDOW_BUTTON_SIZE - 4, icon_color, 1}, icon_color);
+            &g_ctx,
+            (gfx_line_t) {btn_x + 3,
+                          btn_y + WINDOW_BUTTON_SIZE - 4,
+                          btn_x + WINDOW_BUTTON_SIZE - 4,
+                          btn_y + WINDOW_BUTTON_SIZE - 4,
+                          1},
+            icon_color);
     }
 
     /* Draw title text (centered) */
@@ -920,26 +978,42 @@ static void draw_window(window_t *win)
         rect_t title_bg = {title_x - 6, title_y - 2, title_w + 12, font_text_height() + 4};
         gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(title_bg), COLOR_PLATINUM);
     }
-    gfx_draw_text(&g_ctx, &g_font, (gfx_pos_t){title_x, title_y}, COLOR_TEXT, win->title);
+    gfx_draw_text(&g_ctx, &g_font, (gfx_pos_t) {title_x, title_y}, COLOR_TEXT, win->title);
 
     /* Draw content area border (sunken effect - dark theme) */
     rect_t content_border
         = {win->content.x - 1, win->content.y - 1, win->content.w + 2, win->content.h + 2};
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t){content_border.x, content_border.y, content_border.x + content_border.w - 1, content_border.y, COLOR_BEVEL_DARK, 1},
+        (gfx_line_t) {content_border.x,
+                      content_border.y,
+                      content_border.x + content_border.w - 1,
+                      content_border.y,
+                      1},
         COLOR_BEVEL_DARK);
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t){content_border.x, content_border.y, content_border.x, content_border.y + content_border.h - 1, COLOR_BEVEL_DARK, 1},
+        (gfx_line_t) {content_border.x,
+                      content_border.y,
+                      content_border.x,
+                      content_border.y + content_border.h - 1,
+                      1},
         COLOR_BEVEL_DARK);
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t){content_border.x, content_border.y + content_border.h - 1, content_border.x + content_border.w - 1, content_border.y + content_border.h - 1, COLOR_BEVEL_LIGHT, 1},
+        (gfx_line_t) {content_border.x,
+                      content_border.y + content_border.h - 1,
+                      content_border.x + content_border.w - 1,
+                      content_border.y + content_border.h - 1,
+                      1},
         COLOR_BEVEL_LIGHT);
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t){content_border.x + content_border.w - 1, content_border.y, content_border.x + content_border.w - 1, content_border.y + content_border.h - 1, COLOR_BEVEL_LIGHT, 1},
+        (gfx_line_t) {content_border.x + content_border.w - 1,
+                      content_border.y,
+                      content_border.x + content_border.w - 1,
+                      content_border.y + content_border.h - 1,
+                      1},
         COLOR_BEVEL_LIGHT);
 
     /* Draw content area */

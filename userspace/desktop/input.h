@@ -8,23 +8,37 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Mouse event structure */
+typedef enum : uint8_t {
+    INPUT_EVENT_NONE = 0,
+    INPUT_EVENT_KEYBOARD,
+    INPUT_EVENT_MOUSE,
+} input_event_type_t;
+
 typedef struct
 {
-    struct
-    {
-        bool left_button : 1;
-        bool right_button : 1;
-        bool middle_button : 1;
-        bool always_on : 1;
-        bool x_sign : 1;
-        bool y_sign : 1;
-        bool x_overflow : 1;
-        bool y_overflow : 1;
-    };
-    uint8_t x_movement;
-    uint8_t y_movement;
-} mouse_event_t;
+    uint8_t scancode;
+    uint8_t action;
+} input_keyboard_event_t;
+
+typedef struct
+{
+    int32_t x;
+    int32_t y;
+    int8_t delta_x;
+    int8_t delta_y;
+    uint8_t buttons;
+} input_mouse_event_t;
+
+typedef struct
+{
+    input_event_type_t type;
+    uint8_t reserved;
+    uint16_t reserved2;
+    union {
+        input_keyboard_event_t keyboard;
+        input_mouse_event_t mouse;
+    } data;
+} input_event_t;
 
 /* Keyboard scancodes - must match kernel's uint8_t enum */
 typedef enum : uint8_t {

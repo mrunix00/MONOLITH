@@ -7,10 +7,10 @@
 
 #include "desktop.h"
 #include "font.h"
-#include <libgfx.h>
-#include <libgfx/fonts.h>
 #include "input.h"
 #include "window.h"
+#include <libgfx.h>
+#include <libgfx/fonts.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -145,7 +145,7 @@ static void _draw_new_folder_dialog(window_t *win)
     int y = win->content.y + pad;
 
     /* Draw label */
-    gfx_draw_text(&g_ctx, &g_font, (gfx_pos_t){x, y}, COLOR_TEXT, "Enter folder name:");
+    gfx_draw_text(&g_ctx, &g_font, (gfx_pos_t) {x, y}, COLOR_TEXT, "Enter folder name:");
     y += FONT_HEIGHT + 8;
 
     /* Draw text input field */
@@ -155,32 +155,39 @@ static void _draw_new_folder_dialog(window_t *win)
     gfx_draw_filled_rect(&g_ctx, TO_GFX_RECT(input_rect), COLOR_MAKE(240, 240, 240, 255));
 
     /* 3D sunken border */
-    gfx_draw_line(&g_ctx, (gfx_line_t){input_rect.x, input_rect.y, input_rect.x + input_rect.w - 1, input_rect.y, COLOR_BEVEL_DARK, 1}, COLOR_BEVEL_DARK);
-    gfx_draw_line(&g_ctx, (gfx_line_t){input_rect.x, input_rect.y, input_rect.x, input_rect.y + input_rect.h - 1, COLOR_BEVEL_DARK, 1}, COLOR_BEVEL_DARK);
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t){
-            input_rect.x,
-            input_rect.y + input_rect.h - 1,
-            input_rect.x + input_rect.w - 1,
-            input_rect.y + input_rect.h - 1,
-            COLOR_BEVEL_LIGHT, 1},
+        (gfx_line_t) {input_rect.x, input_rect.y, input_rect.x + input_rect.w - 1, input_rect.y, 1},
+        COLOR_BEVEL_DARK);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {input_rect.x, input_rect.y, input_rect.x, input_rect.y + input_rect.h - 1, 1},
+        COLOR_BEVEL_DARK);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {input_rect.x,
+                      input_rect.y + input_rect.h - 1,
+                      input_rect.x + input_rect.w - 1,
+                      input_rect.y + input_rect.h - 1,
+                      1},
         COLOR_BEVEL_LIGHT);
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t){
-            input_rect.x + input_rect.w - 1,
-            input_rect.y,
-            input_rect.x + input_rect.w - 1,
-            input_rect.y + input_rect.h - 1,
-            COLOR_BEVEL_LIGHT, 1},
+        (gfx_line_t) {input_rect.x + input_rect.w - 1,
+                      input_rect.y,
+                      input_rect.x + input_rect.w - 1,
+                      input_rect.y + input_rect.h - 1,
+                      1},
         COLOR_BEVEL_LIGHT);
-    gfx_draw_rect(&g_ctx, (gfx_rect_t){input_rect.x, input_rect.y, input_rect.w, input_rect.h, COLOR_BLACK, 1});
+    gfx_draw_rect(
+        &g_ctx,
+        (gfx_rect_t) {input_rect.x, input_rect.y, input_rect.w, input_rect.h, COLOR_BLACK, 1});
 
     /* Draw input text */
     int text_x = input_rect.x + 4;
     int text_y = input_rect.y + (DIALOG_INPUT_HEIGHT - FONT_HEIGHT) / 2;
-    gfx_draw_text(&g_ctx, &g_font, (gfx_pos_t){text_x, text_y}, COLOR_BLACK, _folder_dialog.input_text);
+    gfx_draw_text(
+        &g_ctx, &g_font, (gfx_pos_t) {text_x, text_y}, COLOR_BLACK, _folder_dialog.input_text);
 
     /* Draw cursor if active */
     if (_folder_dialog.is_active && wm_get_active() == win) {
@@ -191,7 +198,10 @@ static void _draw_new_folder_dialog(window_t *win)
         int cursor_x = text_x + font_text_width(temp);
 
         /* Draw cursor line */
-        gfx_draw_line(&g_ctx, (gfx_line_t){cursor_x, text_y, cursor_x, text_y + FONT_HEIGHT - 1, COLOR_BLACK, 1}, COLOR_BLACK);
+        gfx_draw_line(
+            &g_ctx,
+            (gfx_line_t) {cursor_x, text_y, cursor_x, text_y + FONT_HEIGHT - 1, 1},
+            COLOR_BLACK);
     }
 
     y += DIALOG_INPUT_HEIGHT + 16;
@@ -232,31 +242,40 @@ static void _draw_new_folder_dialog(window_t *win)
     /* 3D border */
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t){
-            ok_btn.x + 1,
-            ok_btn.y + 1,
-            ok_btn.x + ok_btn.w - 2,
-            ok_btn.y + 1,
-            ok_hover ? COLOR_HIGHLIGHT : COLOR_BEVEL_LIGHT, 1},
+        (gfx_line_t) {ok_btn.x + 1, ok_btn.y + 1, ok_btn.x + ok_btn.w - 2, ok_btn.y + 1, 1},
         ok_hover ? COLOR_HIGHLIGHT : COLOR_BEVEL_LIGHT);
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t){
-            ok_btn.x + 1,
-            ok_btn.y + 1,
-            ok_btn.x + 1,
-            ok_btn.y + ok_btn.h - 2,
-            ok_hover ? COLOR_HIGHLIGHT : COLOR_BEVEL_LIGHT, 1},
+        (gfx_line_t) {ok_btn.x + 1, ok_btn.y + 1, ok_btn.x + 1, ok_btn.y + ok_btn.h - 2, 1},
         ok_hover ? COLOR_HIGHLIGHT : COLOR_BEVEL_LIGHT);
-    gfx_draw_line(&g_ctx, (gfx_line_t){ok_btn.x + 1, ok_btn.y + ok_btn.h - 2, ok_btn.x + ok_btn.w - 2, ok_btn.y + ok_btn.h - 2, COLOR_BEVEL_DARK, 1}, COLOR_BEVEL_DARK);
-    gfx_draw_line(&g_ctx, (gfx_line_t){ok_btn.x + ok_btn.w - 2, ok_btn.y + 1, ok_btn.x + ok_btn.w - 2, ok_btn.y + ok_btn.h - 2, COLOR_BEVEL_DARK, 1}, COLOR_BEVEL_DARK);
-    gfx_draw_rect(&g_ctx, (gfx_rect_t){ok_btn.x, ok_btn.y, ok_btn.w, ok_btn.h, COLOR_BLACK, 1});
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {ok_btn.x + 1,
+                      ok_btn.y + ok_btn.h - 2,
+                      ok_btn.x + ok_btn.w - 2,
+                      ok_btn.y + ok_btn.h - 2,
+                      1},
+        COLOR_BEVEL_DARK);
+    gfx_draw_line(
+        &g_ctx,
+        (gfx_line_t) {ok_btn.x + ok_btn.w - 2,
+                      ok_btn.y + 1,
+                      ok_btn.x + ok_btn.w - 2,
+                      ok_btn.y + ok_btn.h - 2,
+                      1},
+        COLOR_BEVEL_DARK);
+    gfx_draw_rect(&g_ctx, (gfx_rect_t) {ok_btn.x, ok_btn.y, ok_btn.w, ok_btn.h, COLOR_BLACK, 1});
 
     /* OK text */
     const char *ok_text = "OK";
     int ok_text_x = ok_btn.x + (ok_btn.w - font_text_width(ok_text)) / 2;
     int ok_text_y = ok_btn.y + (ok_btn.h - FONT_HEIGHT) / 2;
-    gfx_draw_text(&g_ctx, &g_font, (gfx_pos_t){ok_text_x, ok_text_y}, ok_hover ? COLOR_WHITE : COLOR_TEXT, ok_text);
+    gfx_draw_text(
+        &g_ctx,
+        &g_font,
+        (gfx_pos_t) {ok_text_x, ok_text_y},
+        ok_hover ? COLOR_WHITE : COLOR_TEXT,
+        ok_text);
 
     /* Draw Cancel button */
     if (cancel_hover) {
@@ -267,48 +286,50 @@ static void _draw_new_folder_dialog(window_t *win)
     /* 3D border */
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t){
-            cancel_btn.x + 1,
-            cancel_btn.y + 1,
-            cancel_btn.x + cancel_btn.w - 2,
-            cancel_btn.y + 1,
-            cancel_hover ? COLOR_HIGHLIGHT : COLOR_BEVEL_LIGHT, 1},
+        (gfx_line_t) {cancel_btn.x + 1,
+                      cancel_btn.y + 1,
+                      cancel_btn.x + cancel_btn.w - 2,
+                      cancel_btn.y + 1,
+                      1},
         cancel_hover ? COLOR_HIGHLIGHT : COLOR_BEVEL_LIGHT);
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t){
-            cancel_btn.x + 1,
-            cancel_btn.y + 1,
-            cancel_btn.x + 1,
-            cancel_btn.y + cancel_btn.h - 2,
-            cancel_hover ? COLOR_HIGHLIGHT : COLOR_BEVEL_LIGHT, 1},
+        (gfx_line_t) {cancel_btn.x + 1,
+                      cancel_btn.y + 1,
+                      cancel_btn.x + 1,
+                      cancel_btn.y + cancel_btn.h - 2,
+                      1},
         cancel_hover ? COLOR_HIGHLIGHT : COLOR_BEVEL_LIGHT);
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t){
-            cancel_btn.x + 1,
-            cancel_btn.y + cancel_btn.h - 2,
-            cancel_btn.x + cancel_btn.w - 2,
-            cancel_btn.y + cancel_btn.h - 2,
-            COLOR_BEVEL_DARK, 1},
+        (gfx_line_t) {cancel_btn.x + 1,
+                      cancel_btn.y + cancel_btn.h - 2,
+                      cancel_btn.x + cancel_btn.w - 2,
+                      cancel_btn.y + cancel_btn.h - 2,
+                      1},
         COLOR_BEVEL_DARK);
     gfx_draw_line(
         &g_ctx,
-        (gfx_line_t){
-            cancel_btn.x + cancel_btn.w - 2,
-            cancel_btn.y + 1,
-            cancel_btn.x + cancel_btn.w - 2,
-            cancel_btn.y + cancel_btn.h - 2,
-            COLOR_BEVEL_DARK, 1},
+        (gfx_line_t) {cancel_btn.x + cancel_btn.w - 2,
+                      cancel_btn.y + 1,
+                      cancel_btn.x + cancel_btn.w - 2,
+                      cancel_btn.y + cancel_btn.h - 2,
+                      1},
         COLOR_BEVEL_DARK);
-    gfx_draw_rect(&g_ctx, (gfx_rect_t){cancel_btn.x, cancel_btn.y, cancel_btn.w, cancel_btn.h, COLOR_BLACK, 1});
+    gfx_draw_rect(
+        &g_ctx,
+        (gfx_rect_t) {cancel_btn.x, cancel_btn.y, cancel_btn.w, cancel_btn.h, COLOR_BLACK, 1});
 
     /* Cancel text */
     const char *cancel_text = "Cancel";
     int cancel_text_x = cancel_btn.x + (cancel_btn.w - font_text_width(cancel_text)) / 2;
     int cancel_text_y = cancel_btn.y + (cancel_btn.h - FONT_HEIGHT) / 2;
     gfx_draw_text(
-        &g_ctx, &g_font, (gfx_pos_t){cancel_text_x, cancel_text_y}, cancel_hover ? COLOR_WHITE : COLOR_TEXT, cancel_text);
+        &g_ctx,
+        &g_font,
+        (gfx_pos_t) {cancel_text_x, cancel_text_y},
+        cancel_hover ? COLOR_WHITE : COLOR_TEXT,
+        cancel_text);
 
     /* Handle button clicks */
     if (input_mouse_left_clicked()) {
@@ -348,7 +369,7 @@ static void _draw_about_content(window_t *win)
             strncpy(line, text + line_start, len);
             line[len] = '\0';
 
-            gfx_draw_text(&g_ctx, &g_font, (gfx_pos_t){x, y}, COLOR_TEXT, line);
+            gfx_draw_text(&g_ctx, &g_font, (gfx_pos_t) {x, y}, COLOR_TEXT, line);
             y += FONT_HEIGHT + 2;
             line_start = i + 1;
         }
@@ -357,7 +378,7 @@ static void _draw_about_content(window_t *win)
 
     /* Draw last line */
     if (i > line_start) {
-        gfx_draw_text(&g_ctx, &g_font, (gfx_pos_t){x, y}, COLOR_TEXT, text + line_start);
+        gfx_draw_text(&g_ctx, &g_font, (gfx_pos_t) {x, y}, COLOR_TEXT, text + line_start);
     }
 }
 
