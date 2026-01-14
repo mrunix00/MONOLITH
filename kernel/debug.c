@@ -18,7 +18,7 @@ static serial_port_t _debug_port = 0;
  * Flanterm context.
  * Set to NULL by default when the framebuffer is not initialized.
  */
-static struct flanterm_context *_fb_ctx = NULL;
+extern struct flanterm_context *_fb_ctx;
 
 bool start_debug_serial(serial_port_t port)
 {
