@@ -115,7 +115,8 @@ int strncmp(const char *s1, const char *s2, size_t n)
         s2++;
         n--;
     }
-    if (n == 0) return 0;
+    if (n == 0)
+        return 0;
     return ((unsigned char) *s1) - ((unsigned char) *s2);
 }
 
@@ -155,4 +156,12 @@ void *memmove(void *dest, const void *src, size_t n)
             *--d = *--s;
     }
     return dest;
+}
+
+size_t strnlen(const char *s, size_t maxlen)
+{
+    size_t len = 0;
+    while (len < maxlen && s[len] != '\0')
+        len++;
+    return len;
 }

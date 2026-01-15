@@ -16,18 +16,18 @@ typedef enum {
 
 typedef struct
 {
-    int width, height;
+    uint32_t width, height;
 } gfx_font_size_t;
 
 typedef struct
 {
-    uint16_t x;
-    uint16_t y;
-    uint8_t width;
-    uint8_t height;
-    int8_t x_offset;
-    int8_t y_offset;
-    uint8_t x_advance;
+    uint32_t x;
+    uint32_t y;
+    uint32_t width;
+    uint32_t height;
+    int32_t x_offset;
+    int32_t y_offset;
+    uint32_t x_advance;
 } gfx_glyph_t;
 
 typedef struct
@@ -76,6 +76,6 @@ void gfx_draw_text(gfx_context_t *, gfx_font_t *, gfx_pos_t, gfx_color_t, const 
 
 void gfx_draw_text_centered(gfx_context_t *, gfx_font_t *, gfx_rect_t, gfx_color_t, const char *);
 
-int gfx_get_char_width(gfx_font_t *font, char c);
+uint32_t gfx_get_char_width(gfx_font_t *font, char c);
 
-int gfx_get_text_width(gfx_font_t *font, const char *text);
+uint32_t gfx_get_text_width(gfx_font_t *font, const char *text);

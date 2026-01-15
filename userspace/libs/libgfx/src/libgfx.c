@@ -29,7 +29,7 @@ gfx_context_t gfx_init_screen()
            .width = fb.width,
            .height = fb.height,
            .backbuffer = malloc(fb.width * fb.height * sizeof(uint32_t)),
-           .clip_rect = {0, 0, (int) fb.width, (int) fb.height, {0, 0, 0, 0}, 0}};
+           .clip_rect = {0, 0, (uint32_t) fb.width, (uint32_t) fb.height, {0, 0, 0, 0}, 0}};
     return ctx;
 }
 
@@ -54,7 +54,7 @@ void gfx_clear(gfx_context_t *ctx, gfx_color_t color)
     }
 }
 
-static inline int point_in_clip(gfx_context_t *ctx, int x, int y)
+static inline int point_in_clip(gfx_context_t *ctx, uint32_t x, uint32_t y)
 {
     return x >= ctx->clip_rect.x && x < ctx->clip_rect.x + ctx->clip_rect.width
            && y >= ctx->clip_rect.y && y < ctx->clip_rect.y + ctx->clip_rect.height;
@@ -62,8 +62,7 @@ static inline int point_in_clip(gfx_context_t *ctx, int x, int y)
 
 void gfx_draw_pixel(gfx_context_t *ctx, gfx_pos_t point, gfx_color_t color)
 {
-    if (point.x >= 0 && point.x < (int) ctx->width && point.y >= 0 && point.y < (int) ctx->height
-        && point_in_clip(ctx, point.x, point.y)) {
+    if (point.x < ctx->width && point.y < ctx->height && point_in_clip(ctx, point.x, point.y)) {
         size_t idx = (size_t) point.y * ctx->width + (size_t) point.x;
         if (color.a == 0)
             return;
@@ -93,19 +92,17 @@ void gfx_set_clip(gfx_context_t *ctx, gfx_rect_t rect)
     ctx->clip_rect = rect;
 
     /* Clamp to screen */
-    if (ctx->clip_rect.x < 0) {
-        ctx->clip_rect.width += ctx->clip_rect.x;
-        ctx->clip_rect.x = 0;
+    if (ctx->clip_rect.x > ctx->width) {
+        ctx->clip_rect.x = (uint32_t) ctx->width;
+        ctx->clip_rect.width = 0;
+    } else if (ctx->clip_rect.x + ctx->clip_rect.width > ctx->width) {
+        ctx->clip_rect.width = (uint32_t) ctx->width - ctx->clip_rect.x;
     }
-    if (ctx->clip_rect.y < 0) {
-        ctx->clip_rect.height += ctx->clip_rect.y;
-        ctx->clip_rect.y = 0;
-    }
-    if (ctx->clip_rect.x + ctx->clip_rect.width > (int) ctx->width) {
-        ctx->clip_rect.width = (int) ctx->width - ctx->clip_rect.x;
-    }
-    if (ctx->clip_rect.y + ctx->clip_rect.height > (int) ctx->height) {
-        ctx->clip_rect.height = (int) ctx->height - ctx->clip_rect.y;
+    if (ctx->clip_rect.y > ctx->height) {
+        ctx->clip_rect.y = (uint32_t) ctx->height;
+        ctx->clip_rect.height = 0;
+    } else if (ctx->clip_rect.y + ctx->clip_rect.height > ctx->height) {
+        ctx->clip_rect.height = (uint32_t) ctx->height - ctx->clip_rect.y;
     }
 }
 
@@ -113,8 +110,8 @@ void gfx_reset_clip(gfx_context_t *ctx)
 {
     ctx->clip_rect.x = 0;
     ctx->clip_rect.y = 0;
-    ctx->clip_rect.width = (int) ctx->width;
-    ctx->clip_rect.height = (int) ctx->height;
+    ctx->clip_rect.width = (uint32_t) ctx->width;
+    ctx->clip_rect.height = (uint32_t) ctx->height;
 }
 
 void gfx_draw_rect(gfx_context_t *ctx, gfx_rect_t rect)
@@ -166,10 +163,10 @@ void gfx_draw_rect(gfx_context_t *ctx, gfx_rect_t rect)
 
 void gfx_draw_filled_rect(gfx_context_t *ctx, gfx_rect_t rect, gfx_color_t fill)
 {
-    int x1 = rect.x;
-    int y1 = rect.y;
-    int x2 = rect.x + rect.width;
-    int y2 = rect.y + rect.height;
+    uint32_t x1 = rect.x;
+    uint32_t y1 = rect.y;
+    uint32_t x2 = rect.x + rect.width;
+    uint32_t y2 = rect.y + rect.height;
 
     /* Clip */
     if (x1 < ctx->clip_rect.x)
@@ -182,20 +179,19 @@ void gfx_draw_filled_rect(gfx_context_t *ctx, gfx_rect_t rect, gfx_color_t fill)
         y2 = ctx->clip_rect.y + ctx->clip_rect.height;
 
     /* Clamp to screen */
-    if (x1 < 0)
-        x1 = 0;
-    if (y1 < 0)
-        y1 = 0;
-    if (x2 > (int) ctx->width)
-        x2 = (int) ctx->width;
-    if (y2 > (int) ctx->height)
-        y2 = (int) ctx->height;
+    if (x2 > ctx->width)
+        x2 = (uint32_t) ctx->width;
+    if (y2 > ctx->height)
+        y2 = (uint32_t) ctx->height;
+
+    if (x1 >= x2 || y1 >= y2)
+        return;
 
     uint32_t c = pack_color(fill);
 
-    for (int y = y1; y < y2; y++) {
-        uint32_t *row = ctx->backbuffer + y * ctx->width;
-        for (int x = x1; x < x2; x++) {
+    for (uint32_t y = y1; y < y2; y++) {
+        uint32_t *row = ctx->backbuffer + (size_t) y * ctx->width;
+        for (uint32_t x = x1; x < x2; x++) {
             row[x] = c;
         }
     }
@@ -206,12 +202,15 @@ void gfx_draw_filled_rect(gfx_context_t *ctx, gfx_rect_t rect, gfx_color_t fill)
 
 void gfx_draw_line(gfx_context_t *ctx, gfx_line_t line, gfx_color_t color)
 {
-    int x1 = line.x1, y1 = line.y1, x2 = line.x2, y2 = line.y2;
+    int32_t x1 = (int32_t) line.x1;
+    int32_t y1 = (int32_t) line.y1;
+    int32_t x2 = (int32_t) line.x2;
+    int32_t y2 = (int32_t) line.y2;
     int dx = abs(x2 - x1), dy = abs(y2 - y1);
     int sx = x1 < x2 ? 1 : -1;
     int sy = y1 < y2 ? 1 : -1;
     int err = dx - dy;
-    int t = line.thickness;
+    int t = (int) line.thickness;
     int start_offset = -(t - 1) / 2;
     int end_offset = start_offset + t - 1;
 
@@ -219,7 +218,11 @@ void gfx_draw_line(gfx_context_t *ctx, gfx_line_t line, gfx_color_t color)
     while (1) {
         for (int i = start_offset; i <= end_offset; i++) {
             for (int j = start_offset; j <= end_offset; j++)
-                gfx_draw_pixel(ctx, (gfx_pos_t) {x1 + i, y1 + j}, color);
+                if (x1 + i >= 0 && y1 + j >= 0)
+                    gfx_draw_pixel(
+                        ctx,
+                        (gfx_pos_t) {(uint32_t) (x1 + i), (uint32_t) (y1 + j)},
+                        color);
         }
         if (x1 == x2 && y1 == y2)
             break;
@@ -242,16 +245,16 @@ static inline uint8_t _mul_u8(uint8_t a, uint8_t b)
 
 void gfx_draw_bitmap(gfx_context_t *ctx, gfx_bitmap_t *bitmap, gfx_pos_t pos, gfx_color_t color)
 {
-    if (!ctx || !bitmap || !bitmap->data || bitmap->width <= 0 || bitmap->height <= 0)
+    if (!ctx || !bitmap || !bitmap->data || bitmap->width == 0 || bitmap->height == 0)
         return;
 
     if (color.a == 0)
         return;
 
-    int x1 = pos.x;
-    int y1 = pos.y;
-    int x2 = pos.x + bitmap->width;
-    int y2 = pos.y + bitmap->height;
+    uint32_t x1 = pos.x;
+    uint32_t y1 = pos.y;
+    uint32_t x2 = pos.x + bitmap->width;
+    uint32_t y2 = pos.y + bitmap->height;
 
     if (x1 < ctx->clip_rect.x)
         x1 = ctx->clip_rect.x;
@@ -262,27 +265,23 @@ void gfx_draw_bitmap(gfx_context_t *ctx, gfx_bitmap_t *bitmap, gfx_pos_t pos, gf
     if (y2 > ctx->clip_rect.y + ctx->clip_rect.height)
         y2 = ctx->clip_rect.y + ctx->clip_rect.height;
 
-    if (x1 < 0)
-        x1 = 0;
-    if (y1 < 0)
-        y1 = 0;
-    if (x2 > (int) ctx->width)
-        x2 = (int) ctx->width;
-    if (y2 > (int) ctx->height)
-        y2 = (int) ctx->height;
+    if (x2 > ctx->width)
+        x2 = (uint32_t) ctx->width;
+    if (y2 > ctx->height)
+        y2 = (uint32_t) ctx->height;
 
     if (x1 >= x2 || y1 >= y2)
         return;
 
-    int row_bytes = (bitmap->width + 7) / 8;
+    uint32_t row_bytes = (bitmap->width + 7) / 8;
 
-    for (int y = y1; y < y2; y++) {
-        int src_y = y - pos.y;
-        const uint8_t *row = bitmap->data + src_y * row_bytes;
-        for (int x = x1; x < x2; x++) {
-            int src_x = x - pos.x;
-            int byte_idx = src_x / 8;
-            int bit_idx = 7 - (src_x % 8);
+    for (uint32_t y = y1; y < y2; y++) {
+        uint32_t src_y = y - pos.y;
+        const uint8_t *row = bitmap->data + (size_t) src_y * row_bytes;
+        for (uint32_t x = x1; x < x2; x++) {
+            uint32_t src_x = x - pos.x;
+            uint32_t byte_idx = src_x / 8;
+            uint32_t bit_idx = 7 - (src_x % 8);
             if (row[byte_idx] & (uint8_t) (1u << bit_idx))
                 gfx_draw_pixel(ctx, (gfx_pos_t) {x, y}, color);
         }
@@ -292,16 +291,16 @@ void gfx_draw_bitmap(gfx_context_t *ctx, gfx_bitmap_t *bitmap, gfx_pos_t pos, gf
 void gfx_draw_colored_bitmap(
     gfx_context_t *ctx, gfx_colored_bitmap_t *bitmap, gfx_pos_t pos, gfx_color_t color)
 {
-    if (!ctx || !bitmap || !bitmap->data || bitmap->width <= 0 || bitmap->height <= 0)
+    if (!ctx || !bitmap || !bitmap->data || bitmap->width == 0 || bitmap->height == 0)
         return;
 
     if (color.a == 0)
         return;
 
-    int x1 = pos.x;
-    int y1 = pos.y;
-    int x2 = pos.x + bitmap->width;
-    int y2 = pos.y + bitmap->height;
+    uint32_t x1 = pos.x;
+    uint32_t y1 = pos.y;
+    uint32_t x2 = pos.x + bitmap->width;
+    uint32_t y2 = pos.y + bitmap->height;
 
     if (x1 < ctx->clip_rect.x)
         x1 = ctx->clip_rect.x;
@@ -312,23 +311,19 @@ void gfx_draw_colored_bitmap(
     if (y2 > ctx->clip_rect.y + ctx->clip_rect.height)
         y2 = ctx->clip_rect.y + ctx->clip_rect.height;
 
-    if (x1 < 0)
-        x1 = 0;
-    if (y1 < 0)
-        y1 = 0;
-    if (x2 > (int) ctx->width)
-        x2 = (int) ctx->width;
-    if (y2 > (int) ctx->height)
-        y2 = (int) ctx->height;
+    if (x2 > ctx->width)
+        x2 = (uint32_t) ctx->width;
+    if (y2 > ctx->height)
+        y2 = (uint32_t) ctx->height;
 
     if (x1 >= x2 || y1 >= y2)
         return;
 
-    for (int y = y1; y < y2; y++) {
-        int src_y = y - pos.y;
-        const uint32_t *row = bitmap->data + src_y * bitmap->width;
-        for (int x = x1; x < x2; x++) {
-            int src_x = x - pos.x;
+    for (uint32_t y = y1; y < y2; y++) {
+        uint32_t src_y = y - pos.y;
+        const uint32_t *row = bitmap->data + (size_t) src_y * bitmap->width;
+        for (uint32_t x = x1; x < x2; x++) {
+            uint32_t src_x = x - pos.x;
             uint32_t src = row[src_x];
             uint8_t src_a = (uint8_t) (src >> 24);
             if (src_a == 0)

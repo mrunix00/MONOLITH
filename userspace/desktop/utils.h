@@ -5,11 +5,6 @@
 
 #pragma once
 
-#include <input.h>
 #include <libgfx/types.h>
 
-bool handle_input(gfx_context_t *);
-
-void draw_cursor(gfx_context_t *);
-
-input_mouse_event_t get_mouse_state();
+void draw_box(gfx_context_t *, gfx_rect_t rect);
