@@ -14,7 +14,7 @@ OBJECTS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SOURCES))
 
 CC := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc
 AR := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)ar
-LIB_CFLAGS := -ffreestanding -nostdlib -nostdinc -nodefaultlibs -Wall -Wextra -I$(INCLUDE_DIR) -I$(LIBC_INCLUDE_DIR) -O0 -g
+LIB_CFLAGS := -ffreestanding -nostdlib -nostdinc -nodefaultlibs -Wall -Wextra -I$(INCLUDE_DIR) -I$(LIBC_INCLUDE_DIR) -O2 -g
 ARFLAGS := rcs
 
 .PHONY: all clean

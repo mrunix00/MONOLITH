@@ -9,14 +9,10 @@ LIBGFX_INCLUDE_DIR := $(LIBGFX_DIR)/include
 LIBGFX_STATIC := $(BUILD_DIR)/libs/libgfx.a
 
 SRC := $(wildcard *.c)
-# Exclude graphics.c as it will be removed/deleted, but wildcard picks it up if it exists
-# So we filter it out explicitly
-SRC := $(filter-out graphics.c, $(SRC))
-
 OBJ_DIR := $(BUILD_DIR)/obj/userspace/$(TARGET)
 OBJ := $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRC))
 
-CFLAGS += -O2 -I $(LIBC_INCLUDE_DIR) -I $(LIBGFX_INCLUDE_DIR) -Wall -Wextra
+CFLAGS += -O2 -g -I $(LIBC_INCLUDE_DIR) -I $(LIBGFX_INCLUDE_DIR) -Wall -Wextra
 LDFLAGS := -nostdlib -nodefaultlibs -Wl,-e,main
 LIBS := $(LIBGFX_STATIC) $(LIBC_STATIC)
 

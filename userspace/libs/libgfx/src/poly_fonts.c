@@ -65,19 +65,19 @@ void _polyspace_draw_char(
     if (!glyph || glyph->width == 0 || glyph->height == 0)
         return;
 
-    int atlas_w = font->data.polyspace.atlas_size.width;
-    int atlas_h = font->data.polyspace.atlas_size.height;
-    if (atlas_w <= 0 || atlas_h <= 0)
+    uint32_t atlas_w = font->data.polyspace.atlas_size.width;
+    uint32_t atlas_h = font->data.polyspace.atlas_size.height;
+    if (atlas_w == 0 || atlas_h == 0)
         return;
 
-    for (int y = 0; y < glyph->height; y++) {
-        int src_y = glyph->y + y;
-        if (src_y < 0 || src_y >= atlas_h)
+    for (uint32_t y = 0; y < glyph->height; y++) {
+        uint32_t src_y = glyph->y + y;
+        if (src_y >= atlas_h)
             continue;
-        const uint8_t *row = font->data.polyspace.atlas + src_y * atlas_w;
-        for (int x = 0; x < glyph->width; x++) {
-            int src_x = glyph->x + x;
-            if (src_x < 0 || src_x >= atlas_w)
+        const uint8_t *row = font->data.polyspace.atlas + (size_t) src_y * atlas_w;
+        for (uint32_t x = 0; x < glyph->width; x++) {
+            uint32_t src_x = glyph->x + x;
+            if (src_x >= atlas_w)
                 continue;
             uint8_t alpha = row[src_x];
             if (alpha == 0)
@@ -86,13 +86,16 @@ void _polyspace_draw_char(
             out.a = _mul_u8(alpha, color.a);
             if (out.a == 0)
                 continue;
-            gfx_draw_pixel(
-                ctx, (gfx_pos_t) {pos.x + glyph->x_offset + x, pos.y + glyph->y_offset + y}, out);
+            int32_t dst_x = (int32_t) pos.x + glyph->x_offset + (int32_t) x;
+            int32_t dst_y = (int32_t) pos.y + glyph->y_offset + (int32_t) y;
+            if (dst_x < 0 || dst_y < 0)
+                continue;
+            gfx_draw_pixel(ctx, (gfx_pos_t) {(uint32_t) dst_x, (uint32_t) dst_y}, out);
         }
     }
 }
 
-int _polyspace_get_char_width(gfx_font_t *font, char c)
+uint32_t _polyspace_get_char_width(gfx_font_t *font, char c)
 {
     const gfx_glyph_t *glyph = _polyspace_get_glyph(font, c);
     if (!glyph)

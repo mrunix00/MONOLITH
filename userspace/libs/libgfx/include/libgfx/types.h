@@ -15,26 +15,26 @@ typedef struct
 
 typedef struct
 {
-    int x, y;
+    uint32_t x, y;
 } gfx_pos_t;
 
 typedef struct
 {
-    int x, y;
-    int width, height;
+    uint32_t x, y;
+    uint32_t width, height;
     gfx_color_t border_color;
-    int border_thickness;
+    uint32_t border_thickness;
 } gfx_rect_t;
 
 typedef struct
 {
-    int width, height;
+    uint32_t width, height;
     uint8_t *data;
 } gfx_bitmap_t;
 
 typedef struct
 {
-    int width, height;
+    uint32_t width, height;
     uint32_t *data;
 } gfx_colored_bitmap_t;
 
@@ -49,7 +49,7 @@ typedef struct
 
 typedef struct
 {
-    int x1, y1;
-    int x2, y2;
-    int thickness;
+    uint32_t x1, y1;
+    uint32_t x2, y2;
+    uint32_t thickness;
 } gfx_line_t;
