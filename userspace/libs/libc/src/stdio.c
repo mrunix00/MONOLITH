@@ -6,14 +6,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-int fprintf(io_t err, const char *fmt, ...)
-{
-    (void) err;
-    (void) fmt;
-    // TODO: Implement fprintf function for console output
-    return 0;
-}
-
 static char *utoa(char *str, unsigned long num, int base, int uppercase)
 {
     const char *digits;

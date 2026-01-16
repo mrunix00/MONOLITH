@@ -3,15 +3,18 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-#include "kernel/tasking/scheduler.h"
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/gdt.h>
 #include <kernel/arch/pc/idt.h>
 #include <kernel/arch/pc/sse.h>
 #include <kernel/klibc/memory.h>
+#include <kernel/klibc/string.h>
 #include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
+#include <kernel/tasking/ipc.h>
+#include <kernel/tasking/scheduler.h>
+#include <kernel/tasking/syscall.h>
 #include <kernel/tasking/task.h>
 #include <kernel/timer.h>
 #include <stdint.h>
@@ -27,6 +30,7 @@ static task_t _task_list_head;
 static task_t *_task_list_tail;
 static task_t *_current_task;
 static task_t *_next_task;
+static uint64_t _next_task_id = 1;
 
 extern void _task_switch_gate_stub();
 
@@ -35,7 +39,7 @@ static void _task_state_load(task_t *task, interrupt_registers_t *regs);
 static void _task_unlink(task_t *task);
 static void _task_destroy(task_t *task);
 
-task_t *task_create(void *entry_point, task_mode_t mode)
+task_t *task_create(void *entry_point, const char *name, task_mode_t mode)
 {
     task_t *task = (task_t *) kmalloc(sizeof(task_t));
     if (!task) {
@@ -43,6 +47,7 @@ task_t *task_create(void *entry_point, task_mode_t mode)
     }
 
     memset(task, 0, sizeof(task_t));
+    task->id = _next_task_id++;
     task->user_mode = (mode == TASK_MODE_USER);
     task->state.rip = (uintptr_t) entry_point;
     task->state.rflags = DEFAULT_RFLAGS;
@@ -86,6 +91,8 @@ task_t *task_create(void *entry_point, task_mode_t mode)
     task->next = &_task_list_head;
     _task_list_tail->next = task;
     _task_list_tail = task;
+
+    task->name = strdup(name);
 
     return task;
 }
@@ -188,6 +195,7 @@ void _task_switch_gate(interrupt_registers_t *regs)
 void task_switching_init()
 {
     memset(&_task_list_head, 0, sizeof(_task_list_head));
+    _task_list_head.id = _next_task_id++;
     _task_list_head.next = &_task_list_head;
     _task_list_head.user_mode = false;
     _task_list_head.exiting = false;
@@ -368,6 +376,13 @@ static void _task_destroy(task_t *task)
     if (!task || task == &_task_list_head)
         return;
 
+    /* Check if already destroyed (idempotency protection) */
+    if (task->state.cr3 == 0xDEADBEEF)
+        return;
+
+    syscalls_task_cleanup(task);
+    ipc_task_cleanup(task);
+
     if (task->memory.memblocks) {
         for (size_t i = 0; i < task->memory.memblocks_count; i++) {
             task_memblock_t *memblock = &task->memory.memblocks[i];
@@ -377,14 +392,30 @@ static void _task_destroy(task_t *task)
                 pmm_free((void *) memblock->phys_addr, memblock->page_count);
         }
         kfree(task->memory.memblocks);
+        task->memory.memblocks = NULL;
     }
 
-    if (task->user_mode && task->state.cr3 != 0)
+    if (task->user_mode && task->state.cr3 != 0) {
         vmm_destroy_address_space(task->state.cr3);
+        task->state.cr3 = 0;
+    }
 
-    if (task->state.fx_state)
+    if (task->state.fx_state) {
         kfree(task->state.fx_state);
+        task->state.fx_state = NULL;
+    }
 
-    kfree((void *) task->stack_bottom);
+    if (task->stack_bottom) {
+        kfree((void *) task->stack_bottom);
+        task->stack_bottom = 0;
+    }
+
+    if (task->name) {
+        kfree(task->name);
+        task->name = NULL;
+    }
+
+    /* Mark as destroyed to prevent double-free */
+    task->state.cr3 = 0xDEADBEEF;
     kfree(task);
 }

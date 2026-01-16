@@ -59,6 +59,14 @@ extern sys_get_ticks
 extern sys_alloc_pages
 extern sys_spawn_task
 extern sys_test
+extern sys_ipc_new
+extern sys_ipc_request_connection
+extern sys_ipc_wait_connection
+extern sys_ipc_accept_connection
+extern sys_ipc_reject_connection
+extern sys_ipc_send
+extern sys_ipc_receive
+extern sys_ipc_disconnect
 
 section .rodata
 syscall_table:
@@ -81,6 +89,14 @@ syscall_table:
     dq sys_alloc_pages
     dq sys_spawn_task
     dq sys_test
+    dq sys_ipc_new
+    dq sys_ipc_request_connection
+    dq sys_ipc_wait_connection
+    dq sys_ipc_accept_connection
+    dq sys_ipc_reject_connection
+    dq sys_ipc_send
+    dq sys_ipc_receive
+    dq sys_ipc_disconnect
 syscall_table_end:
 
 section .text

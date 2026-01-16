@@ -14,12 +14,16 @@
 #include <kernel/tasking/loader.h>
 #include <stdint.h>
 
-task_t *load_elf(file_t *file)
+task_t *load_elf(const char *path)
 {
+    file_t file = file_open(path);
+    if (file.internal == NULL)
+        return NULL;
+
     __asm__("cli");
     debug_log("[*] Loading ELF file...\n");
     elf64_header_t header;
-    if (parse_elf_header(file, &header) < 0) {
+    if (parse_elf_header(&file, &header) < 0) {
         debug_log("[-] ELF parsing error\n");
         __asm__("sti");
         return NULL;
@@ -42,13 +46,13 @@ task_t *load_elf(file_t *file)
     debug_log_fmt("[*] Found %d program headers\n", header.pht_entry_count);
 
     elf64_psh_t psh;
-    task_t *task = task_create((void *) header.entry_offset, TASK_MODE_USER);
+    task_t *task = task_create((void *) header.entry_offset, path, TASK_MODE_USER);
 
     for (int i = 0; i < header.pht_entry_count; i++) {
-        if (file_seek(file, header.pht_offset + i * header.pht_entry_size, SEEK_SET) < 0)
+        if (file_seek(&file, header.pht_offset + i * header.pht_entry_size, SEEK_SET) < 0)
             return NULL;
 
-        if (parse_elf_program_header(file, &psh, header.pht_entry_size) < 0)
+        if (parse_elf_program_header(&file, &psh, header.pht_entry_size) < 0)
             return NULL;
 
         uintptr_t vaddr = psh.section_vaddr;
@@ -71,14 +75,14 @@ task_t *load_elf(file_t *file)
         memset(hddm_addr, 0, npages * PAGE_SIZE);
 
         size_t offset_in_page = vaddr - vaddr_start;
-        if (file_seek(file, psh.section_offset, SEEK_SET) < 0) {
+        if (file_seek(&file, psh.section_offset, SEEK_SET) < 0) {
             debug_log("[-] Failed to seek to segment offset\n");
             pmm_free(phys_mem, npages);
             __asm__("sti");
             return NULL;
         }
 
-        if (file_read(file, hddm_addr + offset_in_page, psh.section_file_size) < 0) {
+        if (file_read(&file, hddm_addr + offset_in_page, psh.section_file_size) < 0) {
             debug_log("[-] Failed to read segment data\n");
             pmm_free(phys_mem, npages);
             __asm__("sti");

@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <kernel/tasking/task.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -15,3 +16,4 @@
 #define ALLOC_PAGES_FLAG_EXEC (1 << 1) /* Executable (default is non-executable) */
 
 void syscalls_init();
+void syscalls_task_cleanup(task_t *task);
