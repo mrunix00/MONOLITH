@@ -62,6 +62,8 @@ typedef struct task task_t;
 struct task
 {
     task_t *next;
+    uint64_t id;
+    char *name;
     task_state_t state;
     task_mem_t memory;
     uintptr_t stack_bottom;
@@ -72,7 +74,7 @@ struct task
 };
 
 void task_switching_init();
-task_t *task_create(void *entry_point, task_mode_t mode);
+task_t *task_create(void *entry_point, const char *name, task_mode_t mode);
 task_t *task_get_current();
 int task_map(
     task_t *task,

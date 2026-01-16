@@ -13,24 +13,52 @@
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
 #include <kernel/tasking/loader.h>
+#include <kernel/tasking/ipc.h>
 #include <kernel/tasking/syscall.h>
 #include <kernel/tasking/task.h>
 #include <kernel/timer.h>
 
 extern void _syscall_handler();
+static task_t *_fb_owner;
 
 void syscalls_init()
 {
     idt_set_gate(0x80, _syscall_handler, IDT_TYPE_SOFTWARE);
 }
 
+#define USER_SPACE_START 0x0000000000001000ULL
+#define USER_SPACE_END 0x0000800000000000ULL
+
+static bool _user_ptr_range(const void *ptr, size_t size)
+{
+    if (!ptr)
+        return false;
+
+    uintptr_t start = (uintptr_t) ptr;
+    if (start < USER_SPACE_START || start >= USER_SPACE_END)
+        return false;
+
+    if (size == 0)
+        return true;
+
+    uintptr_t end = start + size;
+    if (end < start)
+        return false;
+
+    return end <= USER_SPACE_END;
+}
+
 extern struct limine_framebuffer_request framebuffer_request;
 int sys_request_fb(void *fb_info)
 {
-    if (framebuffer_request.response->framebuffer_count < 1)
-        return -1;
     task_t *current = task_get_current();
+    if (!_user_ptr_range(fb_info, sizeof(void *) * 3))
+        return -1;
     if (!current)
+        return -1;
+    if (_fb_owner && _fb_owner != current)
+        return -1;
+    if (framebuffer_request.response->framebuffer_count < 1)
         return -1;
     size_t width = framebuffer_request.response->framebuffers[0]->width;
     size_t height = framebuffer_request.response->framebuffers[0]->height;
@@ -47,12 +75,13 @@ int sys_request_fb(void *fb_info)
     memcpy(fb_info, &hhfb, sizeof(void *));
     memcpy(fb_info + sizeof(void *), &width, sizeof(uint64_t));
     memcpy(fb_info + 2 * sizeof(void *), &height, sizeof(uint64_t));
+    _fb_owner = current;
     return 0;
 }
 
 int sys_poll_input_event(input_event_t *event)
 {
-    if (!event)
+    if (!_user_ptr_range(event, sizeof(*event)))
         return -1;
     if (!input_poll_event(event))
         return 1;
@@ -61,6 +90,8 @@ int sys_poll_input_event(input_event_t *event)
 
 void *sys_file_open(const char *path)
 {
+    if (!_user_ptr_range(path, 1))
+        return NULL;
     file_t *file = kmalloc(sizeof(file_t));
     if (!file) {
         return NULL;
@@ -76,21 +107,29 @@ void sys_file_close(void *file)
 
 int sys_file_create(const char *path, file_type_t type)
 {
+    if (!_user_ptr_range(path, 1))
+        return -1;
     return file_create(path, type);
 }
 
 int sys_file_remove(const char *path)
 {
+    if (!_user_ptr_range(path, 1))
+        return -1;
     return file_remove(path);
 }
 
 int sys_file_read(file_t *file, void *buffer, uint32_t size)
 {
+    if (!_user_ptr_range(buffer, size))
+        return -1;
     return file_read(file, buffer, size);
 }
 
 int sys_file_write(file_t *file, const void *buffer, uint32_t size)
 {
+    if (!_user_ptr_range(buffer, size))
+        return -1;
     return file_write(file, buffer, size);
 }
 
@@ -101,11 +140,15 @@ int sys_file_seek(file_t *file, size_t offset, seek_mode_t mode)
 
 int sys_file_getdents(file_t *file, void *buffer, uint32_t size)
 {
+    if (!_user_ptr_range(buffer, size))
+        return -1;
     return file_getdents(file, buffer, size);
 }
 
 int sys_file_getstats(file_t *file, file_stats_t *stats)
 {
+    if (!_user_ptr_range(stats, sizeof(*stats)))
+        return -1;
     return file_getstats(file, stats);
 }
 
@@ -116,6 +159,8 @@ size_t sys_file_tell(file_t *file)
 
 int sys_getdrives(void *buffer, uint32_t size)
 {
+    if (!_user_ptr_range(buffer, size))
+        return -1;
     return vfs_getdrives(buffer, size);
 }
 
@@ -149,9 +194,6 @@ uint64_t sys_get_ticks()
 {
     return timer_get_ticks();
 }
-
-#define USER_SPACE_START 0x0000000000001000ULL
-#define USER_SPACE_END 0x0000800000000000ULL
 
 /* Find an unused virtual address region in the task's address space */
 static uintptr_t _find_free_vaddr(task_t *task, size_t num_pages)
@@ -211,19 +253,77 @@ void *sys_alloc_pages(size_t num_pages, uint64_t flags)
 
 void sys_spawn_task(const char *path)
 {
-    file_t file = file_open(path);
-    if (file.internal == NULL) {
-        debug_log_fmt("[-] Failed to open %s executable\n", path);
+    if (!_user_ptr_range(path, 1))
         return;
-    }
-
-    if (load_elf(&file) < 0) {
+    if (load_elf(path) == NULL)
         debug_log_fmt("Failed to load %s!", path);
-        return;
-    }
 }
 
 void sys_test(void)
 {
     debug_log_fmt("Test\n");
+}
+
+void syscalls_task_cleanup(task_t *task)
+{
+    if (_fb_owner == task)
+        _fb_owner = NULL;
+}
+
+int sys_ipc_new(const char *name)
+{
+    if (!_user_ptr_range(name, 1))
+        return -1;
+    return broadcast_new(task_get_current(), name);
+}
+
+int sys_ipc_request_connection(const char *name, channel_t *channel)
+{
+    if (!_user_ptr_range(name, 1) || !_user_ptr_range(channel, sizeof(*channel)))
+        return -1;
+    return broadcast_request_connection(task_get_current(), name, channel);
+}
+
+int sys_ipc_wait_connection(channel_t *channel, connection_t *connection)
+{
+    if (!_user_ptr_range(channel, sizeof(*channel)) || !_user_ptr_range(connection, sizeof(*connection)))
+        return -1;
+    return broadcast_wait_connection(task_get_current(), channel, connection);
+}
+
+int sys_ipc_accept_connection(channel_t *channel, connection_t *connection)
+{
+    if (!_user_ptr_range(channel, sizeof(*channel)) || !_user_ptr_range(connection, sizeof(*connection)))
+        return -1;
+    return broadcast_accept_connection(task_get_current(), channel, connection);
+}
+
+int sys_ipc_reject_connection(channel_t *channel, connection_t *connection)
+{
+    if (!_user_ptr_range(channel, sizeof(*channel)) || !_user_ptr_range(connection, sizeof(*connection)))
+        return -1;
+    return broadcast_reject_connection(task_get_current(), channel, connection);
+}
+
+int sys_ipc_send(channel_t *channel, void *data, size_t size)
+{
+    if (!_user_ptr_range(channel, sizeof(*channel)) || !_user_ptr_range(data, size))
+        return -1;
+    return broadcast_send(task_get_current(), channel, data, size);
+}
+
+int sys_ipc_receive(channel_t *channel, connection_t *sender, void *data, size_t size)
+{
+    if (!_user_ptr_range(channel, sizeof(*channel)) || !_user_ptr_range(sender, sizeof(*sender))
+        || !_user_ptr_range(data, size)) {
+        return -1;
+    }
+    return broadcast_receive(task_get_current(), channel, sender, data, size);
+}
+
+int sys_ipc_disconnect(channel_t *channel)
+{
+    if (!_user_ptr_range(channel, sizeof(*channel)))
+        return -1;
+    return broadcast_disconnect(task_get_current(), channel);
 }

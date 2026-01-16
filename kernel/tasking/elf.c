@@ -23,15 +23,17 @@ int parse_elf_header(file_t *file, void *buffer)
     }
 
     int bytes;
+    size_t rest_size = 0;
     if (header->format == ELF_FORMAT_32BIT) {
-        bytes = file_read(file, buffer + sizeof(elf_header_t), sizeof(elf32_header_t));
+        rest_size = sizeof(elf32_header_t) - sizeof(elf_header_t);
     } else if (header->format == ELF_FORMAT_64BIT) {
-        bytes = file_read(file, buffer + sizeof(elf_header_t), sizeof(elf64_header_t));
+        rest_size = sizeof(elf64_header_t) - sizeof(elf_header_t);
     } else {
         debug_log("[-] Invalid ELF format!\n");
         return -1;
     }
 
+    bytes = file_read(file, (uint8_t *) buffer + sizeof(elf_header_t), rest_size);
     if (bytes < 0) {
         debug_log("[-] I/O Error\n");
         return -1;

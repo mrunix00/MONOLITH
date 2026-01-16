@@ -43,6 +43,16 @@ static inline long syscall3(long num, long arg1, long arg2, long arg3)
     return ret;
 }
 
+static inline long syscall4(long num, long arg1, long arg2, long arg3, long arg4)
+{
+    long ret;
+    __asm__ volatile("int $0x80"
+                     : "=a"(ret)
+                     : "a"(num), "D"(arg1), "S"(arg2), "d"(arg3), "c"(arg4)
+                     : "r11", "memory");
+    return ret;
+}
+
 /**
  * Sleep for the specified number of milliseconds.
  * @param ms Number of milliseconds to sleep.

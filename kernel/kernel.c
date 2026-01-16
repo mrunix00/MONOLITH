@@ -90,16 +90,9 @@ void kmain()
     ps2_init_keyboard();
     ps2_mouse_init();
 
-    file_t file = file_open("system:/desktop");
-    if (file.internal == NULL) {
-        debug_log("[-] Failed to open desktop executable\n");
-        while (1)
-            asm_hlt();
-    }
-
     debug_log("[*] Launching desktop...\n");
 
-    task_t *task = load_elf(&file);
+    task_t *task = load_elf("system:/desktop");
     if (task < 0) {
         debug_log("[-] Failed to load desktop ELF\n");
         while (1)
