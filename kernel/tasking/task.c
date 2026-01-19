@@ -30,7 +30,6 @@ static task_t _task_list_head;
 static task_t *_task_list_tail;
 static task_t *_current_task;
 static task_t *_next_task;
-static uint64_t _next_task_id = 1;
 
 extern void _task_switch_gate_stub();
 
@@ -47,7 +46,6 @@ task_t *task_create(void *entry_point, const char *name, task_mode_t mode)
     }
 
     memset(task, 0, sizeof(task_t));
-    task->id = _next_task_id++;
     task->user_mode = (mode == TASK_MODE_USER);
     task->state.rip = (uintptr_t) entry_point;
     task->state.rflags = DEFAULT_RFLAGS;
@@ -171,10 +169,11 @@ void _task_switch_gate(interrupt_registers_t *regs)
     }
 
     if (current && current->exiting) {
-        _task_unlink(current);
-        _task_destroy(current);
-        if (target == current || !target)
+        task_t *exiting_task = current;
+        _task_unlink(exiting_task);
+        if (target == exiting_task || !target)
             target = task_next(NULL);
+        _task_destroy(exiting_task);
     }
 
     if (!target) {
@@ -195,7 +194,6 @@ void _task_switch_gate(interrupt_registers_t *regs)
 void task_switching_init()
 {
     memset(&_task_list_head, 0, sizeof(_task_list_head));
-    _task_list_head.id = _next_task_id++;
     _task_list_head.next = &_task_list_head;
     _task_list_head.user_mode = false;
     _task_list_head.exiting = false;

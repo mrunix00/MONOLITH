@@ -54,7 +54,7 @@ LDFLAGS += -T boot/pc/$(CPU_ARCH)/linker.ld -nostdlib -z max-page-size=0x1000 -s
 FLANTERM_SOURCES := libs/flanterm/src/flanterm.c libs/flanterm/src/flanterm_backends/fb.c
 FLANTERM_OBJECTS := $(patsubst %.c,$(OBJ_DIR)/%.o,$(FLANTERM_SOURCES))
 
-.PHONY: all clean toolchain iso run run-debug kernel test flanterm initrd userspace
+.PHONY: all clean toolchain iso run run-debug kernel test test-kernel test-userspace flanterm initrd userspace
 
 # Default target
 all: | $(BUILD_DIR)
@@ -96,6 +96,12 @@ flanterm: toolchain | $(BUILD_DIR)
 # Run tests
 test:
 	$(MAKE) -C test/ all
+
+test-kernel:
+	$(MAKE) -C test/ kernel run-kernel
+
+test-userspace:
+	$(MAKE) -C test/ userspace run-userspace
 
 # Generate test coverage report
 coverage-report:
@@ -158,6 +164,7 @@ run-debug-headless: all
 clean:
 	$(MAKE) -C kernel clean
 	$(MAKE) -C userspace clean
+	$(MAKE) -C test clean
 	rm -rf $(BUILD_DIR)
 
 # Clean everything including toolchain

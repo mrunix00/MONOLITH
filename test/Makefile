@@ -1,44 +1,79 @@
-# Directories
-ROOT_DIR := $(CURDIR)/..
+ROOT_DIR := $(abspath ..)
 BUILD_DIR := $(CURDIR)/build
+BIN_DIR := $(BUILD_DIR)/bin
 COVERAGE_DIR := $(BUILD_DIR)/coverage
 
-# Find all test directories with Makefiles
-TEST_DIRS := $(shell find $(CURDIR) -type f -name "Makefile" | grep -v "^$(CURDIR)/Makefile" | xargs dirname)
+CC ?= gcc
+CFLAGS ?= -std=c99 -Wall -Wextra -g
+LDFLAGS ?=
 
-# Compiler and coverage tools
-GCOV := gcov
-LCOV := lcov
-GENHTML := genhtml
+ifeq ($(COVERAGE),1)
+  CFLAGS += -O0 -fprofile-arcs -ftest-coverage
+  LDFLAGS += -fprofile-arcs -ftest-coverage
+endif
 
-.PHONY: all test coverage-report clean
+UNITY_SRC := $(ROOT_DIR)/libs/Unity/src/unity.c
 
-all: test
+KERNEL_TEST_BIN := $(BIN_DIR)/kernel_tests
+USERSPACE_TEST_BIN := $(BIN_DIR)/userspace_tests
 
-# Build directory setup
-$(BUILD_DIR) $(COVERAGE_DIR):
-	mkdir -p $@
+KERNEL_TEST_SOURCES := \
+	$(CURDIR)/kernel/main.c \
+	$(CURDIR)/kernel/mocks.c \
+	$(CURDIR)/kernel/ipc/ipc_tests.c \
+	$(CURDIR)/kernel/klibc/memory_tests.c \
+	$(CURDIR)/kernel/klibc/string_tests.c \
+	$(CURDIR)/kernel/vfs/vfs_tests.c \
+	$(UNITY_SRC) \
+	$(ROOT_DIR)/kernel/tasking/ipc.c \
+	$(ROOT_DIR)/kernel/fs/vfs.c \
+	$(ROOT_DIR)/kernel/klibc/string.c \
+	$(ROOT_DIR)/kernel/klibc/memory.c
 
-# Main test target - runs all tests in subdirectories
-test: | $(BUILD_DIR)
-	@echo "[*] Running all tests..."
-	@for dir in $(TEST_DIRS); do \
-		echo "[*] Running tests in $$dir"; \
-		$(MAKE) -C $$dir; \
-	done
-	@echo "[+] All tests completed"
+USERSPACE_TEST_SOURCES := \
+	$(CURDIR)/userspace/main.c \
+	$(CURDIR)/userspace/libc/stdio_tests.c \
+	$(CURDIR)/userspace/libc/math_tests.c \
+	$(CURDIR)/userspace/libc/stdlib_tests.c \
+	$(CURDIR)/userspace/libc/string_tests.c \
+	$(UNITY_SRC) \
+	$(ROOT_DIR)/userspace/libs/libc/src/stdio.c \
+	$(ROOT_DIR)/userspace/libs/libc/src/math.c \
+	$(ROOT_DIR)/userspace/libs/libc/src/stdlib.c \
+	$(ROOT_DIR)/userspace/libs/libc/src/string.c
 
-# Generate HTML coverage report
-coverage-report: test | $(COVERAGE_DIR)
-	@echo "[*] Generating combined coverage report..."
-	../scripts/generate_coverage_report.sh $(BUILD_DIR) $(COVERAGE_DIR) $(ROOT_DIR)
+KERNEL_TEST_CFLAGS := $(CFLAGS) -I$(ROOT_DIR) -I$(CURDIR) -DUNITY_INCLUDE_CONFIG_H
+USERSPACE_TEST_CFLAGS := $(CFLAGS) -I$(ROOT_DIR) -I$(ROOT_DIR)/userspace/libs/libc/include -I$(CURDIR) -DTEST_ENV -DUNITY_INCLUDE_CONFIG_H -DUNITY_EXCLUDE_MATH_H -fno-builtin
 
-# Clean build artifacts
+.PHONY: all kernel userspace run run-kernel run-userspace clean coverage-report
+
+all: run
+
+kernel: $(KERNEL_TEST_BIN)
+
+userspace: $(USERSPACE_TEST_BIN)
+
+run: run-kernel run-userspace
+
+run-kernel: $(KERNEL_TEST_BIN)
+	$(KERNEL_TEST_BIN)
+
+run-userspace: $(USERSPACE_TEST_BIN)
+	$(USERSPACE_TEST_BIN)
+
+$(BIN_DIR):
+	mkdir -p $(BIN_DIR)
+
+$(KERNEL_TEST_BIN): $(KERNEL_TEST_SOURCES) | $(BIN_DIR)
+	$(CC) $(KERNEL_TEST_CFLAGS) -o $@ $(KERNEL_TEST_SOURCES) $(LDFLAGS)
+
+$(USERSPACE_TEST_BIN): $(USERSPACE_TEST_SOURCES) | $(BIN_DIR)
+	$(CC) $(USERSPACE_TEST_CFLAGS) -o $@ $(USERSPACE_TEST_SOURCES) $(LDFLAGS)
+
+coverage-report:
+	$(MAKE) clean
+	$(MAKE) COVERAGE=1 all
+	$(ROOT_DIR)/scripts/generate_coverage_report.sh "$(BUILD_DIR)" "$(COVERAGE_DIR)" "$(ROOT_DIR)"
+
 clean:
-	@echo "[*] Cleaning build artifacts..."
-	@for dir in $(TEST_DIRS); do \
-		$(MAKE) -C $$dir clean; \
-	done
 	rm -rf $(BUILD_DIR)
-	rm -f $(CURDIR)/*.gcda $(CURDIR)/*.gcno
-	rm -f $(CURDIR)/**/*.gcda $(CURDIR)/**/*.gcno
