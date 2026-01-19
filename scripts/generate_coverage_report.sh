@@ -27,8 +27,8 @@ lcov --capture --directory "$BUILD_DIR" \
      --ignore-errors graph \
      --ignore-errors empty
 
-# Now properly filter to ONLY include kernel files
-lcov --extract "$COVERAGE_DIR/coverage_all.info" "*kernel/*" "*boot/*" \
+# Now properly filter to include kernel and userspace libc files
+lcov --extract "$COVERAGE_DIR/coverage_all.info" "*kernel/*" "*boot/*" "*userspace/libs/libc/*" \
      --output-file "$COVERAGE_DIR/coverage_kernel.info" \
      --ignore-errors source \
      --ignore-errors empty \
@@ -36,6 +36,7 @@ lcov --extract "$COVERAGE_DIR/coverage_all.info" "*kernel/*" "*boot/*" \
 
 # Explicitly remove test files and Unity from the report
 lcov --remove "$COVERAGE_DIR/coverage_kernel.info" \
+     "*test/*" "*libs/Unity/*" \
      --output-file "$COVERAGE_DIR/coverage_final.info" \
      --ignore-errors source \
      --ignore-errors empty \
@@ -43,7 +44,7 @@ lcov --remove "$COVERAGE_DIR/coverage_kernel.info" \
 
 # Generate HTML report with filtering for kernel files only
 genhtml --output-directory="$COVERAGE_DIR/html" \
-        --title="MONOLITH Kernel Coverage" \
+        --title="MONOLITH Coverage" \
         --legend \
         --show-details \
         --prefix="$ROOT_DIR" \

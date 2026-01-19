@@ -6,8 +6,17 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef TEST_ENV
+/* Mock alloc_pages for testing - provided by test harness */
+#define PAGE_SIZE 4096
+#define ALLOC_PAGES_FLAG_RW (1 << 0)
+extern void *mock_alloc_pages(size_t num_pages, unsigned long flags);
+#define alloc_pages mock_alloc_pages
+#else
 #include <sys/syscall.h>
 #include <unistd.h>
+#endif
 
 typedef struct block_header
 {
@@ -173,6 +182,15 @@ void free(void *ptr)
     }
 }
 
+#ifdef TEST_ENV
+/* Reset heap state for testing */
+void _heap_reset(void)
+{
+    _heap.initialized = 0;
+    _heap.free_list = NULL;
+}
+#endif
+
 static void swap(void *a, void *b, size_t size)
 {
     char *ca = a;
@@ -278,6 +296,7 @@ void qsort(void *base, size_t n, size_t size, int (*compar)(const void *, const 
     }
 }
 
+#ifndef TEST_ENV
 [[noreturn]] void exit(void)
 {
     syscall0(SYSCALL_EXIT);
@@ -287,3 +306,4 @@ void qsort(void *base, size_t n, size_t size, int (*compar)(const void *, const 
 {
     syscall0(SYSCALL_EXIT);
 }
+#endif /* TEST_ENV */
