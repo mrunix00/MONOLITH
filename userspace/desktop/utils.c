@@ -10,7 +10,6 @@
 
 void draw_box(gfx_context_t *context, gfx_rect_t rect)
 {
-    uint32_t border_cut = (BORDER_THICKNESS * 3) / 2;
     gfx_draw_filled_rect(
         context,
         (gfx_rect_t) {
@@ -22,14 +21,39 @@ void draw_box(gfx_context_t *context, gfx_rect_t rect)
             .border_color = BORDER_COLOR,
         },
         SURFACE_COLOR);
-    gfx_draw_line(
+    gfx_draw_rect(
         context,
-        (gfx_line_t) {
-            .x1 = rect.x + BORDER_THICKNESS,
-            .y1 = rect.y + BORDER_THICKNESS,
-            .x2 = rect.x + rect.width - border_cut,
-            .y2 = rect.y + BORDER_THICKNESS,
-            .thickness = BORDER_SHADOW_THICKNESS,
+        (gfx_rect_t) {
+            .x = rect.x + BORDER_THICKNESS,
+            .y = rect.y + BORDER_THICKNESS,
+            .width = rect.width - BORDER_THICKNESS * 2,
+            .height = rect.height - BORDER_THICKNESS * 2,
+            .border_color = (gfx_color_t) {.a = 0x33, .r = 0xff, .g = 0xff, .b = 0xff},
+            .border_thickness = BORDER_THICKNESS,
+        });
+}
+
+void draw_transparent_box(gfx_context_t *context, gfx_rect_t rect)
+{
+    gfx_draw_filled_rect(
+        context,
+        (gfx_rect_t) {
+            .x = rect.x,
+            .y = rect.y,
+            .width = rect.width,
+            .height = rect.height,
+            .border_color = BORDER_COLOR,
+            .border_thickness = BORDER_THICKNESS,
         },
-        BORDER_SHADOW_COLOR);
+        (gfx_color_t) {.a = 0xcc, .r = 0x21, .g = 0x21, .b = 0x21});
+    gfx_draw_rect(
+        context,
+        (gfx_rect_t) {
+            .x = rect.x + BORDER_THICKNESS,
+            .y = rect.y + BORDER_THICKNESS,
+            .width = rect.width - BORDER_THICKNESS * 2,
+            .height = rect.height - BORDER_THICKNESS * 2,
+            .border_color = (gfx_color_t) {.a = 0x33, .r = 0xff, .g = 0xff, .b = 0xff},
+            .border_thickness = BORDER_THICKNESS,
+        });
 }

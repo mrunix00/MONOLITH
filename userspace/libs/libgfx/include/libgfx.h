@@ -29,4 +29,4 @@ void gfx_reset_clip(gfx_context_t *ctx);
 
 void gfx_draw_bitmap(gfx_context_t *, gfx_bitmap_t *, gfx_pos_t, gfx_color_t);
 
-void gfx_draw_colored_bitmap(gfx_context_t *, gfx_colored_bitmap_t *, gfx_pos_t, gfx_color_t);
+void gfx_draw_colored_bitmap(gfx_context_t *, gfx_colored_bitmap_t *, gfx_pos_t);

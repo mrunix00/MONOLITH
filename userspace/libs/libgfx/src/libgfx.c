@@ -187,13 +187,9 @@ void gfx_draw_filled_rect(gfx_context_t *ctx, gfx_rect_t rect, gfx_color_t fill)
     if (x1 >= x2 || y1 >= y2)
         return;
 
-    uint32_t c = pack_color(fill);
-
     for (uint32_t y = y1; y < y2; y++) {
-        uint32_t *row = ctx->backbuffer + (size_t) y * ctx->width;
-        for (uint32_t x = x1; x < x2; x++) {
-            row[x] = c;
-        }
+        for (uint32_t x = x1; x < x2; x++)
+            gfx_draw_pixel(ctx, (gfx_pos_t) {x, y}, fill);
     }
 
     if (rect.border_thickness > 0)
@@ -219,10 +215,7 @@ void gfx_draw_line(gfx_context_t *ctx, gfx_line_t line, gfx_color_t color)
         for (int i = start_offset; i <= end_offset; i++) {
             for (int j = start_offset; j <= end_offset; j++)
                 if (x1 + i >= 0 && y1 + j >= 0)
-                    gfx_draw_pixel(
-                        ctx,
-                        (gfx_pos_t) {(uint32_t) (x1 + i), (uint32_t) (y1 + j)},
-                        color);
+                    gfx_draw_pixel(ctx, (gfx_pos_t) {(uint32_t) (x1 + i), (uint32_t) (y1 + j)}, color);
         }
         if (x1 == x2 && y1 == y2)
             break;
@@ -273,28 +266,26 @@ void gfx_draw_bitmap(gfx_context_t *ctx, gfx_bitmap_t *bitmap, gfx_pos_t pos, gf
     if (x1 >= x2 || y1 >= y2)
         return;
 
-    uint32_t row_bytes = (bitmap->width + 7) / 8;
-
     for (uint32_t y = y1; y < y2; y++) {
         uint32_t src_y = y - pos.y;
-        const uint8_t *row = bitmap->data + (size_t) src_y * row_bytes;
+        const uint8_t *row = bitmap->data + (size_t) src_y * bitmap->width;
         for (uint32_t x = x1; x < x2; x++) {
             uint32_t src_x = x - pos.x;
-            uint32_t byte_idx = src_x / 8;
-            uint32_t bit_idx = 7 - (src_x % 8);
-            if (row[byte_idx] & (uint8_t) (1u << bit_idx))
-                gfx_draw_pixel(ctx, (gfx_pos_t) {x, y}, color);
+            uint8_t level = row[src_x];
+            if (level == 0)
+                continue;
+            gfx_color_t out = color;
+            out.a = _mul_u8(level, color.a);
+            if (out.a == 0)
+                continue;
+            gfx_draw_pixel(ctx, (gfx_pos_t) {x, y}, out);
         }
     }
 }
 
-void gfx_draw_colored_bitmap(
-    gfx_context_t *ctx, gfx_colored_bitmap_t *bitmap, gfx_pos_t pos, gfx_color_t color)
+void gfx_draw_colored_bitmap(gfx_context_t *ctx, gfx_colored_bitmap_t *bitmap, gfx_pos_t pos)
 {
     if (!ctx || !bitmap || !bitmap->data || bitmap->width == 0 || bitmap->height == 0)
-        return;
-
-    if (color.a == 0)
         return;
 
     uint32_t x1 = pos.x;
@@ -330,10 +321,10 @@ void gfx_draw_colored_bitmap(
                 continue;
 
             gfx_color_t out = {
-                .a = _mul_u8(src_a, color.a),
-                .r = _mul_u8((uint8_t) (src >> 16), color.r),
-                .g = _mul_u8((uint8_t) (src >> 8), color.g),
-                .b = _mul_u8((uint8_t) src, color.b),
+                .a = src_a,
+                .r = (uint8_t) (src >> 16),
+                .g = (uint8_t) (src >> 8),
+                .b = (uint8_t) src,
             };
             if (out.a == 0)
                 continue;
