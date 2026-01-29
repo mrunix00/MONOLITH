@@ -12,8 +12,8 @@
 #include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
-#include <kernel/tasking/loader.h>
 #include <kernel/tasking/ipc.h>
+#include <kernel/tasking/loader.h>
 #include <kernel/tasking/syscall.h>
 #include <kernel/tasking/task.h>
 #include <kernel/timer.h>
@@ -204,15 +204,22 @@ static uintptr_t _find_free_vaddr(task_t *task, size_t num_pages)
     if (task->memory.memblocks == NULL || task->memory.memblocks_count == 0)
         return candidate;
 
-    /* First-fit search */
-    for (size_t i = 0; i < task->memory.memblocks_count; i++) {
-        task_memblock_t *block = &task->memory.memblocks[i];
-        uintptr_t block_end = block->virt_addr + block->page_count * PAGE_SIZE;
+    /* First-fit search with rescan to avoid overlapping earlier blocks. */
+    bool adjusted;
+    do {
+        adjusted = false;
+        for (size_t i = 0; i < task->memory.memblocks_count; i++) {
+            task_memblock_t *block = &task->memory.memblocks[i];
+            uintptr_t block_end = block->virt_addr + block->page_count * PAGE_SIZE;
 
-        /* If candidate overlaps with this block, move past it */
-        if (candidate < block_end && candidate + required_size > block->virt_addr)
-            candidate = block_end;
-    }
+            /* If candidate overlaps with this block, move past it and rescan. */
+            if (candidate < block_end && candidate + required_size > block->virt_addr) {
+                candidate = block_end;
+                adjusted = true;
+                break;
+            }
+        }
+    } while (adjusted);
 
     return candidate;
 }
@@ -286,21 +293,24 @@ int sys_ipc_request_connection(const char *name, channel_t *channel)
 
 int sys_ipc_wait_connection(channel_t *channel, connection_t *connection)
 {
-    if (!_user_ptr_range(channel, sizeof(*channel)) || !_user_ptr_range(connection, sizeof(*connection)))
+    if (!_user_ptr_range(channel, sizeof(*channel))
+        || !_user_ptr_range(connection, sizeof(*connection)))
         return -1;
     return broadcast_wait_connection(task_get_current(), channel, connection);
 }
 
 int sys_ipc_accept_connection(channel_t *channel, connection_t *connection)
 {
-    if (!_user_ptr_range(channel, sizeof(*channel)) || !_user_ptr_range(connection, sizeof(*connection)))
+    if (!_user_ptr_range(channel, sizeof(*channel))
+        || !_user_ptr_range(connection, sizeof(*connection)))
         return -1;
     return broadcast_accept_connection(task_get_current(), channel, connection);
 }
 
 int sys_ipc_reject_connection(channel_t *channel, connection_t *connection)
 {
-    if (!_user_ptr_range(channel, sizeof(*channel)) || !_user_ptr_range(connection, sizeof(*connection)))
+    if (!_user_ptr_range(channel, sizeof(*channel))
+        || !_user_ptr_range(connection, sizeof(*connection)))
         return -1;
     return broadcast_reject_connection(task_get_current(), channel, connection);
 }
