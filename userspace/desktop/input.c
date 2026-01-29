@@ -42,11 +42,7 @@ bool handle_input(gfx_context_t *context)
 
 void draw_cursor(gfx_context_t *context)
 {
-    gfx_draw_colored_bitmap(
-        context,
-        &_cursor_bitmap,
-        (gfx_pos_t) {mouse_state.x, mouse_state.y},
-        (gfx_color_t) {0xff, 0xff, 0xff, 0xff});
+    gfx_draw_colored_bitmap(context, &_cursor_bitmap, (gfx_pos_t) {mouse_state.x, mouse_state.y});
 }
 
 input_mouse_event_t get_mouse_state()

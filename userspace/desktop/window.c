@@ -327,9 +327,8 @@ void draw_window(gfx_context_t *context, window_t *window)
 
     _window_geom(context, window, &x, &y, &width, &height);
 
-    /* Title bar */
-    draw_box(
-        context, (gfx_rect_t) {.x = x, .y = y, .width = width, .height = WINDOW_TITLE_BAR_HEIGHT});
+    /* Window Border */
+    draw_transparent_box(context, (gfx_rect_t) {.x = x, .y = y, .width = width, .height = height});
 
     /* Title */
     gfx_draw_text(context, &default_font, (gfx_pos_t) {x + 10, y + 22}, FONT_COLOR, window->title);
@@ -341,13 +340,7 @@ void draw_window(gfx_context_t *context, window_t *window)
 
     /* Window Body */
     draw_box(
-        context,
-        (gfx_rect_t) {
-            .x = x,
-            .y = y + WINDOW_TITLE_BAR_HEIGHT - BORDER_THICKNESS,
-            .width = width,
-            .height = height - WINDOW_TITLE_BAR_HEIGHT + BORDER_THICKNESS,
-        });
+        context, (gfx_rect_t) {.x = x + 5, .y = y + 31, .width = width - 10, .height = height - 36});
 
     if (window->draw_content != NULL) {
         uint32_t body_x = x;
@@ -411,6 +404,8 @@ void update_windows_state(gfx_context_t *context)
     static window_t *resizing_window = NULL;
     static uint32_t drag_offset_x = 0;
     static uint32_t drag_offset_y = 0;
+    static uint32_t drag_start_x = 0;
+    static uint32_t drag_start_y = 0;
     static uint32_t resize_offset_x = 0;
     static uint32_t resize_offset_y = 0;
     static bool prev_left = false;
@@ -453,6 +448,8 @@ void update_windows_state(gfx_context_t *context)
             && (dragging_window->maximized || dragging_window->snapped_left
                 || dragging_window->snapped_right)) {
             drag_restore_on_move = true;
+            drag_start_x = mouse_x;
+            drag_start_y = mouse_y;
         }
     } else if (!left && prev_left) {
         dragging_window = NULL;
@@ -468,6 +465,15 @@ void update_windows_state(gfx_context_t *context)
         uint32_t new_y = mouse_y > drag_offset_y ? (mouse_y - drag_offset_y) : 0;
 
         if (drag_restore_on_move) {
+            uint32_t dx = mouse_x > drag_start_x ? (mouse_x - drag_start_x)
+                                                 : (drag_start_x - mouse_x);
+            uint32_t dy = mouse_y > drag_start_y ? (mouse_y - drag_start_y)
+                                                 : (drag_start_y - mouse_y);
+            /* Dismiss the mouse drag operation if not within the threshold */
+            if (dx < 4 && dy < 4) {
+                prev_left = left;
+                return;
+            }
             dragging_window->maximized = false;
             dragging_window->snapped_left = false;
             dragging_window->snapped_right = false;

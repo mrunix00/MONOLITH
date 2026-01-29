@@ -8,3 +8,4 @@
 #include <libgfx/types.h>
 
 void draw_box(gfx_context_t *, gfx_rect_t rect);
+void draw_transparent_box(gfx_context_t *, gfx_rect_t rect);

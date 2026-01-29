@@ -8,8 +8,8 @@
 #define SURFACE_COLOR ((gfx_color_t) {0xFF, 0x28, 0x28, 0x28})
 #define BORDER_COLOR ((gfx_color_t) {0xff, 0x00, 0x00, 0x00})
 #define BORDER_SHADOW_COLOR ((gfx_color_t) {0xff, 0x40, 0x40, 0x40})
-#define BORDER_THICKNESS 2
-#define BORDER_SHADOW_THICKNESS 2
+#define BORDER_THICKNESS 1
+#define BORDER_SHADOW_THICKNESS 1
 #define WINDOW_TITLE_BAR_HEIGHT 32
 #define FONT_COLOR ((gfx_color_t) {0xff, 0xB3, 0xB3, 0xB3})
 #define TOP_BAR_HEIGHT 32

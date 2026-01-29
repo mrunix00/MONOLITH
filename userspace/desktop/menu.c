@@ -207,7 +207,7 @@ void menu_draw(gfx_context_t *context, const menu_t *menu)
 {
     uint32_t width = _menu_measure_width(menu);
     uint32_t height = _menu_measure_height(menu);
-    draw_box(context, (gfx_rect_t) {.x = menu->x, .y = menu->y, .width = width, .height = height});
+    draw_transparent_box(context, (gfx_rect_t) {.x = menu->x, .y = menu->y, .width = width, .height = height});
 
     uint32_t cursor_y = menu->y + MENU_VERTICAL_PADDING;
     for (size_t i = 0; i < menu->item_count; i++) {
@@ -226,17 +226,7 @@ void menu_draw(gfx_context_t *context, const menu_t *menu)
                     .y2 = line_y,
                     .thickness = BORDER_THICKNESS,
                 },
-                BORDER_COLOR);
-            gfx_draw_line(
-                context,
-                (gfx_line_t) {
-                    .x1 = menu->x + BORDER_THICKNESS,
-                    .y1 = line_y + BORDER_THICKNESS,
-                    .x2 = menu->x + width - border_cut,
-                    .y2 = line_y + BORDER_THICKNESS,
-                    .thickness = BORDER_SHADOW_THICKNESS,
-                },
-                BORDER_SHADOW_COLOR);
+                (gfx_color_t) {.a = 0x33, .r = 0xff, .g = 0xff, .b = 0xff});
         } else {
             gfx_draw_text(
                 context,
@@ -279,9 +269,28 @@ bool menu_contains_point(const menu_t *menu, uint32_t x, uint32_t y)
 
 void menubar_draw(gfx_context_t *context, const menubar_t *bar)
 {
-    draw_box(
+    uint32_t border_cut = (BORDER_THICKNESS * 3) / 2;
+    gfx_draw_filled_rect(
         context,
-        (gfx_rect_t) {.x = 0, .y = 0, .width = (uint32_t) context->width, .height = TOP_BAR_HEIGHT});
+        (gfx_rect_t) {
+            .x = 0,
+            .y = 0,
+            .width = context->width,
+            .height = TOP_BAR_HEIGHT,
+            .border_thickness = BORDER_THICKNESS,
+            .border_color = BORDER_COLOR,
+        },
+        (gfx_color_t) {0x80, 0x21, 0x21, 0x21});
+    gfx_draw_line(
+        context,
+        (gfx_line_t) {
+            .x1 = BORDER_THICKNESS,
+            .y1 = BORDER_THICKNESS,
+            .x2 = context->width - border_cut,
+            .y2 = BORDER_THICKNESS,
+            .thickness = BORDER_SHADOW_THICKNESS,
+        },
+        (gfx_color_t) {0x33, 0xFF, 0xFF, 0xFF});
 
     uint32_t cursor_x = MENUBAR_START_X;
     for (size_t i = 0; i < bar->item_count; i++) {
