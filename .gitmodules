@@ -14,3 +14,8 @@
 [submodule "libs/limine-protocol"]
 	path = libs/limine-protocol
 	url = https://codeberg.org/Limine/limine-protocol
+	shallow = true
+[submodule "libs/stb"]
+	path = libs/stb
+	url = https://github.com/nothings/stb
+	shallow = true

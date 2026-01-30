@@ -21,6 +21,7 @@ BUILD_DIR := $(abspath build)
 ISO_DIR := $(BUILD_DIR)/isodir
 OBJ_DIR := $(BUILD_DIR)/obj
 INITRD_DIR := $(BUILD_DIR)/initrd
+INITRD_ASSETS_DIR := $(INITRD_DIR)/assets
 
 # Arch detection and tracking
 ARCH_FILE := $(BUILD_DIR)/.arch
@@ -128,6 +129,8 @@ $(INITRD_DIR): | $(BUILD_DIR)
 # Create initrd tarball in ustar format
 initrd: $(INITRD_DIR) | $(BUILD_DIR)
 	@echo "Creating initrd archive in ustar format..."
+	@mkdir -p $(INITRD_ASSETS_DIR)
+	@cp -f assets/wallpaper.jpg $(INITRD_ASSETS_DIR)/wallpaper.jpg
 	tar --format=ustar -cf $(INITRD_TAR) -C $(INITRD_DIR) .
 
 # Create ISO
