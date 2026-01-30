@@ -8,13 +8,14 @@ OBJ_DIR := $(LIB_OBJ_ROOT)/$(LIB_NAME)
 LIBS_OUTPUT_DIR ?= $(BUILD_DIR)/libs
 LIB_OUTPUT_DIR := $(LIBS_OUTPUT_DIR)
 LIB_TARGET := $(LIB_OUTPUT_DIR)/$(LIB_NAME).a
+STB_DIR := ../../../libs/stb
 
 SOURCES := $(wildcard $(SRC_DIR)/*.c)
 OBJECTS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SOURCES))
 
 CC := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc
 AR := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)ar
-LIB_CFLAGS := -ffreestanding -nostdlib -nostdinc -nodefaultlibs -Wall -Wextra -I$(INCLUDE_DIR) -I$(LIBC_INCLUDE_DIR) -Ofast -g
+LIB_CFLAGS := -ffreestanding -nostdlib -nostdinc -nodefaultlibs -Wall -Wextra -I$(INCLUDE_DIR) -I$(LIBC_INCLUDE_DIR) -I$(STB_DIR) -I -Ofast -g
 ARFLAGS := rcs
 
 .PHONY: all clean
