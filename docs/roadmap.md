@@ -16,10 +16,8 @@
 ## Basic I/O
 
 - [x] Serial port driver.
-- [ ] Serial Console TTY.
-- [x] Framebuffer Console TTY.
 - [x] PS/2 keyboard driver.
-- [ ] PS/2 Mouse driver.
+- [x] PS/2 Mouse driver.
 - [ ] USB keyboard driver.
 - [ ] USB mouse driver.
 
@@ -60,6 +58,7 @@
 - [x] System calls.
 - [x] Task scheduler.
 - [x] Run programs in userspace.
+- [x] IPC.
 
 ## Architecture support
 
@@ -78,11 +77,12 @@
 
 ## Video and Graphics
 
-- [ ] Bochs Display Adapter.
 - [x] GUI.
 - [x] Graphics library.
 - [x] Font rendering.
 - [x] Window manager.
+- [ ] Display protocol.
+- [ ] UI library.
 
 ## Networking
 
