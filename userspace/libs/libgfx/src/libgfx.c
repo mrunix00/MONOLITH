@@ -316,12 +316,9 @@ void gfx_draw_colored_bitmap(gfx_context_t *ctx, gfx_colored_bitmap_t *bitmap, g
         for (uint32_t x = x1; x < x2; x++) {
             uint32_t src_x = x - pos.x;
             uint32_t src = row[src_x];
-            uint8_t src_a = (uint8_t) (src >> 24);
-            if (src_a == 0)
-                continue;
 
             gfx_color_t out = {
-                .a = src_a,
+                .a = (uint8_t) (src >> 24),
                 .r = (uint8_t) (src >> 16),
                 .g = (uint8_t) (src >> 8),
                 .b = (uint8_t) src,

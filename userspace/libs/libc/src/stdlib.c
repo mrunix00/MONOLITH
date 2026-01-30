@@ -182,6 +182,11 @@ void free(void *ptr)
     }
 }
 
+int abs(int value)
+{
+    return (value < 0) ? -value : value;
+}
+
 #ifdef TEST_ENV
 /* Reset heap state for testing */
 void _heap_reset(void)
