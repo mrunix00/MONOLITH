@@ -13,6 +13,29 @@
 #define abs(x) ((x) < 0 ? -(x) : (x))
 #define pack_color(c) ((c.a << 24) | (c.r << 16) | (c.g << 8) | c.b)
 
+static inline void _blend_pixel(uint32_t *dst_ptr, uint32_t src)
+{
+    uint8_t _a = (uint8_t) (src >> 24);
+    if (_a == 0)
+        return;
+    if (_a == 255) {
+        *(dst_ptr) = src;
+        return;
+    }
+    uint32_t _dst = *(dst_ptr);
+    uint8_t _dst_a = (uint8_t) (_dst >> 24);
+    uint8_t _dst_r = (uint8_t) (_dst >> 16);
+    uint8_t _dst_g = (uint8_t) (_dst >> 8);
+    uint8_t _dst_b = (uint8_t) _dst;
+    uint32_t _inv_a = 255 - _a;
+    uint8_t _out_a = (uint8_t) ((_a + (_dst_a * _inv_a + 127) / 255) & 0xFF);
+    uint8_t _out_r = (uint8_t) ((((src >> 16) & 0xFF) * _a + _dst_r * _inv_a + 127) / 255);
+    uint8_t _out_g = (uint8_t) ((((src >> 8) & 0xFF) * _a + _dst_g * _inv_a + 127) / 255);
+    uint8_t _out_b = (uint8_t) (((src & 0xFF) * _a + _dst_b * _inv_a + 127) / 255);
+    *(dst_ptr) = ((uint32_t) _out_a << 24) | ((uint32_t) _out_r << 16) | ((uint32_t) _out_g << 8)
+                 | (uint32_t) _out_b;
+}
+
 typedef struct
 {
     uint32_t *framebuffer;
@@ -64,26 +87,7 @@ void gfx_draw_pixel(gfx_context_t *ctx, gfx_pos_t point, gfx_color_t color)
 {
     if (point.x < ctx->width && point.y < ctx->height && point_in_clip(ctx, point.x, point.y)) {
         size_t idx = (size_t) point.y * ctx->width + (size_t) point.x;
-        if (color.a == 0)
-            return;
-        else if (color.a == 255) {
-            ctx->backbuffer[idx] = pack_color(color);
-            return;
-        }
-
-        uint32_t dst = ctx->backbuffer[idx];
-        uint8_t dst_a = (uint8_t) (dst >> 24);
-        uint8_t dst_r = (uint8_t) (dst >> 16);
-        uint8_t dst_g = (uint8_t) (dst >> 8);
-        uint8_t dst_b = (uint8_t) dst;
-        uint32_t inv_a = 255 - color.a;
-
-        uint8_t out_a = (uint8_t) ((color.a + (dst_a * inv_a + 127) / 255) & 0xFF);
-        uint8_t out_r = (uint8_t) ((color.r * color.a + dst_r * inv_a + 127) / 255);
-        uint8_t out_g = (uint8_t) ((color.g * color.a + dst_g * inv_a + 127) / 255);
-        uint8_t out_b = (uint8_t) ((color.b * color.a + dst_b * inv_a + 127) / 255);
-        gfx_color_t out_color = {out_a, out_r, out_g, out_b};
-        ctx->backbuffer[idx] = pack_color(out_color);
+        _blend_pixel(&ctx->backbuffer[idx], pack_color(color));
     }
 }
 
@@ -187,9 +191,15 @@ void gfx_draw_filled_rect(gfx_context_t *ctx, gfx_rect_t rect, gfx_color_t fill)
     if (x1 >= x2 || y1 >= y2)
         return;
 
-    for (uint32_t y = y1; y < y2; y++) {
-        for (uint32_t x = x1; x < x2; x++)
-            gfx_draw_pixel(ctx, (gfx_pos_t) {x, y}, fill);
+    if (fill.a != 0) {
+        uint32_t packed_fill = pack_color(fill);
+        uint32_t draw_width = x2 - x1;
+
+        for (uint32_t y = y1; y < y2; y++) {
+            uint32_t *dst_row = ctx->backbuffer + (size_t) y * ctx->width + x1;
+            for (uint32_t x = 0; x < draw_width; x++)
+                _blend_pixel(&dst_row[x], packed_fill);
+        }
     }
 
     if (rect.border_thickness > 0)
@@ -209,13 +219,19 @@ void gfx_draw_line(gfx_context_t *ctx, gfx_line_t line, gfx_color_t color)
     int t = (int) line.thickness;
     int start_offset = -(t - 1) / 2;
     int end_offset = start_offset + t - 1;
+    uint32_t packed_color = pack_color(color);
 
-    /* Using gfx_draw_pixel which handles clipping */
     while (1) {
         for (int i = start_offset; i <= end_offset; i++) {
             for (int j = start_offset; j <= end_offset; j++)
-                if (x1 + i >= 0 && y1 + j >= 0)
-                    gfx_draw_pixel(ctx, (gfx_pos_t) {(uint32_t) (x1 + i), (uint32_t) (y1 + j)}, color);
+                if (x1 + i >= 0 && y1 + j >= 0) {
+                    uint32_t px = (uint32_t) (x1 + i);
+                    uint32_t py = (uint32_t) (y1 + j);
+                    if (px < ctx->width && py < ctx->height && point_in_clip(ctx, px, py)) {
+                        size_t idx = (size_t) py * ctx->width + (size_t) px;
+                        _blend_pixel(&ctx->backbuffer[idx], packed_color);
+                    }
+                }
         }
         if (x1 == x2 && y1 == y2)
             break;
@@ -266,19 +282,24 @@ void gfx_draw_bitmap(gfx_context_t *ctx, gfx_bitmap_t *bitmap, gfx_pos_t pos, gf
     if (x1 >= x2 || y1 >= y2)
         return;
 
-    for (uint32_t y = y1; y < y2; y++) {
-        uint32_t src_y = y - pos.y;
-        const uint8_t *row = bitmap->data + (size_t) src_y * bitmap->width;
-        for (uint32_t x = x1; x < x2; x++) {
-            uint32_t src_x = x - pos.x;
-            uint8_t level = row[src_x];
+    uint32_t src_x_start = x1 - pos.x;
+    uint32_t src_y_start = y1 - pos.y;
+    uint32_t draw_width = x2 - x1;
+
+    for (uint32_t y = 0; y < y2 - y1; y++) {
+        const uint8_t *src_row = bitmap->data + (size_t) (src_y_start + y) * bitmap->width
+                                 + src_x_start;
+        uint32_t *dst_row = ctx->backbuffer + (size_t) (y1 + y) * ctx->width + x1;
+
+        for (uint32_t x = 0; x < draw_width; x++) {
+            uint8_t level = src_row[x];
             if (level == 0)
                 continue;
-            gfx_color_t out = color;
-            out.a = _mul_u8(level, color.a);
-            if (out.a == 0)
-                continue;
-            gfx_draw_pixel(ctx, (gfx_pos_t) {x, y}, out);
+            uint8_t a = _mul_u8(level, color.a);
+            _blend_pixel(
+                &dst_row[x],
+                ((uint32_t) a << 24) | ((uint32_t) color.r << 16) | ((uint32_t) color.g << 8)
+                    | (uint32_t) color.b);
         }
     }
 }
@@ -310,22 +331,18 @@ void gfx_draw_colored_bitmap(gfx_context_t *ctx, gfx_colored_bitmap_t *bitmap, g
     if (x1 >= x2 || y1 >= y2)
         return;
 
-    for (uint32_t y = y1; y < y2; y++) {
-        uint32_t src_y = y - pos.y;
-        const uint32_t *row = bitmap->data + (size_t) src_y * bitmap->width;
-        for (uint32_t x = x1; x < x2; x++) {
-            uint32_t src_x = x - pos.x;
-            uint32_t src = row[src_x];
+    uint32_t src_x_start = x1 - pos.x;
+    uint32_t src_y_start = y1 - pos.y;
+    uint32_t draw_width = x2 - x1;
 
-            gfx_color_t out = {
-                .a = (uint8_t) (src >> 24),
-                .r = (uint8_t) (src >> 16),
-                .g = (uint8_t) (src >> 8),
-                .b = (uint8_t) src,
-            };
-            if (out.a == 0)
-                continue;
-            gfx_draw_pixel(ctx, (gfx_pos_t) {x, y}, out);
+    for (uint32_t y = 0; y < y2 - y1; y++) {
+        const uint32_t *src_row = bitmap->data + (size_t) (src_y_start + y) * bitmap->width
+                                  + src_x_start;
+        uint32_t *dst_row = ctx->backbuffer + (size_t) (y1 + y) * ctx->width + x1;
+
+        for (uint32_t x = 0; x < draw_width; x++) {
+            uint32_t src = src_row[x];
+            _blend_pixel(&dst_row[x], src);
         }
     }
 }
