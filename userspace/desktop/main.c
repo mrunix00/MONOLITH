@@ -8,11 +8,13 @@
 #include "./magic.h"
 #include "./window.h"
 #include "libgfx/types.h"
+#include "unistd.h"
 
 #include <disk.h>
 #include <libgfx.h>
 #include <libgfx/fonts.h>
 #include <libgfx/images.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -126,6 +128,8 @@ int main()
         while (!handle_input(&context))
             usleep(1);
 
+        uint64_t draw_start = get_ticks();
+
         update_menubar_state(&context);
         update_windows_state(&context);
 
@@ -138,6 +142,9 @@ int main()
         draw_menubar(&context);
         draw_cursor(&context);
         gfx_flush(&context);
-        usleep(1000 / 60);
+
+        uint64_t render_duration = get_ticks() - draw_start;
+        if (render_duration < (1000 / FRAME_RATE))
+            usleep(1000 / FRAME_RATE - render_duration);
     }
 }
