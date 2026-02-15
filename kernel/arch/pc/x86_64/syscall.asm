@@ -64,6 +64,7 @@ extern sys_ipc_request_connection
 extern sys_ipc_wait_connection
 extern sys_ipc_accept_connection
 extern sys_ipc_reject_connection
+extern sys_ipc_send_to
 extern sys_ipc_send
 extern sys_ipc_receive
 extern sys_ipc_disconnect
@@ -97,6 +98,7 @@ syscall_table:
     dq sys_ipc_send
     dq sys_ipc_receive
     dq sys_ipc_disconnect
+    dq sys_ipc_send_to
 syscall_table_end:
 
 section .text

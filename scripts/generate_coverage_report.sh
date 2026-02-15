@@ -36,7 +36,7 @@ lcov --extract "$COVERAGE_DIR/coverage_all.info" "*kernel/*" "*boot/*" "*userspa
 
 # Explicitly remove test files and Unity from the report
 lcov --remove "$COVERAGE_DIR/coverage_kernel.info" \
-     "*test/*" "*libs/Unity/*" \
+     "*test/*" "*libs/Unity/*" "*unistd.h" \
      --output-file "$COVERAGE_DIR/coverage_final.info" \
      --ignore-errors source \
      --ignore-errors empty \
