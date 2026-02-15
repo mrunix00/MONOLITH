@@ -36,11 +36,13 @@ USERSPACE_TEST_SOURCES := \
 	$(CURDIR)/userspace/libc/math_tests.c \
 	$(CURDIR)/userspace/libc/stdlib_tests.c \
 	$(CURDIR)/userspace/libc/string_tests.c \
+	$(CURDIR)/userspace/libc/ipc_tests.c \
 	$(UNITY_SRC) \
 	$(ROOT_DIR)/userspace/libs/libc/src/stdio.c \
 	$(ROOT_DIR)/userspace/libs/libc/src/math.c \
 	$(ROOT_DIR)/userspace/libs/libc/src/stdlib.c \
-	$(ROOT_DIR)/userspace/libs/libc/src/string.c
+	$(ROOT_DIR)/userspace/libs/libc/src/string.c \
+	$(ROOT_DIR)/userspace/libs/libc/src/ipc.c
 
 KERNEL_TEST_CFLAGS := $(CFLAGS) -I$(ROOT_DIR) -I$(CURDIR) -DUNITY_INCLUDE_CONFIG_H
 USERSPACE_TEST_CFLAGS := $(CFLAGS) -I$(ROOT_DIR) -I$(ROOT_DIR)/userspace/libs/libc/include -I$(CURDIR) -DTEST_ENV -DUNITY_INCLUDE_CONFIG_H -DUNITY_EXCLUDE_MATH_H -fno-builtin

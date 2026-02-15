@@ -22,7 +22,7 @@ vfs_drive_t *vfs_new_drive(const char *name)
     /* Assign a unique drive name, first try base name, then append numeric suffix if needed */
     size_t base_len = strlen(name);
     char final_name[40];
-    
+
     /* First check if base name (no suffix) is available */
     bool base_name_exists = false;
     for (int i = 0; i < MAX_DRIVE_COUNT; ++i) {
@@ -31,7 +31,7 @@ vfs_drive_t *vfs_new_drive(const char *name)
             break;
         }
     }
-    
+
     if (!base_name_exists && base_len < sizeof(final_name)) {
         /* Base name is available, use it */
         strncpy(final_name, name, sizeof(final_name) - 1);
@@ -241,6 +241,7 @@ static int _get_path(const char *full_path, vfs_drive_t **drive, char *path, siz
     full_path = colon_pos + 2;
 
     char temp[buffer_size];
+    temp[0] = '\0';
     size_t pos = 0;
 
     /* Process each component of the path */

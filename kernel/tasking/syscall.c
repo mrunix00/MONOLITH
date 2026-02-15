@@ -281,14 +281,14 @@ int sys_ipc_new(const char *name)
 {
     if (!_user_ptr_range(name, 1))
         return -1;
-    return broadcast_new(task_get_current(), name);
+    return ipc_new_channel(task_get_current(), name);
 }
 
 int sys_ipc_request_connection(const char *name, channel_t *channel)
 {
     if (!_user_ptr_range(name, 1) || !_user_ptr_range(channel, sizeof(*channel)))
         return -1;
-    return broadcast_request_connection(task_get_current(), name, channel);
+    return ipc_connect(task_get_current(), name, channel);
 }
 
 int sys_ipc_wait_connection(channel_t *channel, connection_t *connection)
@@ -296,7 +296,7 @@ int sys_ipc_wait_connection(channel_t *channel, connection_t *connection)
     if (!_user_ptr_range(channel, sizeof(*channel))
         || !_user_ptr_range(connection, sizeof(*connection)))
         return -1;
-    return broadcast_wait_connection(task_get_current(), channel, connection);
+    return ipc_await_connection(task_get_current(), channel, connection);
 }
 
 int sys_ipc_accept_connection(channel_t *channel, connection_t *connection)
@@ -304,7 +304,7 @@ int sys_ipc_accept_connection(channel_t *channel, connection_t *connection)
     if (!_user_ptr_range(channel, sizeof(*channel))
         || !_user_ptr_range(connection, sizeof(*connection)))
         return -1;
-    return broadcast_accept_connection(task_get_current(), channel, connection);
+    return ipc_accept_connection(task_get_current(), channel, connection);
 }
 
 int sys_ipc_reject_connection(channel_t *channel, connection_t *connection)
@@ -312,28 +312,37 @@ int sys_ipc_reject_connection(channel_t *channel, connection_t *connection)
     if (!_user_ptr_range(channel, sizeof(*channel))
         || !_user_ptr_range(connection, sizeof(*connection)))
         return -1;
-    return broadcast_reject_connection(task_get_current(), channel, connection);
+    return ipc_reject_connection(task_get_current(), channel, connection);
+}
+
+int sys_ipc_send_to(channel_t *channel, connection_t *connection, void *data, size_t size)
+{
+    if (!_user_ptr_range(channel, sizeof(*channel))
+        || !_user_ptr_range(connection, sizeof(*connection)) || !_user_ptr_range(data, size)) {
+        return -1;
+    }
+    return ipc_send_to(task_get_current(), channel, connection, data, size);
 }
 
 int sys_ipc_send(channel_t *channel, void *data, size_t size)
 {
     if (!_user_ptr_range(channel, sizeof(*channel)) || !_user_ptr_range(data, size))
         return -1;
-    return broadcast_send(task_get_current(), channel, data, size);
+    return ipc_send(task_get_current(), channel, data, size);
 }
 
 int sys_ipc_receive(channel_t *channel, connection_t *sender, void *data, size_t size)
 {
     if (!_user_ptr_range(channel, sizeof(*channel)) || !_user_ptr_range(sender, sizeof(*sender))
-        || !_user_ptr_range(data, size)) {
+        || !_user_ptr_range(data, size))
         return -1;
-    }
-    return broadcast_receive(task_get_current(), channel, sender, data, size);
+
+    return ipc_receive(task_get_current(), channel, sender, data, size);
 }
 
 int sys_ipc_disconnect(channel_t *channel)
 {
     if (!_user_ptr_range(channel, sizeof(*channel)))
         return -1;
-    return broadcast_disconnect(task_get_current(), channel);
+    return ipc_disconnect(task_get_current(), channel);
 }
