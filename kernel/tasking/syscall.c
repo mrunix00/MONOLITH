@@ -48,34 +48,58 @@ static bool _user_ptr_range(const void *ptr, size_t size)
     return end <= USER_SPACE_END;
 }
 
+typedef struct
+{
+    uint32_t *address;
+    uint64_t width;
+    uint64_t height;
+    uint64_t pitch;
+    uint16_t bpp;
+    uint8_t memory_model;
+    uint8_t red_mask_size;
+    uint8_t red_mask_shift;
+    uint8_t green_mask_size;
+    uint8_t green_mask_shift;
+    uint8_t blue_mask_size;
+    uint8_t blue_mask_shift;
+    uint8_t alpha_mask_size;
+    uint8_t alpha_mask_shift;
+} _fb_info_t;
 extern struct limine_framebuffer_request framebuffer_request;
-int sys_request_fb(void *fb_info)
+int sys_request_fb(_fb_info_t *fb_info)
 {
     task_t *current = task_get_current();
-    if (!_user_ptr_range(fb_info, sizeof(void *) * 3))
+    if (!_user_ptr_range(fb_info, sizeof(_fb_info_t)))
         return -1;
-    if (!current)
+    if (!current || (_fb_owner && _fb_owner != current)
+        || framebuffer_request.response->framebuffer_count < 1)
         return -1;
-    if (_fb_owner && _fb_owner != current)
-        return -1;
-    if (framebuffer_request.response->framebuffer_count < 1)
-        return -1;
-    size_t width = framebuffer_request.response->framebuffers[0]->width;
-    size_t height = framebuffer_request.response->framebuffers[0]->height;
-    void *lhfb = vmm_get_lhdm_addr(framebuffer_request.response->framebuffers[0]->address);
-    void *hhfb = framebuffer_request.response->framebuffers[0]->address;
+    struct limine_framebuffer *fb = framebuffer_request.response->framebuffers[0];
+
     /* Map framebuffer into the current task's address space */
     vmm_map_range(
         current->state.cr3,
-        (uintptr_t) hhfb,
-        (uintptr_t) lhfb,
-        width * height * 4,
+        (uintptr_t) fb->address,
+        (uintptr_t) vmm_get_lhdm_addr(fb->address),
+        fb->pitch * fb->height,
         PTFLAG_P | PTFLAG_RW | PTFLAG_US | PTFLAG_PAT,
         true);
-    memcpy(fb_info, &hhfb, sizeof(void *));
-    memcpy(fb_info + sizeof(void *), &width, sizeof(uint64_t));
-    memcpy(fb_info + 2 * sizeof(void *), &height, sizeof(uint64_t));
-    _fb_owner = current;
+
+    *fb_info = (_fb_info_t) {
+        .address = fb->address,
+        .width = fb->width,
+        .height = fb->height,
+        .pitch = fb->pitch,
+        .bpp = fb->bpp,
+        .memory_model = fb->memory_model,
+        .red_mask_size = fb->red_mask_size,
+        .red_mask_shift = fb->red_mask_shift,
+        .green_mask_size = fb->green_mask_size,
+        .green_mask_shift = fb->green_mask_shift,
+        .blue_mask_size = fb->blue_mask_size,
+        .blue_mask_shift = fb->blue_mask_shift,
+    };
+
     return 0;
 }
 

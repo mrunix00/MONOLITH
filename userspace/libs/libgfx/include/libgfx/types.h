@@ -44,6 +44,15 @@ typedef struct
     uint32_t *backbuffer;
     size_t width;
     size_t height;
+    size_t pitch;
+    uint16_t bpp;
+    uint8_t memory_model;
+    uint8_t red_mask_size;
+    uint8_t red_mask_shift;
+    uint8_t green_mask_size;
+    uint8_t green_mask_shift;
+    uint8_t blue_mask_size;
+    uint8_t blue_mask_shift;
     gfx_rect_t clip_rect;
 } gfx_context_t;
 
