@@ -13,6 +13,37 @@
 #define abs(x) ((x) < 0 ? -(x) : (x))
 #define pack_color(c) ((c.a << 24) | (c.r << 16) | (c.g << 8) | c.b)
 
+static inline uint32_t _scale_to_mask(uint8_t v, uint8_t size)
+{
+    if (size == 0)
+        return 0;
+    if (size >= 8)
+        return (uint32_t) v;
+    uint32_t max = (1u << size) - 1u;
+    return (uint32_t) ((v * max + 127) / 255);
+}
+
+static inline uint8_t _fb_bytes_per_pixel(const gfx_context_t *ctx)
+{
+    return (uint8_t) ((ctx->bpp + 7) / 8);
+}
+
+static inline int _fb_format_matches_argb(const gfx_context_t *ctx)
+{
+    return ctx->bpp == 32 && ctx->red_mask_size == 8 && ctx->green_mask_size == 8
+           && ctx->blue_mask_size == 8 && ctx->red_mask_shift == 16 && ctx->green_mask_shift == 8
+           && ctx->blue_mask_shift == 0;
+}
+
+static inline uint32_t _fb_pack_rgb(const gfx_context_t *ctx, uint8_t r, uint8_t g, uint8_t b)
+{
+    uint32_t pr = _scale_to_mask(r, ctx->red_mask_size);
+    uint32_t pg = _scale_to_mask(g, ctx->green_mask_size);
+    uint32_t pb = _scale_to_mask(b, ctx->blue_mask_size);
+    return (pr << ctx->red_mask_shift) | (pg << ctx->green_mask_shift)
+           | (pb << ctx->blue_mask_shift);
+}
+
 static inline void _blend_pixel(uint32_t *dst_ptr, uint32_t src)
 {
     uint8_t _a = (uint8_t) (src >> 24);
@@ -41,18 +72,59 @@ typedef struct
     uint32_t *framebuffer;
     size_t width;
     size_t height;
+    uint64_t pitch;
+    uint16_t bpp;
+    uint8_t memory_model;
+    uint8_t red_mask_size;
+    uint8_t red_mask_shift;
+    uint8_t green_mask_size;
+    uint8_t green_mask_shift;
+    uint8_t blue_mask_size;
+    uint8_t blue_mask_shift;
 } _framebuffer_t;
 
 gfx_context_t gfx_init_screen()
 {
     _framebuffer_t fb;
     syscall1(SYSCALL_REQUEST_FB, (long) &fb);
-    gfx_context_t ctx
-        = {.framebuffer = fb.framebuffer,
-           .width = fb.width,
-           .height = fb.height,
-           .backbuffer = malloc(fb.width * fb.height * sizeof(uint32_t)),
-           .clip_rect = {0, 0, (uint32_t) fb.width, (uint32_t) fb.height, {0, 0, 0, 0}, 0}};
+
+    uint16_t bpp = fb.bpp ? fb.bpp : 32;
+    uint8_t memory_model = fb.memory_model ? fb.memory_model : 1;
+
+    uint8_t red_mask_size = fb.red_mask_size;
+    uint8_t red_mask_shift = fb.red_mask_shift;
+    uint8_t green_mask_size = fb.green_mask_size;
+    uint8_t green_mask_shift = fb.green_mask_shift;
+    uint8_t blue_mask_size = fb.blue_mask_size;
+    uint8_t blue_mask_shift = fb.blue_mask_shift;
+
+    if (red_mask_size == 0 && green_mask_size == 0 && blue_mask_size == 0) {
+        red_mask_size = 8;
+        red_mask_shift = 16;
+        green_mask_size = 8;
+        green_mask_shift = 8;
+        blue_mask_size = 8;
+        blue_mask_shift = 0;
+    }
+
+    uint64_t pitch = fb.pitch ? fb.pitch : (uint64_t) fb.width * ((bpp + 7) / 8);
+
+    gfx_context_t ctx = {
+        .framebuffer = fb.framebuffer,
+        .width = fb.width,
+        .height = fb.height,
+        .pitch = pitch,
+        .bpp = bpp,
+        .memory_model = memory_model,
+        .red_mask_size = red_mask_size,
+        .red_mask_shift = red_mask_shift,
+        .green_mask_size = green_mask_size,
+        .green_mask_shift = green_mask_shift,
+        .blue_mask_size = blue_mask_size,
+        .blue_mask_shift = blue_mask_shift,
+        .backbuffer = malloc(fb.width * fb.height * sizeof(uint32_t)),
+        .clip_rect = {0, 0, (uint32_t) fb.width, (uint32_t) fb.height, {0, 0, 0, 0}, 0},
+    };
     return ctx;
 }
 
@@ -63,10 +135,42 @@ void gfx_deinit(gfx_context_t *context)
 
 void gfx_flush(gfx_context_t *context)
 {
-    memcpy(
-        context->framebuffer,
-        context->backbuffer,
-        context->width * context->height * sizeof(uint32_t));
+    if (!context || !context->framebuffer || !context->backbuffer)
+        return;
+
+    uint8_t *dst = (uint8_t *) context->framebuffer;
+    size_t width = context->width;
+    size_t height = context->height;
+    uint8_t bpp_bytes = _fb_bytes_per_pixel(context);
+
+    if (context->memory_model == 1 && _fb_format_matches_argb(context) && bpp_bytes == 4
+        && context->pitch == width * sizeof(uint32_t)) {
+        memcpy(context->framebuffer, context->backbuffer, width * height * sizeof(uint32_t));
+        return;
+    }
+
+    for (size_t y = 0; y < height; y++) {
+        uint8_t *dst_row = dst + y * context->pitch;
+        const uint32_t *src_row = context->backbuffer + y * width;
+
+        for (size_t x = 0; x < width; x++) {
+            uint32_t src = src_row[x];
+            uint8_t r = (uint8_t) (src >> 16);
+            uint8_t g = (uint8_t) (src >> 8);
+            uint8_t b = (uint8_t) src;
+
+            uint32_t packed = (context->memory_model == 1) ? _fb_pack_rgb(context, r, g, b) : src;
+            uint8_t *p = dst_row + x * bpp_bytes;
+
+            if (bpp_bytes == 4) {
+                *(uint32_t *) p = packed;
+            } else {
+                for (uint8_t i = 0; i < bpp_bytes; i++) {
+                    p[i] = (uint8_t) (packed >> (i * 8));
+                }
+            }
+        }
+    }
 }
 
 void gfx_clear(gfx_context_t *ctx, gfx_color_t color)

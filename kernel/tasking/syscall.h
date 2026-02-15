@@ -6,8 +6,6 @@
 #pragma once
 
 #include <kernel/tasking/task.h>
-#include <stddef.h>
-#include <stdint.h>
 
 /*
  * Flags for sys_alloc_pages.
