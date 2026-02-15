@@ -40,6 +40,11 @@ static void _mouse_irq()
     switch (_mouse_cycle) {
     case 0:
         _mouse_byte[0] = asm_inb(PS2_DATA_PORT);
+        /* Sync packet: bit 3 must always be set */
+        if (!(_mouse_byte[0] & 0x08)) {
+            _mouse_cycle = 0;
+            break;
+        }
         _mouse_cycle++;
         break;
     case 1:
@@ -55,17 +60,13 @@ static void _mouse_irq()
         _mouse_right_button = _mouse_byte[0] & 0x02;
         _mouse_middle_button = _mouse_byte[0] & 0x04;
 
-        /* Calculate movement deltas with sign extension */
-        int8_t delta_x = _mouse_byte[1];
-        int8_t delta_y = _mouse_byte[2];
+        /* Drop packet on overflow */
+        if (_mouse_byte[0] & 0xC0)
+            break;
 
-        /* Handle sign extension for 9-bit values */
-        if (_mouse_byte[0] & 0x10) {
-            delta_x |= 0xFFFFFF00; /* Sign extend */
-        }
-        if (_mouse_byte[0] & 0x20) {
-            delta_y |= 0xFFFFFF00; /* Sign extend */
-        }
+        /* Calculate movement deltas */
+        int32_t delta_x = (int8_t)_mouse_byte[1];
+        int32_t delta_y = (int8_t)_mouse_byte[2];
 
         /* Update accumulated position */
         _mouse_x += delta_x;
