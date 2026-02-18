@@ -8,6 +8,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <kernel/fs/vfs.h>
+
+
 
 typedef enum task_mode {
     TASK_MODE_KERNEL = 0,
@@ -66,6 +69,9 @@ struct task
     char *name;
     task_state_t state;
     task_mem_t memory;
+    file_t *fd_table;
+    size_t fd_count;
+    size_t fd_capacity;
     uintptr_t stack_bottom;
     unsigned int quantum;
     unsigned int quantum_remaining;
