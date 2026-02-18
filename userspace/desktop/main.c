@@ -10,7 +10,7 @@
 #include "libgfx/types.h"
 #include "unistd.h"
 
-#include <disk.h>
+
 #include <libgfx.h>
 #include <libgfx/fonts.h>
 #include <libgfx/images.h>
@@ -52,31 +52,40 @@ static void _menu_action_reboot(void) {}
 
 static gfx_colored_bitmap_t _load_wallpaper(const char *wallpaper, uint32_t width, uint32_t height)
 {
-    FILE wallpaper_image = file_open(wallpaper);
-    if (wallpaper_image == NULL)
+    int fd = open(wallpaper, O_RDONLY);
+    if (fd < 0)
         return (gfx_colored_bitmap_t) {0};
 
     file_stats_t stats;
-    if (file_getstats(wallpaper_image, &stats) < 0)
+    if (fstat(fd, &stats) < 0) {
+        close(fd);
         return (gfx_colored_bitmap_t) {0};
-    if (stats.type != TYPE_FILE || stats.size == 0)
+    }
+    if (stats.type != TYPE_FILE || stats.size == 0) {
+        close(fd);
         return (gfx_colored_bitmap_t) {0};
+    }
 
     uint8_t *img_data = malloc((size_t) stats.size);
-    if (img_data == NULL)
+    if (img_data == NULL) {
+        close(fd);
         return (gfx_colored_bitmap_t) {0};
+    }
 
     uint64_t read_size = 0;
     do {
         uint32_t chunk = (uint32_t) ((stats.size - read_size) > 8192 ? 8192
                                                                      : (stats.size - read_size));
-        int bytes_read = file_read(wallpaper_image, img_data + read_size, chunk);
+        int bytes_read = read(fd, img_data + read_size, chunk);
         if (bytes_read <= 0) {
+            close(fd);
             free(img_data);
             return (gfx_colored_bitmap_t) {0};
         }
         read_size += (uint64_t) bytes_read;
     } while (read_size < stats.size);
+
+    close(fd);
 
     gfx_colored_bitmap_t wallpaper_img = gfx_load_image(img_data, (size_t) stats.size);
     free(img_data);

@@ -29,6 +29,14 @@ void syscalls_init()
 #define USER_SPACE_START 0x0000000000001000ULL
 #define USER_SPACE_END 0x0000800000000000ULL
 
+#define O_RDONLY 0x0
+#define O_WRONLY 0x1
+#define O_RDWR 0x2
+#define O_ACCMODE 0x3
+#define O_CREAT 0x40
+#define O_TRUNC 0x200
+#define FD_TABLE_INITIAL_CAPACITY 16
+
 static bool _user_ptr_range(const void *ptr, size_t size)
 {
     if (!ptr)
@@ -46,6 +54,92 @@ static bool _user_ptr_range(const void *ptr, size_t size)
         return false;
 
     return end <= USER_SPACE_END;
+}
+
+static int _fd_ensure_capacity(task_t *task, size_t min_capacity)
+{
+    if (!task)
+        return -1;
+
+    if (task->fd_capacity >= min_capacity)
+        return 0;
+
+    size_t new_capacity = task->fd_capacity ? task->fd_capacity : FD_TABLE_INITIAL_CAPACITY;
+    while (new_capacity < min_capacity) {
+        new_capacity *= 2;
+    }
+
+    size_t old_capacity = task->fd_capacity;
+    size_t new_size = new_capacity * sizeof(file_t);
+    size_t old_size = old_capacity * sizeof(file_t);
+
+    file_t *new_table = task->fd_table ? krealloc(task->fd_table, new_size) : kmalloc(new_size);
+    if (!new_table)
+        return -1;
+
+    if (new_size > old_size) {
+        memset((uint8_t *) new_table + old_size, 0, new_size - old_size);
+    }
+
+    task->fd_table = new_table;
+    task->fd_capacity = new_capacity;
+    return 0;
+}
+
+static int _fd_alloc(task_t *task, const file_t *file)
+{
+    if (!task || !file)
+        return -1;
+
+    for (size_t i = 0; i < task->fd_capacity; i++) {
+        if (task->fd_table[i].internal == NULL) {
+            task->fd_table[i] = *file;
+            if (i >= task->fd_count)
+                task->fd_count = i + 1;
+            return (int) i;
+        }
+    }
+
+    size_t new_index = task->fd_capacity;
+    if (_fd_ensure_capacity(task, new_index + 1) < 0)
+        return -1;
+
+    task->fd_table[new_index] = *file;
+    task->fd_count = new_index + 1;
+    return (int) new_index;
+}
+
+static file_t *_fd_get(task_t *task, int fd)
+{
+    if (!task || fd < 0 || (size_t) fd >= task->fd_capacity)
+        return NULL;
+
+    file_t *file = &task->fd_table[fd];
+    if (file->internal == NULL)
+        return NULL;
+
+    return file;
+}
+
+static int _fd_close(task_t *task, int fd)
+{
+    if (!task || fd < 0 || (size_t) fd >= task->fd_capacity)
+        return -1;
+
+    file_t *file = &task->fd_table[fd];
+    if (file->internal == NULL)
+        return -1;
+
+    *file = (file_t) {0};
+
+    while (task->fd_count > 0) {
+        size_t last = task->fd_count - 1;
+        if (task->fd_table[last].internal != NULL)
+            break;
+        task->fd_count--;
+    }
+
+    return 0;
 }
 
 typedef struct
@@ -112,21 +206,41 @@ int sys_poll_input_event(input_event_t *event)
     return 0;
 }
 
-void *sys_file_open(const char *path)
+int sys_file_open(const char *path, int flags)
 {
     if (!_user_ptr_range(path, 1))
-        return NULL;
-    file_t *file = kmalloc(sizeof(file_t));
-    if (!file) {
-        return NULL;
+        return -1;
+
+    int accmode = flags & O_ACCMODE;
+    if (accmode != O_RDONLY && accmode != O_WRONLY && accmode != O_RDWR)
+        return -1;
+    if (flags & ~(O_ACCMODE | O_CREAT | O_TRUNC))
+        return -1;
+    if (flags & O_TRUNC)
+        return -1;
+
+    if (flags & O_CREAT) {
+        file_create(path, FILE);
     }
-    *file = file_open(path);
-    return file;
+
+    task_t *current = task_get_current();
+    if (!current)
+        return -1;
+
+    file_t file = file_open(path);
+    if (file.internal == NULL)
+        return -1;
+
+    return _fd_alloc(current, &file);
 }
 
-void sys_file_close(void *file)
+int sys_file_close(int fd)
 {
-    kfree((file_t *) file);
+    task_t *current = task_get_current();
+    if (!current)
+        return -1;
+
+    return _fd_close(current, fd);
 }
 
 int sys_file_create(const char *path, file_type_t type)
@@ -143,41 +257,75 @@ int sys_file_remove(const char *path)
     return file_remove(path);
 }
 
-int sys_file_read(file_t *file, void *buffer, uint32_t size)
+int sys_file_read(int fd, void *buffer, uint32_t size)
 {
     if (!_user_ptr_range(buffer, size))
         return -1;
+
+    task_t *current = task_get_current();
+    file_t *file = _fd_get(current, fd);
+    if (!file)
+        return -1;
+
     return file_read(file, buffer, size);
 }
 
-int sys_file_write(file_t *file, const void *buffer, uint32_t size)
+int sys_file_write(int fd, const void *buffer, uint32_t size)
 {
     if (!_user_ptr_range(buffer, size))
         return -1;
+
+    task_t *current = task_get_current();
+    file_t *file = _fd_get(current, fd);
+    if (!file)
+        return -1;
+
     return file_write(file, buffer, size);
 }
 
-int sys_file_seek(file_t *file, size_t offset, seek_mode_t mode)
+int sys_file_seek(int fd, size_t offset, seek_mode_t mode)
 {
+    task_t *current = task_get_current();
+    file_t *file = _fd_get(current, fd);
+    if (!file)
+        return -1;
+
     return file_seek(file, offset, mode);
 }
 
-int sys_file_getdents(file_t *file, void *buffer, uint32_t size)
+int sys_file_getdents(int fd, void *buffer, uint32_t size)
 {
     if (!_user_ptr_range(buffer, size))
         return -1;
+
+    task_t *current = task_get_current();
+    file_t *file = _fd_get(current, fd);
+    if (!file)
+        return -1;
+
     return file_getdents(file, buffer, size);
 }
 
-int sys_file_getstats(file_t *file, file_stats_t *stats)
+int sys_file_getstats(int fd, file_stats_t *stats)
 {
     if (!_user_ptr_range(stats, sizeof(*stats)))
         return -1;
+
+    task_t *current = task_get_current();
+    file_t *file = _fd_get(current, fd);
+    if (!file)
+        return -1;
+
     return file_getstats(file, stats);
 }
 
-size_t sys_file_tell(file_t *file)
+size_t sys_file_tell(int fd)
 {
+    task_t *current = task_get_current();
+    file_t *file = _fd_get(current, fd);
+    if (!file)
+        return (size_t) -1;
+
     return file_tell(file);
 }
 
@@ -299,6 +447,16 @@ void syscalls_task_cleanup(task_t *task)
 {
     if (_fb_owner == task)
         _fb_owner = NULL;
+
+    if (!task)
+        return;
+
+    if (task->fd_table) {
+        kfree(task->fd_table);
+        task->fd_table = NULL;
+    }
+    task->fd_count = 0;
+    task->fd_capacity = 0;
 }
 
 int sys_ipc_new(const char *name)
