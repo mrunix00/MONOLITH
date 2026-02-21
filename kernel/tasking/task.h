@@ -5,12 +5,10 @@
 
 #pragma once
 
+#include <kernel/fs/vfs.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <kernel/fs/vfs.h>
-
-
 
 typedef enum task_mode {
     TASK_MODE_KERNEL = 0,
@@ -82,6 +80,8 @@ struct task
 void task_switching_init();
 task_t *task_create(void *entry_point, const char *name, task_mode_t mode);
 task_t *task_get_current();
+uintptr_t task_find_free_vaddr(task_t *task, size_t num_pages);
+task_t *task_find_by_id(uint64_t id);
 int task_map(
     task_t *task,
     uintptr_t virt_addr,
@@ -89,6 +89,7 @@ int task_map(
     size_t page_count,
     uintptr_t flags,
     bool release_on_exit);
+int task_unmap(task_t *task, uintptr_t virt_addr, size_t page_count, bool release_on_exit);
 void task_remove(task_t *task);
 void task_switch(task_t *task);
 void task_mark_exiting(task_t *task);

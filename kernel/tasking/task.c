@@ -25,6 +25,8 @@
 #define USER_DATA_SELECTOR 0x23
 #define DEFAULT_RFLAGS 0x202
 #define KERNEL_STACK_SIZE 0x4000
+#define USER_SPACE_START 0x0000000000001000ULL
+#define USER_SPACE_END 0x0000800000000000ULL
 
 static task_t _task_list_head;
 static task_t *_task_list_tail;
@@ -138,6 +140,82 @@ int task_map(
 task_t *task_get_current()
 {
     return _current_task;
+}
+
+uintptr_t task_find_free_vaddr(task_t *task, size_t num_pages)
+{
+    if (!task || num_pages == 0)
+        return 0;
+
+    size_t required_size = num_pages * PAGE_SIZE;
+    uintptr_t candidate = USER_SPACE_START;
+
+    if (task->memory.memblocks == NULL || task->memory.memblocks_count == 0) {
+        if (candidate < USER_SPACE_START || candidate + required_size > USER_SPACE_END)
+            return 0;
+        return candidate;
+    }
+
+    bool adjusted;
+    do {
+        adjusted = false;
+        for (size_t i = 0; i < task->memory.memblocks_count; i++) {
+            task_memblock_t *block = &task->memory.memblocks[i];
+            uintptr_t block_end = block->virt_addr + block->page_count * PAGE_SIZE;
+
+            if (candidate < block_end && candidate + required_size > block->virt_addr) {
+                candidate = block_end;
+                adjusted = true;
+                break;
+            }
+        }
+    } while (adjusted);
+
+    if (candidate < USER_SPACE_START || candidate + required_size > USER_SPACE_END)
+        return 0;
+
+    return candidate;
+}
+
+task_t *task_find_by_id(uint64_t id)
+{
+    if (id == 0)
+        return NULL;
+
+    task_t *cursor = _task_list_head.next ? _task_list_head.next : &_task_list_head;
+    while (cursor && cursor != &_task_list_head) {
+        if (cursor->id == id)
+            return cursor;
+        cursor = cursor->next ? cursor->next : &_task_list_head;
+    }
+
+    return NULL;
+}
+
+int task_unmap(task_t *task, uintptr_t virt_addr, size_t page_count, bool release_on_exit)
+{
+    if (!task || page_count == 0)
+        return -1;
+
+    vmm_unmap_range(task->state.cr3, virt_addr, page_count * PAGE_SIZE, true);
+
+    if (!task->memory.memblocks || task->memory.memblocks_count == 0)
+        return 0;
+
+    for (size_t i = 0; i < task->memory.memblocks_count; i++) {
+        task_memblock_t *memblock = &task->memory.memblocks[i];
+        if (memblock->virt_addr == virt_addr && memblock->page_count == page_count) {
+            if (release_on_exit && memblock->phys_addr)
+                pmm_free((void *) memblock->phys_addr, memblock->page_count);
+
+            for (size_t j = i + 1; j < task->memory.memblocks_count; j++)
+                task->memory.memblocks[j - 1] = task->memory.memblocks[j];
+            task->memory.memblocks_count--;
+            break;
+        }
+    }
+
+    return 0;
 }
 
 void task_remove(task_t *task)
