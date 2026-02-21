@@ -367,35 +367,6 @@ uint64_t sys_get_ticks()
     return timer_get_ticks();
 }
 
-/* Find an unused virtual address region in the task's address space */
-static uintptr_t _find_free_vaddr(task_t *task, size_t num_pages)
-{
-    size_t required_size = num_pages * PAGE_SIZE;
-    uintptr_t candidate = USER_SPACE_START;
-
-    if (task->memory.memblocks == NULL || task->memory.memblocks_count == 0)
-        return candidate;
-
-    /* First-fit search with rescan to avoid overlapping earlier blocks. */
-    bool adjusted;
-    do {
-        adjusted = false;
-        for (size_t i = 0; i < task->memory.memblocks_count; i++) {
-            task_memblock_t *block = &task->memory.memblocks[i];
-            uintptr_t block_end = block->virt_addr + block->page_count * PAGE_SIZE;
-
-            /* If candidate overlaps with this block, move past it and rescan. */
-            if (candidate < block_end && candidate + required_size > block->virt_addr) {
-                candidate = block_end;
-                adjusted = true;
-                break;
-            }
-        }
-    } while (adjusted);
-
-    return candidate;
-}
-
 void *sys_alloc_pages(size_t num_pages, uint64_t flags)
 {
     if (num_pages == 0)
@@ -409,7 +380,7 @@ void *sys_alloc_pages(size_t num_pages, uint64_t flags)
     if (!phys_mem)
         return NULL;
 
-    uintptr_t virt_addr = _find_free_vaddr(current, num_pages);
+    uintptr_t virt_addr = task_find_free_vaddr(current, num_pages);
     if (virt_addr == 0) {
         pmm_free(phys_mem, num_pages);
         return NULL;
@@ -459,72 +430,72 @@ void syscalls_task_cleanup(task_t *task)
     task->fd_capacity = 0;
 }
 
-int sys_ipc_new(const char *name)
+channel_id_t sys_ipc_new(const char *name)
 {
     if (!_user_ptr_range(name, 1))
         return -1;
     return ipc_new_channel(task_get_current(), name);
 }
 
-int sys_ipc_request_connection(const char *name, channel_t *channel)
+channel_id_t sys_ipc_request_connection(const char *name)
 {
-    if (!_user_ptr_range(name, 1) || !_user_ptr_range(channel, sizeof(*channel)))
+    if (!_user_ptr_range(name, 1))
         return -1;
-    return ipc_connect(task_get_current(), name, channel);
+    return ipc_connect(task_get_current(), name);
 }
 
-int sys_ipc_wait_connection(channel_t *channel, connection_t *connection)
+int sys_ipc_wait_connection(channel_id_t channel_id, connection_t *connection)
 {
-    if (!_user_ptr_range(channel, sizeof(*channel))
-        || !_user_ptr_range(connection, sizeof(*connection)))
+    if (!_user_ptr_range(connection, sizeof(*connection)))
         return -1;
-    return ipc_await_connection(task_get_current(), channel, connection);
+    return ipc_await_connection(task_get_current(), channel_id, connection);
 }
 
-int sys_ipc_accept_connection(channel_t *channel, connection_t *connection)
+int sys_ipc_accept_connection(channel_id_t channel_id, connection_t *connection)
 {
-    if (!_user_ptr_range(channel, sizeof(*channel))
-        || !_user_ptr_range(connection, sizeof(*connection)))
+    if (!_user_ptr_range(connection, sizeof(*connection)))
         return -1;
-    return ipc_accept_connection(task_get_current(), channel, connection);
+    return ipc_accept_connection(task_get_current(), channel_id, connection);
 }
 
-int sys_ipc_reject_connection(channel_t *channel, connection_t *connection)
+int sys_ipc_reject_connection(channel_id_t channel_id, connection_t *connection)
 {
-    if (!_user_ptr_range(channel, sizeof(*channel))
-        || !_user_ptr_range(connection, sizeof(*connection)))
+    if (!_user_ptr_range(connection, sizeof(*connection)))
         return -1;
-    return ipc_reject_connection(task_get_current(), channel, connection);
+    return ipc_reject_connection(task_get_current(), channel_id, connection);
 }
 
-int sys_ipc_send_to(channel_t *channel, connection_t *connection, void *data, size_t size)
+int sys_ipc_send_to(channel_id_t channel_id, connection_t *connection, void *data, size_t size)
 {
-    if (!_user_ptr_range(channel, sizeof(*channel))
-        || !_user_ptr_range(connection, sizeof(*connection)) || !_user_ptr_range(data, size)) {
+    if (!_user_ptr_range(connection, sizeof(*connection)) || !_user_ptr_range(data, size)) {
         return -1;
     }
-    return ipc_send_to(task_get_current(), channel, connection, data, size);
+    return ipc_send_to(task_get_current(), channel_id, connection, data, size);
 }
 
-int sys_ipc_send(channel_t *channel, void *data, size_t size)
+int sys_ipc_send(channel_id_t channel_id, void *data, size_t size)
 {
-    if (!_user_ptr_range(channel, sizeof(*channel)) || !_user_ptr_range(data, size))
+    if (!_user_ptr_range(data, size))
         return -1;
-    return ipc_send(task_get_current(), channel, data, size);
+    return ipc_send(task_get_current(), channel_id, data, size);
 }
 
-int sys_ipc_receive(channel_t *channel, connection_t *sender, void *data, size_t size)
+int sys_ipc_request_shm(channel_id_t channel_id, size_t size, uint64_t flags, void **out_addr)
 {
-    if (!_user_ptr_range(channel, sizeof(*channel)) || !_user_ptr_range(sender, sizeof(*sender))
-        || !_user_ptr_range(data, size))
+    if (!_user_ptr_range(out_addr, sizeof(*out_addr)))
         return -1;
-
-    return ipc_receive(task_get_current(), channel, sender, data, size);
+    return ipc_request_shared_memory(task_get_current(), channel_id, size, flags, out_addr);
 }
 
-int sys_ipc_disconnect(channel_t *channel)
+int sys_ipc_receive(channel_id_t channel_id, connection_t *sender, void *data, size_t size)
 {
-    if (!_user_ptr_range(channel, sizeof(*channel)))
+    if (!_user_ptr_range(sender, sizeof(*sender)) || !_user_ptr_range(data, size))
         return -1;
-    return ipc_disconnect(task_get_current(), channel);
+
+    return ipc_receive(task_get_current(), channel_id, sender, data, size);
+}
+
+int sys_ipc_disconnect(channel_id_t channel_id)
+{
+    return ipc_disconnect(task_get_current(), channel_id);
 }

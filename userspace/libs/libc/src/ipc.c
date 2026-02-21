@@ -21,8 +21,7 @@ typedef struct
     size_t capacity;
     size_t length;
     size_t offset;
-    char channel_name[IPC_CHANNEL_NAME_MAX];
-    uint64_t owner_task_id;
+    channel_id_t channel_id;
 } ipc_receive_cache_t;
 
 static ipc_receive_cache_t _ipc_cache;
@@ -51,27 +50,18 @@ static void _ipc_cache_reset(void)
 void ipc_test_reset_cache(void)
 {
     _ipc_cache_reset();
-    _ipc_cache.channel_name[0] = '\0';
-    _ipc_cache.owner_task_id = 0;
+    _ipc_cache.channel_id = -1;
 }
 #endif
 
-static void _ipc_cache_set_channel(const channel_t *channel)
+static void _ipc_cache_set_channel(channel_id_t channel_id)
 {
-    strncpy(_ipc_cache.channel_name, channel->name, IPC_CHANNEL_NAME_MAX);
-    _ipc_cache.channel_name[IPC_CHANNEL_NAME_MAX - 1] = '\0';
-    _ipc_cache.owner_task_id = channel->owner_task_id;
+    _ipc_cache.channel_id = channel_id;
 }
 
-static int _ipc_cache_matches_channel(const channel_t *channel)
+static int _ipc_cache_matches_channel(channel_id_t channel_id)
 {
-    if (!channel)
-        return 0;
-    if (strncmp(_ipc_cache.channel_name, channel->name, IPC_CHANNEL_NAME_MAX) != 0)
-        return 0;
-    if (_ipc_cache.owner_task_id != channel->owner_task_id)
-        return 0;
-    return 1;
+    return _ipc_cache.channel_id == channel_id;
 }
 
 static int _ipc_cache_ensure_capacity(size_t min_capacity)
@@ -92,14 +82,14 @@ static int _ipc_cache_ensure_capacity(size_t min_capacity)
     return 0;
 }
 
-int ipc_receive(channel_t *channel, connection_t *sender, void *data, size_t size)
+int ipc_receive(channel_id_t channel_id, connection_t *sender, void *data, size_t size)
 {
-    if (!channel || !data || size == 0)
+    if (channel_id < 0 || !data || size == 0)
         return -1;
 
-    if (!_ipc_cache_matches_channel(channel)) {
+    if (!_ipc_cache_matches_channel(channel_id)) {
         _ipc_cache_reset();
-        _ipc_cache_set_channel(channel);
+        _ipc_cache_set_channel(channel_id);
     }
 
     if (_ipc_cache.offset >= _ipc_cache.length) {
@@ -113,7 +103,7 @@ int ipc_receive(channel_t *channel, connection_t *sender, void *data, size_t siz
 
         int result = _ipc_syscall4(
             SYSCALL_IPC_RECEIVE_ALL,
-            (long) channel,
+            (long) channel_id,
             (long) sender_ptr,
             (long) _ipc_cache.data,
             (long) _ipc_cache.capacity);
@@ -130,8 +120,7 @@ int ipc_receive(channel_t *channel, connection_t *sender, void *data, size_t siz
     if (_ipc_cache.length - _ipc_cache.offset < sizeof(_ipc_batch_entry_t))
         return -1;
 
-    _ipc_batch_entry_t *entry
-        = (_ipc_batch_entry_t *) (_ipc_cache.data + _ipc_cache.offset);
+    _ipc_batch_entry_t *entry = (_ipc_batch_entry_t *) (_ipc_cache.data + _ipc_cache.offset);
     size_t entry_total = sizeof(_ipc_batch_entry_t) + entry->size;
 
     if (_ipc_cache.length - _ipc_cache.offset < entry_total)
@@ -150,4 +139,13 @@ int ipc_receive(channel_t *channel, connection_t *sender, void *data, size_t siz
         _ipc_cache_reset();
 
     return 0;
+}
+
+int ipc_request_shared_memory(channel_id_t channel_id, size_t size, uint64_t flags, void **out_addr)
+{
+    if (channel_id < 0 || !out_addr || size == 0)
+        return -1;
+
+    return (int)
+        syscall4(SYSCALL_IPC_REQUEST_SHM, (long) channel_id, (long) size, (long) flags, (long) out_addr);
 }

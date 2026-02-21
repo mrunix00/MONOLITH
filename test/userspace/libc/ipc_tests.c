@@ -2,10 +2,10 @@
  * Userspace IPC API tests (batched receive + cache behavior).
  */
 
-#include <libs/Unity/src/unity.h>
 #include <ipc.h>
-#include <string.h>
+#include <libs/Unity/src/unity.h>
 #include <stdint.h>
+#include <string.h>
 #include <sys/syscall.h>
 
 typedef struct
@@ -21,11 +21,16 @@ extern void ipc_test_reset_cache(void);
 static int g_syscall_calls = 0;
 static int g_stub_mode = 0;
 static int g_last_syscall_num = 0;
-static void *g_last_channel_ptr = NULL;
+static channel_id_t g_last_channel_id = -1;
 
-static size_t build_batch(void *buffer,
-                          const void *msg1, size_t msg1_len, uint64_t sender1,
-                          const void *msg2, size_t msg2_len, uint64_t sender2)
+static size_t build_batch(
+    void *buffer,
+    const void *msg1,
+    size_t msg1_len,
+    uint64_t sender1,
+    const void *msg2,
+    size_t msg2_len,
+    uint64_t sender2)
 {
     size_t offset = 0;
     if (msg1 && msg1_len > 0) {
@@ -49,9 +54,9 @@ static int ipc_syscall_stub(long num, long arg1, long arg2, long arg3, long arg4
 {
     g_syscall_calls++;
     g_last_syscall_num = (int) num;
-    g_last_channel_ptr = (void *) arg1;
+    g_last_channel_id = (channel_id_t) arg1;
 
-    if (!arg1 || !arg2 || !arg3 || arg4 <= 0)
+    if (!arg2 || !arg3 || arg4 <= 0)
         return -1;
 
     if (g_stub_mode == 0) {
@@ -97,39 +102,34 @@ static void reset_test_state(void)
     g_syscall_calls = 0;
     g_stub_mode = 0;
     g_last_syscall_num = 0;
-    g_last_channel_ptr = NULL;
+    g_last_channel_id = -1;
     ipc_test_syscall4 = ipc_syscall_stub;
     ipc_test_reset_cache();
 }
 
-static channel_t make_channel(const char *name, uint64_t owner_task_id)
+static channel_id_t make_channel_id(channel_id_t channel_id)
 {
-    channel_t channel;
-    memset(&channel, 0, sizeof(channel));
-    strncpy(channel.name, name, IPC_CHANNEL_NAME_MAX);
-    channel.name[IPC_CHANNEL_NAME_MAX - 1] = '\0';
-    channel.owner_task_id = owner_task_id;
-    return channel;
+    return channel_id;
 }
 
 static void test_ipc_receive_batches_and_caches(void)
 {
     reset_test_state();
 
-    channel_t channel = make_channel("chanA", 100);
+    channel_id_t channel = make_channel_id(100);
     connection_t sender = {0};
     char buffer[64];
 
-    int result = ipc_receive(&channel, &sender, buffer, sizeof(buffer));
+    int result = ipc_receive(channel, &sender, buffer, sizeof(buffer));
     TEST_ASSERT_EQUAL(0, result);
     TEST_ASSERT_EQUAL_STRING("hello", buffer);
     TEST_ASSERT_EQUAL_UINT64(11, sender.task_id);
     TEST_ASSERT_EQUAL(1, g_syscall_calls);
     TEST_ASSERT_EQUAL(SYSCALL_IPC_RECEIVE_ALL, g_last_syscall_num);
-    TEST_ASSERT_EQUAL_PTR(&channel, g_last_channel_ptr);
+    TEST_ASSERT_EQUAL_INT64(channel, g_last_channel_id);
 
     memset(buffer, 0, sizeof(buffer));
-    result = ipc_receive(&channel, &sender, buffer, sizeof(buffer));
+    result = ipc_receive(channel, &sender, buffer, sizeof(buffer));
     TEST_ASSERT_EQUAL(0, result);
     TEST_ASSERT_EQUAL_STRING("world", buffer);
     TEST_ASSERT_EQUAL_UINT64(22, sender.task_id);
@@ -141,18 +141,18 @@ static void test_ipc_receive_refills_after_cache_empty(void)
     reset_test_state();
     g_stub_mode = 1;
 
-    channel_t channel = make_channel("chanB", 200);
+    channel_id_t channel = make_channel_id(200);
     connection_t sender = {0};
     char buffer[64];
 
-    int result = ipc_receive(&channel, &sender, buffer, sizeof(buffer));
+    int result = ipc_receive(channel, &sender, buffer, sizeof(buffer));
     TEST_ASSERT_EQUAL(0, result);
     TEST_ASSERT_EQUAL_STRING("one", buffer);
     TEST_ASSERT_EQUAL_UINT64(111, sender.task_id);
     TEST_ASSERT_EQUAL(1, g_syscall_calls);
 
     memset(buffer, 0, sizeof(buffer));
-    result = ipc_receive(&channel, &sender, buffer, sizeof(buffer));
+    result = ipc_receive(channel, &sender, buffer, sizeof(buffer));
     TEST_ASSERT_EQUAL(0, result);
     TEST_ASSERT_EQUAL_STRING("two", buffer);
     TEST_ASSERT_EQUAL_UINT64(222, sender.task_id);
@@ -163,21 +163,21 @@ static void test_ipc_receive_cache_resets_on_channel_change(void)
 {
     reset_test_state();
 
-    channel_t channel_a = make_channel("chanA", 300);
-    channel_t channel_b = make_channel("chanB", 400);
+    channel_id_t channel_a = make_channel_id(300);
+    channel_id_t channel_b = make_channel_id(400);
     connection_t sender = {0};
     char buffer[64];
 
-    int result = ipc_receive(&channel_a, &sender, buffer, sizeof(buffer));
+    int result = ipc_receive(channel_a, &sender, buffer, sizeof(buffer));
     TEST_ASSERT_EQUAL(0, result);
     TEST_ASSERT_EQUAL(1, g_syscall_calls);
-    TEST_ASSERT_EQUAL_PTR(&channel_a, g_last_channel_ptr);
+    TEST_ASSERT_EQUAL_INT64(channel_a, g_last_channel_id);
 
     memset(buffer, 0, sizeof(buffer));
-    result = ipc_receive(&channel_b, &sender, buffer, sizeof(buffer));
+    result = ipc_receive(channel_b, &sender, buffer, sizeof(buffer));
     TEST_ASSERT_EQUAL(0, result);
     TEST_ASSERT_EQUAL(2, g_syscall_calls);
-    TEST_ASSERT_EQUAL_PTR(&channel_b, g_last_channel_ptr);
+    TEST_ASSERT_EQUAL_INT64(channel_b, g_last_channel_id);
 }
 
 static void test_ipc_receive_no_message_returns_one(void)
@@ -185,11 +185,11 @@ static void test_ipc_receive_no_message_returns_one(void)
     reset_test_state();
     g_stub_mode = 2;
 
-    channel_t channel = make_channel("chanC", 500);
+    channel_id_t channel = make_channel_id(500);
     connection_t sender = {0};
     char buffer[64] = {0};
 
-    int result = ipc_receive(&channel, &sender, buffer, sizeof(buffer));
+    int result = ipc_receive(channel, &sender, buffer, sizeof(buffer));
     TEST_ASSERT_EQUAL(1, result);
     TEST_ASSERT_EQUAL(1, g_syscall_calls);
 }
@@ -198,19 +198,19 @@ static void test_ipc_receive_invalid_args(void)
 {
     reset_test_state();
 
-    channel_t channel = make_channel("chanD", 600);
+    channel_id_t channel = make_channel_id(600);
     connection_t sender = {0};
     char buffer[8];
 
-    int result = ipc_receive(NULL, &sender, buffer, sizeof(buffer));
+    int result = ipc_receive(-1, &sender, buffer, sizeof(buffer));
     TEST_ASSERT_EQUAL(-1, result);
     TEST_ASSERT_EQUAL(0, g_syscall_calls);
 
-    result = ipc_receive(&channel, NULL, NULL, sizeof(buffer));
+    result = ipc_receive(channel, NULL, NULL, sizeof(buffer));
     TEST_ASSERT_EQUAL(-1, result);
     TEST_ASSERT_EQUAL(0, g_syscall_calls);
 
-    result = ipc_receive(&channel, &sender, buffer, 0);
+    result = ipc_receive(channel, &sender, buffer, 0);
     TEST_ASSERT_EQUAL(-1, result);
     TEST_ASSERT_EQUAL(0, g_syscall_calls);
 }
