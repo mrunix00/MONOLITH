@@ -5,7 +5,6 @@
 
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/idt.h>
-#include <kernel/arch/pc/morse_debug.h>
 #include <kernel/debug.h>
 #include <kernel/klibc/memory.h>
 #include <kernel/klibc/string.h>
@@ -272,7 +271,6 @@ void isr_handler(struct interrupt_registers *regs)
             debug_log_fmt("[-] System panic!\n");
             debug_log_fmt("[-] %s\n", error_message);
             panic(error_messages[regs->isr_number], regs);
-            morse_log(error_message);
             while (1)
                 __asm__("hlt");
         }
