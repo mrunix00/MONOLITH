@@ -70,6 +70,12 @@ void _dump_registers(struct interrupt_registers *regs)
     _print_hex(buffer, regs->rdi);
     _print("\n\tRFLAGS = 0x");
     _print_hex(buffer, regs->rflags);
+    _print("\n\tError code = 0x");
+    _print_hex(buffer, regs->error_code);
+    _print("\n\tCS = 0x");
+    _print_hex(buffer, regs->cs);
+    _print("\n\tSS = 0x");
+    _print_hex(buffer, regs->ss);
 }
 
 void panic(const char *message, struct interrupt_registers *regs)
