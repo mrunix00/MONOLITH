@@ -228,10 +228,6 @@ static const char *error_messages[] = {
 void isr_handler(struct interrupt_registers *regs)
 {
     if (regs->isr_number < 32) {
-        uint8_t tmp = asm_inb(0x61);
-        if (tmp != (tmp | 3)) {
-            asm_outb(tmp | 3, 0x61);
-        }
         char error_message[128];
 
         switch (regs->isr_number) {
