@@ -126,6 +126,7 @@ void vfs_add_child(vfs_node_t *parent, vfs_node_t *child)
             current = current->sibling;
         current->sibling = child;
     }
+    child->sibling = NULL;
     child->parent = parent;
 }
 

@@ -24,6 +24,9 @@ static vfs_node_t *_new_tmpfs_node(file_type_t type)
         return NULL;
     new_node->name = NULL;
     new_node->type = type;
+    new_node->parent = NULL;
+    new_node->child = NULL;
+    new_node->sibling = NULL;
     new_node->internal = kmalloc(sizeof(_tmpfs_inode_t));
     if (new_node->internal == NULL) {
         kfree(new_node);
