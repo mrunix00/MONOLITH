@@ -53,6 +53,12 @@ typedef struct
     uint8_t green_mask_shift;
     uint8_t blue_mask_size;
     uint8_t blue_mask_shift;
+    uint32_t target_fps;
+    uint64_t frame_start_ticks;
+    uint64_t last_frame_ticks;
+    uint64_t fps_last_update_ticks;
+    uint32_t fps_frame_count;
+    uint32_t fps_last_value;
     gfx_rect_t clip_rect;
 } gfx_context_t;
 
