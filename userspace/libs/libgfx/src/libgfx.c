@@ -5,6 +5,7 @@
 
 #include <libgfx.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/syscall.h>
@@ -122,6 +123,12 @@ gfx_context_t gfx_init_screen()
         .green_mask_shift = green_mask_shift,
         .blue_mask_size = blue_mask_size,
         .blue_mask_shift = blue_mask_shift,
+        .target_fps = 60,
+        .frame_start_ticks = 0,
+        .last_frame_ticks = 0,
+        .fps_last_update_ticks = get_ticks(),
+        .fps_frame_count = 0,
+        .fps_last_value = 0,
         .backbuffer = malloc(fb.width * fb.height * sizeof(uint32_t)),
         .clip_rect = {0, 0, (uint32_t) fb.width, (uint32_t) fb.height, {0, 0, 0, 0}, 0},
     };
@@ -133,44 +140,100 @@ void gfx_deinit(gfx_context_t *context)
     free(context->backbuffer);
 }
 
-void gfx_flush(gfx_context_t *context)
+static void _gfx_update_fps(gfx_context_t *ctx, uint64_t now)
 {
-    if (!context || !context->framebuffer || !context->backbuffer)
-        return;
+    ctx->fps_frame_count++;
 
-    uint8_t *dst = (uint8_t *) context->framebuffer;
-    size_t width = context->width;
-    size_t height = context->height;
-    uint8_t bpp_bytes = _fb_bytes_per_pixel(context);
-
-    if (context->memory_model == 1 && _fb_format_matches_argb(context) && bpp_bytes == 4
-        && context->pitch == width * sizeof(uint32_t)) {
-        memcpy(context->framebuffer, context->backbuffer, width * height * sizeof(uint32_t));
+    if (ctx->fps_last_update_ticks == 0) {
+        ctx->fps_last_update_ticks = now;
         return;
     }
 
-    for (size_t y = 0; y < height; y++) {
-        uint8_t *dst_row = dst + y * context->pitch;
-        const uint32_t *src_row = context->backbuffer + y * width;
+    uint64_t elapsed = now - ctx->fps_last_update_ticks;
+    if (elapsed >= 1000) {
+        ctx->fps_last_value = (uint32_t) ((ctx->fps_frame_count * 1000) / elapsed);
+        ctx->fps_frame_count = 0;
+        ctx->fps_last_update_ticks = now;
+    }
+}
 
-        for (size_t x = 0; x < width; x++) {
-            uint32_t src = src_row[x];
-            uint8_t r = (uint8_t) (src >> 16);
-            uint8_t g = (uint8_t) (src >> 8);
-            uint8_t b = (uint8_t) src;
+void gfx_set_target_fps(gfx_context_t *ctx, uint32_t fps)
+{
+    if (!ctx)
+        return;
+    ctx->target_fps = fps;
+}
 
-            uint32_t packed = (context->memory_model == 1) ? _fb_pack_rgb(context, r, g, b) : src;
-            uint8_t *p = dst_row + x * bpp_bytes;
+void gfx_begin_frame(gfx_context_t *ctx)
+{
+    if (!ctx)
+        return;
+    ctx->frame_start_ticks = get_ticks();
+}
 
-            if (bpp_bytes == 4) {
-                *(uint32_t *) p = packed;
-            } else {
-                for (uint8_t i = 0; i < bpp_bytes; i++) {
-                    p[i] = (uint8_t) (packed >> (i * 8));
+void gfx_end_frame(gfx_context_t *ctx)
+{
+    if (!ctx)
+        return;
+
+    if (ctx->frame_start_ticks == 0)
+        return;
+
+    if (!ctx->framebuffer || !ctx->backbuffer)
+        return;
+
+    uint8_t *dst = (uint8_t *) ctx->framebuffer;
+    size_t width = ctx->width;
+    size_t height = ctx->height;
+    uint8_t bpp_bytes = _fb_bytes_per_pixel(ctx);
+
+    if (ctx->memory_model == 1 && _fb_format_matches_argb(ctx) && bpp_bytes == 4
+        && ctx->pitch == width * sizeof(uint32_t)) {
+        memcpy(ctx->framebuffer, ctx->backbuffer, width * height * sizeof(uint32_t));
+    } else {
+        for (size_t y = 0; y < height; y++) {
+            uint8_t *dst_row = dst + y * ctx->pitch;
+            const uint32_t *src_row = ctx->backbuffer + y * width;
+
+            for (size_t x = 0; x < width; x++) {
+                uint32_t src = src_row[x];
+                uint8_t r = (uint8_t) (src >> 16);
+                uint8_t g = (uint8_t) (src >> 8);
+                uint8_t b = (uint8_t) src;
+
+                uint32_t packed = (ctx->memory_model == 1) ? _fb_pack_rgb(ctx, r, g, b) : src;
+                uint8_t *p = dst_row + x * bpp_bytes;
+
+                if (bpp_bytes == 4) {
+                    *(uint32_t *) p = packed;
+                } else {
+                    for (uint8_t i = 0; i < bpp_bytes; i++) {
+                        p[i] = (uint8_t) (packed >> (i * 8));
+                    }
                 }
             }
         }
     }
+
+    uint64_t now = get_ticks();
+    ctx->last_frame_ticks = now - ctx->frame_start_ticks;
+
+    if (ctx->target_fps != 0) {
+        uint64_t frame_budget = 1000 / ctx->target_fps;
+        if (ctx->last_frame_ticks < frame_budget)
+            usleep((unsigned int) (frame_budget - ctx->last_frame_ticks));
+    }
+
+    now = get_ticks();
+    ctx->last_frame_ticks = now - ctx->frame_start_ticks;
+    _gfx_update_fps(ctx, now);
+}
+
+void gfx_draw_fps_counter(gfx_context_t *ctx, gfx_font_t *font, gfx_color_t color, gfx_pos_t pos)
+{
+    char text[24];
+    sprintf(text, "FPS: %u", (unsigned int) ctx->fps_last_value);
+    gfx_draw_text(ctx, font, pos, color, text);
 }
 
 void gfx_clear(gfx_context_t *ctx, gfx_color_t color)

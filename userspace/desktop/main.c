@@ -10,7 +10,6 @@
 #include "libgfx/types.h"
 #include "unistd.h"
 
-
 #include <libgfx.h>
 #include <libgfx/fonts.h>
 #include <libgfx/images.h>
@@ -97,6 +96,7 @@ static gfx_colored_bitmap_t _load_wallpaper(const char *wallpaper, uint32_t widt
 int main()
 {
     gfx_context_t context = gfx_init_screen();
+    gfx_set_target_fps(&context, FRAME_RATE);
     default_font = gfx_load_polyspace_font(
         font_atlas,
         (gfx_font_size_t) {FONT_ATLAS_WIDTH, FONT_ATLAS_HEIGHT},
@@ -137,7 +137,7 @@ int main()
         while (!handle_input(&context))
             usleep(1);
 
-        uint64_t draw_start = get_ticks();
+        gfx_begin_frame(&context);
 
         update_menubar_state(&context);
         update_windows_state(&context);
@@ -150,10 +150,7 @@ int main()
         draw_all_windows(&context);
         draw_menubar(&context);
         draw_cursor(&context);
-        gfx_flush(&context);
 
-        uint64_t render_duration = get_ticks() - draw_start;
-        if (render_duration < (1000 / FRAME_RATE))
-            usleep(1000 / FRAME_RATE - render_duration);
+        gfx_end_frame(&context);
     }
 }

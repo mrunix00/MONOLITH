@@ -5,13 +5,20 @@
 
 #pragma once
 
+#include <libgfx/fonts.h>
 #include <libgfx/types.h>
 
 gfx_context_t gfx_init_screen();
 
-void gfx_deinit(gfx_context_t *ctx);
+void gfx_set_target_fps(gfx_context_t *ctx, uint32_t fps);
 
-void gfx_flush(gfx_context_t *ctx);
+void gfx_begin_frame(gfx_context_t *ctx);
+
+void gfx_end_frame(gfx_context_t *ctx);
+
+void gfx_draw_fps_counter(gfx_context_t *ctx, gfx_font_t *font, gfx_color_t color, gfx_pos_t pos);
+
+void gfx_deinit(gfx_context_t *ctx);
 
 void gfx_clear(gfx_context_t *ctx, gfx_color_t color);
 
