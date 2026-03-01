@@ -69,6 +69,7 @@ extern sys_ipc_send
 extern sys_ipc_receive
 extern sys_ipc_disconnect
 extern sys_ipc_request_shm
+extern sys_ipc_release_shm
 
 section .rodata
 syscall_table:
@@ -101,6 +102,7 @@ syscall_table:
     dq sys_ipc_disconnect
     dq sys_ipc_send_to
     dq sys_ipc_request_shm
+    dq sys_ipc_release_shm
 syscall_table_end:
 
 section .text

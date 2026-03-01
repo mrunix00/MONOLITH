@@ -497,6 +497,13 @@ int ipc_disconnect(task_t *task, channel_id_t channel_id)
 
     _ipc_connection_t *conn = _get_connection_by_task_id(ipc_channel, task->id);
     if (conn) {
+        ipc_message_t owner_msg;
+        memset(&owner_msg, 0, sizeof(owner_msg));
+        owner_msg.type = IPC_OWNER_MSG_TYPE_DISCONNECT;
+        owner_msg.sender_task_id = task->id;
+        if (ipc_channel->owner_task_id != 0)
+            _enqueue_owner_message(ipc_channel, task, &owner_msg, sizeof(owner_msg));
+
         _remove_connection(ipc_channel, task->id);
         _release_shared_regions_for_task(ipc_channel, task->id);
         return 0;
@@ -658,6 +665,45 @@ int ipc_request_shared_memory(
 
     *out_addr = (void *) client_vaddr;
     return 0;
+}
+
+int ipc_release_shared_memory(task_t *task, channel_id_t channel_id, void *addr)
+{
+    if (!task || channel_id < 0 || !addr)
+        return -1;
+
+    _ipc_channel_t *ipc_channel = _get_channel_by_id(channel_id);
+    if (!ipc_channel)
+        return -1;
+
+    uintptr_t target_addr = (uintptr_t) addr;
+
+    if (ipc_channel->owner_task_id == task->id) {
+        for (size_t i = 0; i < ipc_channel->shared_regions_count; i++) {
+            _ipc_shared_region_t *region = &ipc_channel->shared_regions[i];
+            if (region->owner_vaddr != target_addr)
+                continue;
+            _release_shared_region_entry(ipc_channel, i);
+            return 0;
+        }
+        return -1;
+    }
+
+    _ipc_connection_t *conn = _get_connection_by_task_id(ipc_channel, task->id);
+    if (!conn || conn->state != IPC_CONN_ACCEPTED)
+        return -1;
+
+    for (size_t i = 0; i < ipc_channel->shared_regions_count; i++) {
+        _ipc_shared_region_t *region = &ipc_channel->shared_regions[i];
+        if (region->client_task_id != task->id)
+            continue;
+        if (region->client_vaddr != target_addr)
+            continue;
+        _release_shared_region_entry(ipc_channel, i);
+        return 0;
+    }
+
+    return -1;
 }
 
 int ipc_receive(task_t *task, channel_id_t channel_id, connection_t *sender, void *data, size_t size)

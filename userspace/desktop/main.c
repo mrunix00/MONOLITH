@@ -6,6 +6,7 @@
 #include "./font.h"
 #include "./input.h"
 #include "./magic.h"
+#include "./protocol_server.h"
 #include "./window.h"
 #include "libgfx/types.h"
 #include "unistd.h"
@@ -20,29 +21,9 @@
 
 gfx_font_t default_font;
 
-static void _draw_about_content(gfx_context_t *context, window_t *window, gfx_rect_t area, void *user)
-{
-    (void) window;
-    (void) user;
-
-    gfx_draw_text(
-        context,
-        &default_font,
-        (gfx_pos_t) {.x = area.x + 16, .y = area.y + 32},
-        FONT_COLOR,
-        "MONOLITH Project");
-    gfx_draw_text(
-        context,
-        &default_font,
-        (gfx_pos_t) {.x = area.x + 16, .y = area.y + 64},
-        FONT_COLOR,
-        "A hobby operating system");
-}
-
 static void _menu_action_about(void)
 {
-    window_t *about = new_window("About MONOLITH", 220, 130);
-    window_set_draw_callback(about, _draw_about_content, NULL);
+    syscall1(SYSCALL_SPAWN_TASK, (long) "system:/about");
 }
 
 static void _menu_action_shutdown(void) {}
@@ -95,6 +76,9 @@ static gfx_colored_bitmap_t _load_wallpaper(const char *wallpaper, uint32_t widt
 
 int main()
 {
+    if (protocol_server_init() != 0)
+        return 1;
+
     gfx_context_t context = gfx_init_screen();
     gfx_set_target_fps(&context, FRAME_RATE);
     default_font = gfx_load_polyspace_font(
@@ -131,13 +115,19 @@ int main()
         .item_count = sizeof(menubar_items) / sizeof(menubar_items[0]),
     };
     set_default_menubar(&system_menubar);
-    _menu_action_about();
+
+    bool launched_initial_about = false;
 
     while (1) {
-        while (!handle_input(&context))
-            usleep(1);
-
         gfx_begin_frame(&context);
+
+        window_set_screen_bounds((uint32_t) context.width, (uint32_t) context.height);
+
+        protocol_server_pump();
+        if (!launched_initial_about) {
+            _menu_action_about();
+            launched_initial_about = true;
+        }
 
         update_menubar_state(&context);
         update_windows_state(&context);
@@ -152,5 +142,7 @@ int main()
         draw_cursor(&context);
 
         gfx_end_frame(&context);
+
+        handle_input(&context);
     }
 }

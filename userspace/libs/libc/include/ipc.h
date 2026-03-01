@@ -136,6 +136,16 @@ static inline int ipc_send(channel_id_t channel_id, void *data, size_t size)
 int ipc_request_shared_memory(channel_id_t channel_id, size_t size, uint64_t flags, void **out_addr);
 
 /*
+ * Release a previously requested shared memory region.
+ * channel_id: channel ID.
+ * addr: mapped address returned earlier by ipc_request_shared_memory.
+ */
+static inline int ipc_release_shared_memory(channel_id_t channel_id, void *addr)
+{
+    return syscall2(SYSCALL_IPC_RELEASE_SHM, (long) channel_id, (long) addr);
+}
+
+/*
  * Receive data for the calling task (owner or client).
  * channel_id: channel ID.
  * sender: output sender info (task_id).

@@ -1,12 +1,16 @@
-# Find all userspace program directories
-USERSPACE_DIRS := $(shell find . -mindepth 1 -maxdepth 1 -type d | sort)
+# Find all userspace program directories (must contain a Makefile)
+USERSPACE_DIRS := $(shell find . -mindepth 1 -maxdepth 1 -type d -exec test -f {}/Makefile \; -print | sort)
+LIBS_DIR := ./libs
+PROGRAM_DIRS := $(filter-out $(LIBS_DIR),$(USERSPACE_DIRS))
 
 # Export variables for subdirectory makefiles
 export BUILD_DIR TOOLCHAIN_BIN TOOLCHAIN_DIR CPU_ARCH CROSS_PREFIX INITRD_DIR
 
-.PHONY: all clean $(USERSPACE_DIRS)
+.PHONY: all clean $(USERSPACE_DIRS) $(PROGRAM_DIRS)
 
-all: $(USERSPACE_DIRS)
+all: $(LIBS_DIR) $(PROGRAM_DIRS)
+
+$(PROGRAM_DIRS): $(LIBS_DIR)
 
 # Build each userspace program by calling its Makefile
 $(USERSPACE_DIRS):
