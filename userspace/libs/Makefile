@@ -1,4 +1,4 @@
-LIB_DIRS := $(shell find . -mindepth 1 -maxdepth 1 -type d | sort)
+LIB_DIRS := $(shell find . -mindepth 1 -maxdepth 1 -type d -exec test -f {}/Makefile \; -print | sort)
 
 LIBS_OUTPUT_DIR ?= $(BUILD_DIR)/libs
 

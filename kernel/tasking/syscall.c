@@ -487,6 +487,13 @@ int sys_ipc_request_shm(channel_id_t channel_id, size_t size, uint64_t flags, vo
     return ipc_request_shared_memory(task_get_current(), channel_id, size, flags, out_addr);
 }
 
+int sys_ipc_release_shm(channel_id_t channel_id, void *addr)
+{
+    if (!_user_ptr_range(addr, 1))
+        return -1;
+    return ipc_release_shared_memory(task_get_current(), channel_id, addr);
+}
+
 int sys_ipc_receive(channel_id_t channel_id, connection_t *sender, void *data, size_t size)
 {
     if (!_user_ptr_range(sender, sizeof(*sender)) || !_user_ptr_range(data, size))

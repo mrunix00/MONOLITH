@@ -17,7 +17,10 @@
 static window_t *_window_list = NULL;
 static uint32_t _window_list_capacity = 0;
 static uint32_t _window_list_size = 0;
+static uint32_t _next_window_id = 1;
 static menubar_t *default_menubar = NULL;
+static uint32_t _screen_width = 0;
+static uint32_t _screen_height = 0;
 
 extern gfx_font_t default_font;
 
@@ -30,11 +33,71 @@ enum {
     WINDOW_TITLE_BUTTONS_WIDTH = 60,
     WINDOW_TITLE_BUTTONS_GAP = 10,
     SNAP_ZONE_SIZE = 16,
+    WINDOW_BODY_MARGIN_X = 5,
+    WINDOW_BODY_BOTTOM_MARGIN = 5,
 };
+
+static const uint32_t WINDOW_BODY_TOP_OFFSET = WINDOW_TITLE_BAR_HEIGHT - BORDER_THICKNESS;
+static const uint32_t WINDOW_CONTENT_INSET = BORDER_THICKNESS + BORDER_SHADOW_THICKNESS;
+
+static bool _window_has_decorations(const window_t *window)
+{
+    if (!window)
+        return false;
+    return !window->borderless && !window->fullscreen;
+}
 
 static bool _point_in_rect(uint32_t x, uint32_t y, uint32_t rx, uint32_t ry, uint32_t w, uint32_t h)
 {
     return x >= rx && x < rx + w && y >= ry && y < ry + h;
+}
+
+static bool _window_content_rect_from_geom(
+    const window_t *window,
+    uint32_t x,
+    uint32_t y,
+    uint32_t width,
+    uint32_t height,
+    gfx_rect_t *content_rect)
+{
+    if (!content_rect)
+        return false;
+
+    if (!_window_has_decorations(window)) {
+        *content_rect = (gfx_rect_t) {
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+            .border_color = (gfx_color_t) {0},
+            .border_thickness = 0,
+        };
+        return width > 0 && height > 0;
+    }
+
+    if (width <= WINDOW_BODY_MARGIN_X * 2)
+        return false;
+    if (height <= WINDOW_BODY_TOP_OFFSET + WINDOW_BODY_BOTTOM_MARGIN)
+        return false;
+
+    uint32_t body_x = x + WINDOW_BODY_MARGIN_X;
+    uint32_t body_y = y + WINDOW_BODY_TOP_OFFSET;
+    uint32_t body_w = width - WINDOW_BODY_MARGIN_X * 2;
+    uint32_t body_h = height - WINDOW_BODY_TOP_OFFSET - WINDOW_BODY_BOTTOM_MARGIN;
+
+    if (body_w <= WINDOW_CONTENT_INSET * 2 || body_h <= WINDOW_CONTENT_INSET * 2)
+        return false;
+
+    *content_rect = (gfx_rect_t) {
+        .x = body_x + WINDOW_CONTENT_INSET,
+        .y = body_y + WINDOW_CONTENT_INSET,
+        .width = body_w - WINDOW_CONTENT_INSET * 2,
+        .height = body_h - WINDOW_CONTENT_INSET * 2,
+        .border_color = (gfx_color_t) {0},
+        .border_thickness = 0,
+    };
+
+    return true;
 }
 
 static uint32_t _window_title_min_width(const char *title)
@@ -52,6 +115,8 @@ static uint32_t _window_title_min_width(const char *title)
 
 static uint32_t _window_min_width(const window_t *window)
 {
+    if (window && !_window_has_decorations(window))
+        return 1;
     return _window_title_min_width(window ? window->title : NULL);
 }
 
@@ -82,6 +147,14 @@ static void _window_geom(
     uint32_t *width,
     uint32_t *height)
 {
+    if (window->fullscreen) {
+        *x = 0;
+        *y = 0;
+        *width = (uint32_t) context->width;
+        *height = (uint32_t) context->height;
+        return;
+    }
+
     *x = window->maximized ? 0 : window->pos_x;
     *y = window->maximized ? TOP_BAR_HEIGHT : window->pos_y;
     *width = window->maximized ? (uint32_t) context->width : window->width;
@@ -98,6 +171,9 @@ static void _window_title_bar_geom(
 static void _remove_window(uint32_t id)
 {
     if (id < _window_list_size) {
+        window_t removed = _window_list[id];
+        if (removed.close_callback)
+            removed.close_callback(&removed, removed.close_user);
         memmove(
             &_window_list[id],
             &_window_list[id + 1],
@@ -137,7 +213,12 @@ static int32_t _window_index_at_pos(gfx_context_t *context, uint32_t x, uint32_t
         uint32_t right = left + window->width;
         uint32_t bottom = top + window->height;
 
-        if (window->maximized) {
+        if (window->fullscreen) {
+            left = 0;
+            top = 0;
+            right = (uint32_t) context->width;
+            bottom = (uint32_t) context->height;
+        } else if (window->maximized) {
             left = 0;
             top = TOP_BAR_HEIGHT;
             right = (uint32_t) context->width;
@@ -161,6 +242,9 @@ static bool _handle_title_bar_click(
     uint32_t *drag_offset_x,
     uint32_t *drag_offset_y)
 {
+    if (!_window_has_decorations(window))
+        return false;
+
     uint32_t window_x = 0;
     uint32_t window_y = 0;
     uint32_t window_width = 0;
@@ -171,10 +255,15 @@ static bool _handle_title_bar_click(
         return false;
     }
 
+    uint32_t close_button_x = window_x + window_width - 20;
+    uint32_t maximize_button_x = window_x + window_width - 40;
+    uint32_t minimize_button_x = window->resizable ? (window_x + window_width - 60)
+                                                   : (window_x + window_width - 40);
+
     if (_point_in_rect(
             mouse_x,
             mouse_y,
-            window_x + window_width - 20,
+            close_button_x,
             window_y + 10,
             WINDOW_BUTTON_SIZE,
             WINDOW_BUTTON_SIZE)) {
@@ -182,31 +271,37 @@ static bool _handle_title_bar_click(
         *dragging_window = NULL;
         return true;
     }
-    if (_point_in_rect(
-            mouse_x,
-            mouse_y,
-            window_x + window_width - 40,
-            window_y + 10,
-            WINDOW_BUTTON_SIZE,
-            WINDOW_BUTTON_SIZE)) {
-        if (window->maximized || window->snapped_left || window->snapped_right) {
-            window->maximized = false;
-            window->snapped_left = false;
-            window->snapped_right = false;
-            _restore_window_bounds(window);
-        } else {
-            _save_window_bounds(window);
-            window->maximized = true;
-            window->snapped_left = false;
-            window->snapped_right = false;
+    if (window->resizable) {
+        if (_point_in_rect(
+                mouse_x,
+                mouse_y,
+                maximize_button_x,
+                window_y + 10,
+                WINDOW_BUTTON_SIZE,
+                WINDOW_BUTTON_SIZE)) {
+            if (window->maximized || window->snapped_left || window->snapped_right) {
+                window->maximized = false;
+                window->snapped_left = false;
+                window->snapped_right = false;
+                _restore_window_bounds(window);
+            } else {
+                _save_window_bounds(window);
+                window->maximized = true;
+                window->snapped_left = false;
+                window->snapped_right = false;
+                window->pos_x = 0;
+                window->pos_y = TOP_BAR_HEIGHT;
+                window->width = (uint32_t) context->width;
+                window->height = (uint32_t) (context->height - TOP_BAR_HEIGHT);
+            }
+            *dragging_window = NULL;
+            return true;
         }
-        *dragging_window = NULL;
-        return true;
     }
     if (_point_in_rect(
             mouse_x,
             mouse_y,
-            window_x + window_width - 60,
+            minimize_button_x,
             window_y + 15,
             WINDOW_BUTTON_SIZE,
             WINDOW_BUTTON_SIZE)) {
@@ -239,8 +334,10 @@ static bool _handle_resize_click(
     uint32_t *resize_offset_x,
     uint32_t *resize_offset_y)
 {
-    if (window->maximized || window->minimized)
+    if (!window->resizable || !_window_has_decorations(window) || window->maximized
+        || window->minimized) {
         return false;
+    }
 
     uint32_t window_x = 0;
     uint32_t window_y = 0;
@@ -265,7 +362,7 @@ static bool _handle_resize_click(
     return true;
 }
 
-window_t *new_window(const char *title, uint32_t width, uint32_t height)
+window_t *new_window(const char *title, uint32_t width, uint32_t height, window_flags_t flags)
 {
     if (_window_list == NULL) {
         _window_list_capacity = 10;
@@ -275,6 +372,7 @@ window_t *new_window(const char *title, uint32_t width, uint32_t height)
     }
 
     window_t window = {
+        .id = _next_window_id++,
         .width = width,
         .height = height,
         .pos_x = 50,
@@ -283,9 +381,26 @@ window_t *new_window(const char *title, uint32_t width, uint32_t height)
         .saved_pos_y = 50,
         .saved_width = width,
         .saved_height = height,
+        .borderless = flags.borderless,
+        .resizable = flags.resizable && !flags.borderless && !flags.fullscreen,
+        .fullscreen = flags.fullscreen,
+        .minimized = flags.minimized,
+        .maximized = flags.maximized && !flags.fullscreen,
+        .snapped_left = false,
+        .snapped_right = false,
         .menubar = NULL,
+        .owner_task_id = 0,
+        .remote_surface = false,
+        .surface_pixels = NULL,
+        .surface_width = 0,
+        .surface_height = 0,
+        .surface_size = 0,
+        .notified_content_width = 0,
+        .notified_content_height = 0,
         .draw_user = NULL,
         .draw_content = NULL,
+        .close_user = NULL,
+        .close_callback = NULL,
     };
     size_t title_len = title ? strnlen(title, sizeof(window.title) - 1) : 0;
     memcpy((void *) window.title, title ? title : "", title_len);
@@ -295,13 +410,41 @@ window_t *new_window(const char *title, uint32_t width, uint32_t height)
         window.width = min_width;
     if (window.height < MIN_WINDOW_HEIGHT)
         window.height = MIN_WINDOW_HEIGHT;
+
+    if (window.fullscreen) {
+        window.maximized = false;
+        window.pos_x = 0;
+        window.pos_y = 0;
+        if (_screen_width > 0)
+            window.width = _screen_width;
+        if (_screen_height > 0)
+            window.height = _screen_height;
+    }
+
     return _window_list_add(&window);
+}
+
+void window_set_screen_bounds(uint32_t width, uint32_t height)
+{
+    _screen_width = width;
+    _screen_height = height;
 }
 
 window_t *get_window(uint32_t id)
 {
-    if (id < _window_list_size)
-        return &_window_list[id];
+    for (uint32_t i = 0; i < _window_list_size; i++) {
+        if (_window_list[i].id == id)
+            return &_window_list[i];
+    }
+    return NULL;
+}
+
+window_t *get_window_by_owner(uint64_t owner_task_id, uint32_t id)
+{
+    for (uint32_t i = 0; i < _window_list_size; i++) {
+        if (_window_list[i].id == id && _window_list[i].owner_task_id == owner_task_id)
+            return &_window_list[i];
+    }
     return NULL;
 }
 
@@ -327,36 +470,65 @@ void draw_window(gfx_context_t *context, window_t *window)
 
     _window_geom(context, window, &x, &y, &width, &height);
 
-    /* Window Border */
-    draw_transparent_box(context, (gfx_rect_t) {.x = x, .y = y, .width = width, .height = height});
+    if (_window_has_decorations(window)) {
+        draw_transparent_box(context, (gfx_rect_t) {.x = x, .y = y, .width = width, .height = height});
 
-    /* Title */
-    gfx_draw_text(context, &default_font, (gfx_pos_t) {x + 10, y + 22}, FONT_COLOR, window->title);
+        gfx_draw_text(context, &default_font, (gfx_pos_t) {x + 10, y + 22}, FONT_COLOR, window->title);
 
-    /* Title bar buttons */
-    gfx_draw_bitmap(context, &close_icon_bitmap, (gfx_pos_t) {x + width - 20, y + 10}, FONT_COLOR);
-    gfx_draw_bitmap(context, &maximize_icon_bitmap, (gfx_pos_t) {x + width - 40, y + 10}, FONT_COLOR);
-    gfx_draw_bitmap(context, &minimize_icon_bitmap, (gfx_pos_t) {x + width - 60, y + 15}, FONT_COLOR);
+        uint32_t close_button_x = x + width - 20;
+        uint32_t maximize_button_x = x + width - 40;
+        uint32_t minimize_button_x = window->resizable ? (x + width - 60) : (x + width - 40);
 
-    /* Window Body */
-    draw_box(
-        context, (gfx_rect_t) {.x = x + 5, .y = y + 31, .width = width - 10, .height = height - 36});
+        gfx_draw_bitmap(context, &close_icon_bitmap, (gfx_pos_t) {close_button_x, y + 10}, FONT_COLOR);
+        if (window->resizable) {
+            gfx_draw_bitmap(
+                context, &maximize_icon_bitmap, (gfx_pos_t) {maximize_button_x, y + 10}, FONT_COLOR);
+        }
+        gfx_draw_bitmap(
+            context, &minimize_icon_bitmap, (gfx_pos_t) {minimize_button_x, y + 15}, FONT_COLOR);
 
-    if (window->draw_content != NULL) {
-        uint32_t body_x = x;
-        uint32_t body_y = y + WINDOW_TITLE_BAR_HEIGHT - BORDER_THICKNESS;
-        uint32_t body_w = width;
-        uint32_t body_h = height - WINDOW_TITLE_BAR_HEIGHT + BORDER_THICKNESS;
-        uint32_t inset = BORDER_THICKNESS + BORDER_SHADOW_THICKNESS;
-        if (body_w > inset * 2 && body_h > inset * 2) {
-            gfx_rect_t content_rect = {
-                .x = body_x + inset,
-                .y = body_y + inset,
-                .width = body_w - inset * 2,
-                .height = body_h - inset * 2,
-                .border_color = (gfx_color_t) {0},
-                .border_thickness = 0,
-            };
+        draw_box(
+            context,
+            (gfx_rect_t) {
+                .x = x + WINDOW_BODY_MARGIN_X,
+                .y = y + WINDOW_BODY_TOP_OFFSET,
+                .width = width - WINDOW_BODY_MARGIN_X * 2,
+                .height = height - WINDOW_BODY_TOP_OFFSET - WINDOW_BODY_BOTTOM_MARGIN,
+            });
+    }
+
+    gfx_rect_t content_rect = {0};
+    if (_window_content_rect_from_geom(window, x, y, width, height, &content_rect)) {
+
+        if (window->remote_surface && window->surface_pixels && window->surface_width > 0
+            && window->surface_height > 0) {
+            uint32_t bitmap_width = window->surface_width;
+            uint32_t bitmap_height = window->surface_height;
+            size_t max_pixels = window->surface_size / sizeof(uint32_t);
+            size_t max_rows = bitmap_width ? (max_pixels / bitmap_width) : 0;
+            if (bitmap_height > max_rows)
+                bitmap_height = (uint32_t) max_rows;
+
+            if (bitmap_height > 0) {
+                gfx_rect_t prev_clip = context->clip_rect;
+                gfx_set_clip(context, content_rect);
+                gfx_colored_bitmap_t bitmap = {
+                    .width = bitmap_width,
+                    .height = bitmap_height,
+                    .data = window->surface_pixels,
+                };
+                gfx_draw_colored_bitmap(
+                    context,
+                    &bitmap,
+                    (gfx_pos_t) {
+                        .x = content_rect.x,
+                        .y = content_rect.y,
+                    });
+                context->clip_rect = prev_clip;
+            }
+        }
+
+        if (window->draw_content != NULL) {
             gfx_rect_t prev_clip = context->clip_rect;
             gfx_set_clip(context, content_rect);
             window->draw_content(context, window, content_rect, window->draw_user);
@@ -364,21 +536,22 @@ void draw_window(gfx_context_t *context, window_t *window)
         }
     }
 
-    /* Resize handle indicator */
-    uint32_t handle_x = x + width - BORDER_THICKNESS - WINDOW_RESIZE_HANDLE_SIZE;
-    uint32_t handle_y = y + height - BORDER_THICKNESS - WINDOW_RESIZE_HANDLE_SIZE;
-    for (uint32_t i = 0; i < 3; i++) {
-        uint32_t offset = i * 3;
-        gfx_draw_line(
-            context,
-            (gfx_line_t) {
-                .x1 = handle_x + offset,
-                .y1 = handle_y + WINDOW_RESIZE_HANDLE_SIZE,
-                .x2 = handle_x + WINDOW_RESIZE_HANDLE_SIZE,
-                .y2 = handle_y + offset,
-                .thickness = 1,
-            },
-            BORDER_SHADOW_COLOR);
+    if (_window_has_decorations(window) && window->resizable) {
+        uint32_t handle_x = x + width - BORDER_THICKNESS - WINDOW_RESIZE_HANDLE_SIZE;
+        uint32_t handle_y = y + height - BORDER_THICKNESS - WINDOW_RESIZE_HANDLE_SIZE;
+        for (uint32_t i = 0; i < 3; i++) {
+            uint32_t offset = i * 3;
+            gfx_draw_line(
+                context,
+                (gfx_line_t) {
+                    .x1 = handle_x + offset,
+                    .y1 = handle_y + WINDOW_RESIZE_HANDLE_SIZE,
+                    .x2 = handle_x + WINDOW_RESIZE_HANDLE_SIZE,
+                    .y2 = handle_y + offset,
+                    .thickness = 1,
+                },
+                BORDER_SHADOW_COLOR);
+        }
     }
 }
 
@@ -451,6 +624,9 @@ void update_windows_state(gfx_context_t *context)
             drag_start_x = mouse_x;
             drag_start_y = mouse_y;
         }
+        if (dragging_window != NULL && !_window_has_decorations(dragging_window)) {
+            dragging_window = NULL;
+        }
     } else if (!left && prev_left) {
         dragging_window = NULL;
         resizing_window = NULL;
@@ -481,14 +657,18 @@ void update_windows_state(gfx_context_t *context)
             dragging_window->pos_x = new_x;
             dragging_window->pos_y = new_y;
             drag_restore_on_move = false;
-        } else if (mouse_y <= snap_top) {
+        } else if (dragging_window->resizable && mouse_y <= snap_top) {
             if (!dragging_window->maximized) {
                 _save_window_bounds(dragging_window);
             }
             dragging_window->maximized = true;
             dragging_window->snapped_left = false;
             dragging_window->snapped_right = false;
-        } else if (mouse_x <= SNAP_ZONE_SIZE) {
+            dragging_window->pos_x = 0;
+            dragging_window->pos_y = TOP_BAR_HEIGHT;
+            dragging_window->width = screen_w;
+            dragging_window->height = screen_h - TOP_BAR_HEIGHT;
+        } else if (dragging_window->resizable && mouse_x <= SNAP_ZONE_SIZE) {
             if (!dragging_window->snapped_left && !dragging_window->snapped_right
                 && !dragging_window->maximized) {
                 _save_window_bounds(dragging_window);
@@ -500,7 +680,9 @@ void update_windows_state(gfx_context_t *context)
             dragging_window->pos_y = TOP_BAR_HEIGHT;
             dragging_window->width = screen_w / 2;
             dragging_window->height = screen_h - TOP_BAR_HEIGHT;
-        } else if (screen_w > SNAP_ZONE_SIZE && mouse_x >= screen_w - SNAP_ZONE_SIZE) {
+        } else if (
+            dragging_window->resizable && screen_w > SNAP_ZONE_SIZE
+            && mouse_x >= screen_w - SNAP_ZONE_SIZE) {
             if (!dragging_window->snapped_left && !dragging_window->snapped_right
                 && !dragging_window->maximized) {
                 _save_window_bounds(dragging_window);
@@ -566,6 +748,112 @@ void window_set_draw_callback(window_t *window, window_draw_cb_t draw, void *use
         return;
     window->draw_content = draw;
     window->draw_user = user;
+}
+
+void window_set_close_callback(window_t *window, window_close_cb_t close_cb, void *user)
+{
+    if (!window)
+        return;
+    window->close_callback = close_cb;
+    window->close_user = user;
+}
+
+void window_set_remote_surface(
+    window_t *window,
+    uint32_t *pixels,
+    uint16_t width,
+    uint16_t height,
+    size_t size)
+{
+    if (!window)
+        return;
+
+    window->remote_surface = true;
+    window->surface_pixels = pixels;
+    window->surface_width = width;
+    window->surface_height = height;
+    window->surface_size = size;
+}
+
+uint16_t window_get_content_width(const window_t *window)
+{
+    if (!window)
+        return 0;
+
+    uint32_t width = window->width;
+    if (window->fullscreen && _screen_width > 0)
+        width = _screen_width;
+    else if (window->maximized && _screen_width > 0)
+        width = _screen_width;
+
+    if (!_window_has_decorations(window)) {
+        return width > UINT16_MAX ? UINT16_MAX : (uint16_t) width;
+    }
+
+    uint32_t total_horizontal_chrome = WINDOW_BODY_MARGIN_X * 2 + WINDOW_CONTENT_INSET * 2;
+    if (width <= total_horizontal_chrome)
+        return 0;
+    return (uint16_t) (width - total_horizontal_chrome);
+}
+
+uint16_t window_get_content_height(const window_t *window)
+{
+    if (!window)
+        return 0;
+
+    uint32_t height = window->height;
+    if (window->fullscreen && _screen_height > 0)
+        height = _screen_height;
+    else if (window->maximized && _screen_height > TOP_BAR_HEIGHT)
+        height = _screen_height - TOP_BAR_HEIGHT;
+
+    if (!_window_has_decorations(window)) {
+        return height > UINT16_MAX ? UINT16_MAX : (uint16_t) height;
+    }
+
+    uint32_t total_vertical_chrome = WINDOW_BODY_TOP_OFFSET + WINDOW_BODY_BOTTOM_MARGIN
+                                     + WINDOW_CONTENT_INSET * 2;
+    if (height <= total_vertical_chrome)
+        return 0;
+    return (uint16_t) (height - total_vertical_chrome);
+}
+
+void close_windows_by_owner(uint64_t owner_task_id)
+{
+    if (owner_task_id == 0)
+        return;
+
+    size_t i = 0;
+    while (i < _window_list_size) {
+        if (_window_list[i].owner_task_id != owner_task_id) {
+            i++;
+            continue;
+        }
+        _remove_window((uint32_t) i);
+    }
+}
+
+bool close_window_by_id(uint32_t id)
+{
+    for (uint32_t i = 0; i < _window_list_size; i++) {
+        if (_window_list[i].id != id)
+            continue;
+        _remove_window(i);
+        return true;
+    }
+    return false;
+}
+
+size_t window_get_count(void)
+{
+    return (size_t) _window_list_size;
+}
+
+window_t *window_get_at_index(size_t index)
+{
+    if (index >= (size_t) _window_list_size)
+        return NULL;
+    return &_window_list[index];
 }
 
 void set_default_menubar(menubar_t *menubar)

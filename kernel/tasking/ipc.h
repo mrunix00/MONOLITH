@@ -112,6 +112,12 @@ int ipc_send(task_t *, channel_id_t, void *data, size_t size);
 int ipc_request_shared_memory(task_t *, channel_id_t, size_t size, uint64_t flags, void **out_addr);
 
 /*
+ * Release a previously mapped shared memory region by virtual address.
+ * Returns 0 on success, -1 on failure.
+ */
+int ipc_release_shared_memory(task_t *, channel_id_t, void *addr);
+
+/*
  * Receive all queued messages for the calling task into a buffer.
  * Returns number of bytes written on success, -1 on failure.
  */

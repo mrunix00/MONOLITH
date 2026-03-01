@@ -32,6 +32,7 @@ static task_t _task_list_head;
 static task_t *_task_list_tail;
 static task_t *_current_task;
 static task_t *_next_task;
+static uint64_t _next_task_id = 1;
 
 extern void _task_switch_gate_stub();
 
@@ -48,6 +49,9 @@ task_t *task_create(void *entry_point, const char *name, task_mode_t mode)
     }
 
     memset(task, 0, sizeof(task_t));
+    task->id = _next_task_id++;
+    if (_next_task_id == 0)
+        _next_task_id = 1;
     task->user_mode = (mode == TASK_MODE_USER);
     task->state.rip = (uintptr_t) entry_point;
     task->state.rflags = DEFAULT_RFLAGS;
