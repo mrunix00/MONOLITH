@@ -26,6 +26,11 @@ static void _menu_action_about(void)
     syscall1(SYSCALL_SPAWN_TASK, (long) "system:/about");
 }
 
+static void _menu_action_gfxdemo(void)
+{
+    syscall1(SYSCALL_SPAWN_TASK, (long) "system:/gfxdemo");
+}
+
 static void _menu_action_shutdown(void) {}
 
 static void _menu_action_reboot(void) {}
@@ -94,6 +99,7 @@ int main()
 
     const menu_item_t system_menu_items[] = {
         {.label = "About MONOLITH", .type = MENU_ITEM_ACTION, .action = _menu_action_about},
+        {.label = "GFX Demo", .type = MENU_ITEM_ACTION, .action = _menu_action_gfxdemo},
         {.label = NULL, .type = MENU_ITEM_SEPARATOR, .action = NULL},
         {.label = "Shutdown", .type = MENU_ITEM_ACTION, .action = _menu_action_shutdown},
         {.label = "Reboot", .type = MENU_ITEM_ACTION, .action = _menu_action_reboot},
