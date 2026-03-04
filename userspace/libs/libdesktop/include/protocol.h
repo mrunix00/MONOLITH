@@ -16,6 +16,7 @@ typedef enum {
     DESKTOP_REQUEST_CREATE_WINDOW = 0,
     DESKTOP_REQUEST_CLOSE_WINDOW,
     DESKTOP_REQUEST_REQUEST_FRAMEBUFFER,
+    DESKTOP_REQUEST_PRESENT_WINDOW,
 } desktop_request_type_t;
 
 typedef struct
@@ -50,12 +51,18 @@ typedef struct
 
 typedef struct
 {
+    uint16_t id;
+} present_window_req_t;
+
+typedef struct
+{
     uint32_t sequence;
     desktop_request_type_t type;
     union {
         create_window_req_t create_window;
         close_window_req_t close_window;
         request_framebuffer_req_t request_framebuffer;
+        present_window_req_t present_window;
     } data;
 } desktop_request_t;
 

@@ -31,6 +31,8 @@ uint32_t desktop_create_window(
 
 uint32_t desktop_destroy_window(uint16_t window_id);
 
+int desktop_present_window(uint16_t window_id);
+
 gfx_context_res_t desktop_request_window_framebuffer(
     uint16_t window_id, uint16_t width, uint16_t height);
 

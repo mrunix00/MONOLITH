@@ -571,7 +571,7 @@ window_t *get_window_at_pos(gfx_context_t *context, uint32_t x, uint32_t y)
     return NULL;
 }
 
-void update_windows_state(gfx_context_t *context)
+bool update_windows_state(gfx_context_t *context)
 {
     static window_t *dragging_window = NULL;
     static window_t *resizing_window = NULL;
@@ -583,6 +583,7 @@ void update_windows_state(gfx_context_t *context)
     static uint32_t resize_offset_y = 0;
     static bool prev_left = false;
     static bool drag_restore_on_move = false;
+    bool changed = false;
 
     input_mouse_event_t mouse = get_mouse_state();
     uint32_t mouse_x = mouse.x < 0 ? 0u : (uint32_t) mouse.x;
@@ -592,6 +593,7 @@ void update_windows_state(gfx_context_t *context)
 
     if (left && !prev_left && index >= 0) {
         _highlight_window((uint32_t) index);
+        changed = true;
         window_t *window = &_window_list[_window_list_size - 1];
         if (_handle_resize_click(
                 context,
@@ -603,7 +605,7 @@ void update_windows_state(gfx_context_t *context)
                 &resize_offset_y)) {
             dragging_window = NULL;
             prev_left = left;
-            return;
+            return true;
         }
         if (_handle_title_bar_click(
                 context,
@@ -615,7 +617,7 @@ void update_windows_state(gfx_context_t *context)
                 &drag_offset_x,
                 &drag_offset_y)) {
             prev_left = left;
-            return;
+            return true;
         }
         if (dragging_window != NULL
             && (dragging_window->maximized || dragging_window->snapped_left
@@ -631,9 +633,15 @@ void update_windows_state(gfx_context_t *context)
         dragging_window = NULL;
         resizing_window = NULL;
         drag_restore_on_move = false;
+        changed = true;
     }
 
     if (dragging_window != NULL) {
+        uint32_t prev_x = dragging_window->pos_x;
+        uint32_t prev_y = dragging_window->pos_y;
+        bool prev_maximized = dragging_window->maximized;
+        bool prev_snapped_left = dragging_window->snapped_left;
+        bool prev_snapped_right = dragging_window->snapped_right;
         uint32_t screen_w = (uint32_t) context->width;
         uint32_t screen_h = (uint32_t) context->height;
         uint32_t snap_top = TOP_BAR_HEIGHT + SNAP_ZONE_SIZE;
@@ -648,7 +656,7 @@ void update_windows_state(gfx_context_t *context)
             /* Dismiss the mouse drag operation if not within the threshold */
             if (dx < 4 && dy < 4) {
                 prev_left = left;
-                return;
+                return changed;
             }
             dragging_window->maximized = false;
             dragging_window->snapped_left = false;
@@ -705,7 +713,16 @@ void update_windows_state(gfx_context_t *context)
             dragging_window->pos_x = new_x;
             dragging_window->pos_y = new_y;
         }
+
+        if (dragging_window->pos_x != prev_x || dragging_window->pos_y != prev_y
+            || dragging_window->maximized != prev_maximized
+            || dragging_window->snapped_left != prev_snapped_left
+            || dragging_window->snapped_right != prev_snapped_right) {
+            changed = true;
+        }
     } else if (resizing_window != NULL) {
+        uint32_t prev_width = resizing_window->width;
+        uint32_t prev_height = resizing_window->height;
         uint32_t max_width = (uint32_t) context->width > resizing_window->pos_x
                                  ? (uint32_t) context->width - resizing_window->pos_x
                                  : 0;
@@ -737,9 +754,13 @@ void update_windows_state(gfx_context_t *context)
 
         resizing_window->width = new_width;
         resizing_window->height = new_height;
+
+        if (resizing_window->width != prev_width || resizing_window->height != prev_height)
+            changed = true;
     }
 
     prev_left = left;
+    return changed;
 }
 
 void window_set_draw_callback(window_t *window, window_draw_cb_t draw, void *user)

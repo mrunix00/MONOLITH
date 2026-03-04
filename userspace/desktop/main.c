@@ -85,7 +85,8 @@ int main()
         return 1;
 
     gfx_context_t context = gfx_init_screen();
-    gfx_set_target_fps(&context, FRAME_RATE);
+    if (FRAME_RATE > 0)
+        gfx_set_target_fps(&context, FRAME_RATE);
     default_font = gfx_load_polyspace_font(
         font_atlas,
         (gfx_font_size_t) {FONT_ATLAS_WIDTH, FONT_ATLAS_HEIGHT},
@@ -123,20 +124,31 @@ int main()
     set_default_menubar(&system_menubar);
 
     bool launched_initial_about = false;
+    bool needs_redraw = true;
 
     while (1) {
-        gfx_begin_frame(&context);
-
         window_set_screen_bounds((uint32_t) context.width, (uint32_t) context.height);
 
-        protocol_server_pump();
+        bool input_activity = handle_input(&context);
+        bool client_activity = protocol_server_pump();
         if (!launched_initial_about) {
             _menu_action_about();
             launched_initial_about = true;
+            client_activity = true;
         }
 
-        update_menubar_state(&context);
-        update_windows_state(&context);
+        bool menubar_changed = update_menubar_state(&context);
+        bool windows_changed = update_windows_state(&context);
+
+        needs_redraw = needs_redraw || input_activity || client_activity || menubar_changed
+                       || windows_changed;
+
+        if (!needs_redraw) {
+            usleep(1);
+            continue;
+        }
+
+        gfx_begin_frame(&context);
 
         if (wallpaper.data)
             gfx_draw_colored_bitmap(&context, &wallpaper, (gfx_pos_t) {0, 0});
@@ -146,9 +158,13 @@ int main()
         draw_all_windows(&context);
         draw_menubar(&context);
         draw_cursor(&context);
+        gfx_draw_fps_counter(
+            &context,
+            &default_font,
+            (gfx_color_t) {0xff, 0xff, 0xff, 0xff},
+            (gfx_pos_t) {context.width - 60, context.height - 10});
 
         gfx_end_frame(&context);
-
-        handle_input(&context);
+        needs_redraw = false;
     }
 }

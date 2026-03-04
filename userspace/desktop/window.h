@@ -72,7 +72,7 @@ void draw_all_windows(gfx_context_t *context);
 
 window_t *get_window_at_pos(gfx_context_t *context, uint32_t x, uint32_t y);
 
-void update_windows_state(gfx_context_t *context);
+bool update_windows_state(gfx_context_t *context);
 
 void window_set_draw_callback(window_t *window, window_draw_cb_t draw, void *user);
 

@@ -187,6 +187,15 @@ static void _handle_request_framebuffer(uint64_t task_id, const desktop_request_
     pending->size = (size_t) pending->width * (size_t) pending->height * sizeof(uint32_t);
 }
 
+static void _handle_present_window(uint64_t task_id, const desktop_request_t *request)
+{
+    window_t *window = get_window_by_owner(task_id, request->data.present_window.id);
+    if (!window) {
+        _send_error(task_id, request->sequence, 2, "unknown window");
+        return;
+    }
+}
+
 static void _handle_client_request(uint64_t task_id, const desktop_request_t *request)
 {
     if (!request)
@@ -201,6 +210,9 @@ static void _handle_client_request(uint64_t task_id, const desktop_request_t *re
         break;
     case DESKTOP_REQUEST_REQUEST_FRAMEBUFFER:
         _handle_request_framebuffer(task_id, request);
+        break;
+    case DESKTOP_REQUEST_PRESENT_WINDOW:
+        _handle_present_window(task_id, request);
         break;
     default:
         _send_error(task_id, request->sequence, 1, "unsupported request");
@@ -280,8 +292,9 @@ static void _handle_disconnect(uint64_t task_id)
     close_windows_by_owner(task_id);
 }
 
-static void _pump_window_resize_events(void)
+static bool _pump_window_resize_events(void)
 {
+    bool had_resize_event = false;
     size_t window_count = window_get_count();
     for (size_t i = 0; i < window_count; i++) {
         window_t *window = window_get_at_index(i);
@@ -312,10 +325,13 @@ static void _pump_window_resize_events(void)
             .data.resized.new_height = content_height,
         };
         _send_event(window->owner_task_id, &resize_event);
+        had_resize_event = true;
 
         window->notified_content_width = content_width;
         window->notified_content_height = content_height;
     }
+
+    return had_resize_event;
 }
 
 static void _accept_pending_connections(void)
@@ -340,10 +356,12 @@ int protocol_server_init(void)
     return 0;
 }
 
-void protocol_server_pump(void)
+bool protocol_server_pump(void)
 {
     if (_channel_id == -1)
-        return;
+        return false;
+
+    bool had_activity = false;
 
     _accept_pending_connections();
 
@@ -351,6 +369,7 @@ void protocol_server_pump(void)
     connection_t sender = {0};
 
     while (ipc_receive(_channel_id, &sender, raw_message, sizeof(raw_message)) == 0) {
+        had_activity = true;
         ipc_message_t *message = (ipc_message_t *) raw_message;
 
         switch (message->type) {
@@ -373,5 +392,8 @@ void protocol_server_pump(void)
         }
     }
 
-    _pump_window_resize_events();
+    if (_pump_window_resize_events())
+        had_activity = true;
+
+    return had_activity;
 }

@@ -13,7 +13,7 @@
 static gfx_font_t _about_font;
 static bool _about_font_ready = false;
 
-static void _draw_about_view(uint16_t width, uint16_t height, gfx_context_t *ctx)
+static void _draw_about_view(uint16_t window_id, uint16_t width, uint16_t height, gfx_context_t *ctx)
 {
     static const char *title_text = "MONOLITH Project";
     static const char *subtitle_text = "A hobby operating system";
@@ -78,6 +78,7 @@ static void _draw_about_view(uint16_t width, uint16_t height, gfx_context_t *ctx
         subtitle_text);
 
     gfx_end_frame(ctx);
+    desktop_present_window(window_id);
 }
 
 int main(void)
@@ -147,7 +148,7 @@ int main(void)
             }
 
             framebuffer_ready = true;
-            _draw_about_view(width, height, &framebuffer);
+            _draw_about_view((uint16_t) window_id, width, height, &framebuffer);
 
             continue;
         }
@@ -156,7 +157,7 @@ int main(void)
             && event.data.framebuffer_ready.id == window_id
             && desktop_handle_framebuffer_event(&event, &framebuffer) == 1) {
             framebuffer_ready = true;
-            _draw_about_view(width, height, &framebuffer);
+            _draw_about_view((uint16_t) window_id, width, height, &framebuffer);
             continue;
         }
 
@@ -169,7 +170,7 @@ int main(void)
             framebuffer = framebuffer_res.context;
             if (desktop_get_error() == DESKTOP_ERROR_NONE) {
                 framebuffer_ready = true;
-                _draw_about_view(width, height, &framebuffer);
+                _draw_about_view((uint16_t) window_id, width, height, &framebuffer);
             } else {
                 framebuffer_ready = false;
             }

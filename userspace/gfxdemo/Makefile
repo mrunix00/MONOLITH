@@ -16,7 +16,7 @@ SRC := $(wildcard *.c)
 OBJ_DIR := $(BUILD_DIR)/obj/userspace/$(TARGET)
 OBJ := $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRC))
 
-CFLAGS += -O2 -g -I $(LIBC_INCLUDE_DIR) -I $(LIBGFX_INCLUDE_DIR) -I $(LIBDESKTOP_INCLUDE_DIR) -Wall -Wextra
+CFLAGS += -Ofast -g -I $(LIBC_INCLUDE_DIR) -I $(LIBGFX_INCLUDE_DIR) -I $(LIBDESKTOP_INCLUDE_DIR) -Wall -Wextra
 LDFLAGS := -nostdlib -nodefaultlibs -Wl,-e,main
 LIBS := $(LIBDESKTOP_STATIC) $(LIBGFX_STATIC) $(LIBC_STATIC)
 

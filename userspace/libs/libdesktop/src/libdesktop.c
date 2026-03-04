@@ -336,6 +336,19 @@ uint32_t desktop_destroy_window(uint16_t window_id)
     return sequence;
 }
 
+int desktop_present_window(uint16_t window_id)
+{
+    _last_error = DESKTOP_ERROR_NONE;
+
+    desktop_request_t request = {
+        .sequence = _sequence++,
+        .type = DESKTOP_REQUEST_PRESENT_WINDOW,
+        .data.present_window.id = window_id,
+    };
+
+    return _protocol_send_request(&request);
+}
+
 gfx_context_res_t desktop_request_window_framebuffer(
     uint16_t window_id, uint16_t width, uint16_t height)
 {
