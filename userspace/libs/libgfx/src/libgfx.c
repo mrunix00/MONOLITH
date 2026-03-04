@@ -123,7 +123,7 @@ gfx_context_t gfx_init_screen()
         .green_mask_shift = green_mask_shift,
         .blue_mask_size = blue_mask_size,
         .blue_mask_shift = blue_mask_shift,
-        .target_fps = 60,
+        .target_fps = 0,
         .frame_start_ticks = 0,
         .last_frame_ticks = 0,
         .fps_last_update_ticks = get_ticks(),
@@ -187,9 +187,14 @@ void gfx_end_frame(gfx_context_t *ctx)
     size_t height = ctx->height;
     uint8_t bpp_bytes = _fb_bytes_per_pixel(ctx);
 
-    if (ctx->memory_model == 1 && _fb_format_matches_argb(ctx) && bpp_bytes == 4
-        && ctx->pitch == width * sizeof(uint32_t)) {
-        memcpy(ctx->framebuffer, ctx->backbuffer, width * height * sizeof(uint32_t));
+    if (ctx->memory_model == 1 && _fb_format_matches_argb(ctx) && bpp_bytes == 4) {
+        size_t row_bytes = width * sizeof(uint32_t);
+        if (ctx->pitch == row_bytes) {
+            memcpy(ctx->framebuffer, ctx->backbuffer, row_bytes * height);
+        } else {
+            for (size_t y = 0; y < height; y++)
+                memcpy(dst + y * ctx->pitch, ctx->backbuffer + y * width, row_bytes);
+        }
     } else {
         for (size_t y = 0; y < height; y++) {
             uint8_t *dst_row = dst + y * ctx->pitch;
@@ -507,9 +512,16 @@ void gfx_draw_colored_bitmap(gfx_context_t *ctx, gfx_colored_bitmap_t *bitmap, g
                                   + src_x_start;
         uint32_t *dst_row = ctx->backbuffer + (size_t) (y1 + y) * ctx->width + x1;
 
-        for (uint32_t x = 0; x < draw_width; x++) {
-            uint32_t src = src_row[x];
-            _blend_pixel(&dst_row[x], src);
+        /* Fast path: check if entire row is fully opaque and copy in bulk */
+        uint32_t opaque_mask = 0xFF000000;
+        for (uint32_t x = 0; x < draw_width; x++)
+            opaque_mask &= src_row[x];
+
+        if (opaque_mask >= 0xFF000000) {
+            memcpy(dst_row, src_row, draw_width * sizeof(uint32_t));
+        } else {
+            for (uint32_t x = 0; x < draw_width; x++)
+                _blend_pixel(&dst_row[x], src_row[x]);
         }
     }
 }

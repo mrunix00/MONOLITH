@@ -371,11 +371,13 @@ void menubar_handle_click(menubar_t *bar, uint32_t x, uint32_t y)
     menubar_close_all(bar);
 }
 
-void update_menubar_state(gfx_context_t *context)
+bool update_menubar_state(gfx_context_t *context)
 {
     menubar_t *target = get_active_menubar();
     if (target == NULL)
-        return;
+        return false;
+
+    bool changed = false;
 
     if (active_menubar == NULL)
         active_menubar = target;
@@ -383,6 +385,7 @@ void update_menubar_state(gfx_context_t *context)
     if (target != active_menubar) {
         menubar_close_all(active_menubar);
         active_menubar = target;
+        changed = true;
     }
 
     input_mouse_event_t mouse = get_mouse_state();
@@ -396,12 +399,14 @@ void update_menubar_state(gfx_context_t *context)
         if (minimized_handled) {
             menubar_close_all(active_menubar);
             previous_buttons = mouse.buttons;
-            return;
+            return true;
         }
         menubar_handle_click(active_menubar, mouse_x, mouse_y);
+        changed = true;
     }
 
     previous_buttons = mouse.buttons;
+    return changed;
 }
 
 void draw_menubar(gfx_context_t *context)

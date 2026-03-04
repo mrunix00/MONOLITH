@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <stdbool.h>
+
 int protocol_server_init(void);
 
-void protocol_server_pump(void);
+bool protocol_server_pump(void);
