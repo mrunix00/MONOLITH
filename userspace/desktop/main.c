@@ -25,6 +25,11 @@ static void _menu_action_gfxdemo(void)
     syscall1(SYSCALL_SPAWN_TASK, (long) "system:/gfxdemo");
 }
 
+static void _menu_action_doom(void)
+{
+    syscall1(SYSCALL_SPAWN_TASK, (long) "system:/doom");
+}
+
 static void _menu_action_shutdown(void) {}
 
 static void _menu_action_reboot(void) {}
@@ -94,10 +99,13 @@ int main()
 
     const menu_item_t system_menu_items[] = {
         {.label = "About MONOLITH", .type = MENU_ITEM_ACTION, .action = _menu_action_about},
-        {.label = "GFX Demo", .type = MENU_ITEM_ACTION, .action = _menu_action_gfxdemo},
         {.label = NULL, .type = MENU_ITEM_SEPARATOR, .action = NULL},
         {.label = "Shutdown", .type = MENU_ITEM_ACTION, .action = _menu_action_shutdown},
         {.label = "Reboot", .type = MENU_ITEM_ACTION, .action = _menu_action_reboot},
+    };
+    const menu_item_t apps_items[] = {
+        {.label = "GFX Demo", .type = MENU_ITEM_ACTION, .action = _menu_action_gfxdemo},
+        {.label = "DOOM", .type = MENU_ITEM_ACTION, .action = _menu_action_doom},
     };
     menu_t system_menu = {
         .x = 0,
@@ -106,9 +114,16 @@ int main()
         .item_count = sizeof(system_menu_items) / sizeof(system_menu_items[0]),
         .open = false,
     };
+    menu_t apps_menu = {
+        .x = 70,
+        .y = TOP_BAR_HEIGHT - 1,
+        .items = apps_items,
+        .item_count = sizeof(apps_items) / sizeof(apps_items[0]),
+        .open = false,
+    };
     menubar_item_t menubar_items[] = {
         {.label = "System", .menu = &system_menu},
-        {.label = "Apps", .menu = NULL},
+        {.label = "Apps", .menu = &apps_menu},
         {.label = "File", .menu = NULL},
     };
     menubar_t system_menubar = {
