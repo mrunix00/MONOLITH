@@ -8,44 +8,45 @@
 
 #include <libgfx.h>
 
-static input_mouse_event_t mouse_state = (input_mouse_event_t) {
-    .x = 0,
-    .y = 0,
-    .delta_x = 0,
-    .delta_y = 0,
-    .buttons = 0,
-};
+static input_mouse_event_t _mouse_state
+    = (input_mouse_event_t) {.x = 0, .y = 0, .delta_x = 0, .delta_y = 0, .buttons = 0};
+static uint32_t _screen_width = 0;
+static uint32_t _screen_height = 0;
 
-bool handle_input(gfx_context_t *context)
+void input_set_screen_bounds(uint32_t width, uint32_t height)
 {
-    input_event_t event;
-    bool had_event = false;
-    while (poll_input_event(&event) == 0) {
-        had_event = true;
-        if (event.type == INPUT_EVENT_MOUSE) {
-            uint32_t new_x = event.data.mouse.x < 0 ? 0u : (uint32_t) event.data.mouse.x;
-            uint32_t new_y = event.data.mouse.y < 0 ? 0u : (uint32_t) event.data.mouse.y;
+    _screen_width = width;
+    _screen_height = height;
+}
 
-            if (new_x >= context->width)
-                new_x = (uint32_t) context->width - 1;
-            if (new_y >= context->height)
-                new_y = (uint32_t) context->height - 1;
+bool input_process_event(const input_event_t *event)
+{
+    if (!event)
+        return false;
 
-            mouse_state = event.data.mouse;
-            mouse_state.x = (int32_t) new_x;
-            mouse_state.y = (int32_t) new_y;
-        }
-    }
+    if (event->type != INPUT_EVENT_MOUSE)
+        return false;
 
-    return had_event;
+    uint32_t new_x = event->data.mouse.x < 0 ? 0u : (uint32_t) event->data.mouse.x;
+    uint32_t new_y = event->data.mouse.y < 0 ? 0u : (uint32_t) event->data.mouse.y;
+
+    if (_screen_width > 0 && new_x >= _screen_width)
+        new_x = _screen_width - 1;
+    if (_screen_height > 0 && new_y >= _screen_height)
+        new_y = _screen_height - 1;
+
+    _mouse_state = event->data.mouse;
+    _mouse_state.x = (int32_t) new_x;
+    _mouse_state.y = (int32_t) new_y;
+    return true;
 }
 
 void draw_cursor(gfx_context_t *context)
 {
-    gfx_draw_colored_bitmap(context, &_cursor_bitmap, (gfx_pos_t) {mouse_state.x, mouse_state.y});
+    gfx_draw_colored_bitmap(context, &_cursor_bitmap, (gfx_pos_t) {_mouse_state.x, _mouse_state.y});
 }
 
 input_mouse_event_t get_mouse_state()
 {
-    return mouse_state;
+    return _mouse_state;
 }

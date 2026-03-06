@@ -8,15 +8,9 @@
 #include "./magic.h"
 #include "./protocol_server.h"
 #include "./window.h"
-#include "libgfx/types.h"
-#include "unistd.h"
 
 #include <libgfx.h>
-#include <libgfx/fonts.h>
 #include <libgfx/images.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 gfx_font_t default_font;
@@ -128,20 +122,18 @@ int main()
 
     while (1) {
         window_set_screen_bounds((uint32_t) context.width, (uint32_t) context.height);
+        input_set_screen_bounds((uint32_t) context.width, (uint32_t) context.height);
 
-        bool input_activity = handle_input(&context);
         bool client_activity = protocol_server_pump();
+        bool menubar_changed = update_menubar_state(&context);
+        bool windows_changed = update_windows_state(&context);
         if (!launched_initial_about) {
             _menu_action_about();
             launched_initial_about = true;
             client_activity = true;
         }
 
-        bool menubar_changed = update_menubar_state(&context);
-        bool windows_changed = update_windows_state(&context);
-
-        needs_redraw = needs_redraw || input_activity || client_activity || menubar_changed
-                       || windows_changed;
+        needs_redraw = needs_redraw || client_activity || menubar_changed || windows_changed;
 
         if (!needs_redraw) {
             usleep(1);

@@ -15,15 +15,11 @@
 
 typedef struct window window_t;
 
-typedef void (*window_draw_cb_t)(
-    gfx_context_t *context,
-    window_t *window,
-    gfx_rect_t content_rect,
-    void *user);
+typedef void (*window_draw_cb_t)(gfx_context_t *context, window_t *window, gfx_rect_t content_rect);
+typedef void (*window_close_cb_t)(window_t *window);
 
-typedef void (*window_close_cb_t)(window_t *window, void *user);
-
-struct window {
+struct window
+{
     uint32_t id;
     uint32_t width;
     uint32_t height;
@@ -50,9 +46,7 @@ struct window {
     size_t surface_size;
     uint16_t notified_content_width;
     uint16_t notified_content_height;
-    void *draw_user;
     window_draw_cb_t draw_content;
-    void *close_user;
     window_close_cb_t close_callback;
 };
 
@@ -74,20 +68,18 @@ window_t *get_window_at_pos(gfx_context_t *context, uint32_t x, uint32_t y);
 
 bool update_windows_state(gfx_context_t *context);
 
-void window_set_draw_callback(window_t *window, window_draw_cb_t draw, void *user);
+void window_set_draw_callback(window_t *window, window_draw_cb_t draw);
 
-void window_set_close_callback(window_t *window, window_close_cb_t close_cb, void *user);
+void window_set_close_callback(window_t *window, window_close_cb_t close_cb);
 
 void window_set_remote_surface(
-    window_t *window,
-    uint32_t *pixels,
-    uint16_t width,
-    uint16_t height,
-    size_t size);
+    window_t *window, uint32_t *pixels, uint16_t width, uint16_t height, size_t size);
 
 uint16_t window_get_content_width(const window_t *window);
 
 uint16_t window_get_content_height(const window_t *window);
+
+bool window_contains_content_point(const window_t *window, uint32_t x, uint32_t y);
 
 void close_windows_by_owner(uint64_t owner_task_id);
 
