@@ -8,7 +8,9 @@
 #include <input.h>
 #include <libgfx/types.h>
 
-bool handle_input(gfx_context_t *);
+void input_set_screen_bounds(uint32_t width, uint32_t height);
+
+bool input_process_event(const input_event_t *event);
 
 void draw_cursor(gfx_context_t *);
 

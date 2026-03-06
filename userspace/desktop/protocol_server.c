@@ -4,12 +4,10 @@
  */
 
 #include "./protocol_server.h"
+#include "./input.h"
 #include "./window.h"
 
 #include <ipc.h>
-#include <protocol.h>
-#include <stddef.h>
-#include <stdint.h>
 #include <string.h>
 
 #define MAX_PENDING_FB_REQUESTS 64
@@ -90,10 +88,8 @@ static void _drop_pending_fb_requests(uint64_t task_id)
     }
 }
 
-static void _on_window_closed(window_t *window, void *user)
+static void _on_window_closed(window_t *window)
 {
-    (void) user;
-
     if (!window || window->owner_task_id == 0)
         return;
 
@@ -138,7 +134,7 @@ static void _handle_create_window(uint64_t task_id, const desktop_request_t *req
     }
 
     window->owner_task_id = task_id;
-    window_set_close_callback(window, _on_window_closed, NULL);
+    window_set_close_callback(window, _on_window_closed);
 
     event.data.created.id = (uint16_t) window->id;
     event.data.created.width = window_get_content_width(window);
@@ -292,6 +288,48 @@ static void _handle_disconnect(uint64_t task_id)
     close_windows_by_owner(task_id);
 }
 
+static bool _pump_input_events(void)
+{
+    bool had_input = false;
+    input_event_t input_event = {0};
+
+    while (poll_input_event(&input_event) == 0) {
+        had_input = true;
+        input_process_event(&input_event);
+
+        window_t *window = get_active_window();
+        if (!window || window->owner_task_id == 0)
+            continue;
+
+        desktop_event_t event = {
+            .sequence = 0,
+        };
+
+        if (input_event.type == INPUT_EVENT_KEYBOARD) {
+            event.type = DESKTOP_EVENT_WINDOW_KEYBOARD;
+            event.data.keyboard.id = (uint16_t) window->id;
+            event.data.keyboard.keyboard = input_event.data.keyboard;
+            _send_event(window->owner_task_id, &event);
+            continue;
+        }
+
+        if (input_event.type == INPUT_EVENT_MOUSE) {
+            input_mouse_event_t mouse_state = get_mouse_state();
+            uint32_t mouse_x = mouse_state.x < 0 ? 0u : (uint32_t) mouse_state.x;
+            uint32_t mouse_y = mouse_state.y < 0 ? 0u : (uint32_t) mouse_state.y;
+            if (!window_contains_content_point(window, mouse_x, mouse_y))
+                continue;
+
+            event.type = DESKTOP_EVENT_WINDOW_MOUSE;
+            event.data.mouse.id = (uint16_t) window->id;
+            event.data.mouse.mouse = input_event.data.mouse;
+            _send_event(window->owner_task_id, &event);
+        }
+    }
+
+    return had_input;
+}
+
 static bool _pump_window_resize_events(void)
 {
     bool had_resize_event = false;
@@ -393,6 +431,9 @@ bool protocol_server_pump(void)
     }
 
     if (_pump_window_resize_events())
+        had_activity = true;
+
+    if (_pump_input_events())
         had_activity = true;
 
     return had_activity;

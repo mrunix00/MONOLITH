@@ -173,7 +173,7 @@ static void _remove_window(uint32_t id)
     if (id < _window_list_size) {
         window_t removed = _window_list[id];
         if (removed.close_callback)
-            removed.close_callback(&removed, removed.close_user);
+            removed.close_callback(&removed);
         memmove(
             &_window_list[id],
             &_window_list[id + 1],
@@ -261,12 +261,7 @@ static bool _handle_title_bar_click(
                                                    : (window_x + window_width - 40);
 
     if (_point_in_rect(
-            mouse_x,
-            mouse_y,
-            close_button_x,
-            window_y + 10,
-            WINDOW_BUTTON_SIZE,
-            WINDOW_BUTTON_SIZE)) {
+            mouse_x, mouse_y, close_button_x, window_y + 10, WINDOW_BUTTON_SIZE, WINDOW_BUTTON_SIZE)) {
         _remove_window(window_id);
         *dragging_window = NULL;
         return true;
@@ -397,9 +392,7 @@ window_t *new_window(const char *title, uint32_t width, uint32_t height, window_
         .surface_size = 0,
         .notified_content_width = 0,
         .notified_content_height = 0,
-        .draw_user = NULL,
         .draw_content = NULL,
-        .close_user = NULL,
         .close_callback = NULL,
     };
     size_t title_len = title ? strnlen(title, sizeof(window.title) - 1) : 0;
@@ -499,7 +492,6 @@ void draw_window(gfx_context_t *context, window_t *window)
 
     gfx_rect_t content_rect = {0};
     if (_window_content_rect_from_geom(window, x, y, width, height, &content_rect)) {
-
         if (window->remote_surface && window->surface_pixels && window->surface_width > 0
             && window->surface_height > 0) {
             uint32_t bitmap_width = window->surface_width;
@@ -531,7 +523,7 @@ void draw_window(gfx_context_t *context, window_t *window)
         if (window->draw_content != NULL) {
             gfx_rect_t prev_clip = context->clip_rect;
             gfx_set_clip(context, content_rect);
-            window->draw_content(context, window, content_rect, window->draw_user);
+            window->draw_content(context, window, content_rect);
             context->clip_rect = prev_clip;
         }
     }
@@ -763,28 +755,20 @@ bool update_windows_state(gfx_context_t *context)
     return changed;
 }
 
-void window_set_draw_callback(window_t *window, window_draw_cb_t draw, void *user)
+void window_set_draw_callback(window_t *window, window_draw_cb_t draw)
 {
     if (!window)
         return;
     window->draw_content = draw;
-    window->draw_user = user;
 }
 
-void window_set_close_callback(window_t *window, window_close_cb_t close_cb, void *user)
+void window_set_close_callback(window_t *window, window_close_cb_t close_cb)
 {
-    if (!window)
-        return;
     window->close_callback = close_cb;
-    window->close_user = user;
 }
 
 void window_set_remote_surface(
-    window_t *window,
-    uint32_t *pixels,
-    uint16_t width,
-    uint16_t height,
-    size_t size)
+    window_t *window, uint32_t *pixels, uint16_t width, uint16_t height, size_t size)
 {
     if (!window)
         return;
@@ -837,6 +821,38 @@ uint16_t window_get_content_height(const window_t *window)
     if (height <= total_vertical_chrome)
         return 0;
     return (uint16_t) (height - total_vertical_chrome);
+}
+
+bool window_contains_content_point(const window_t *window, uint32_t x, uint32_t y)
+{
+    if (!window)
+        return false;
+
+    uint32_t window_x = window->pos_x;
+    uint32_t window_y = window->pos_y;
+    uint32_t window_width = window->width;
+    uint32_t window_height = window->height;
+
+    if (window->fullscreen) {
+        window_x = 0;
+        window_y = 0;
+        window_width = _screen_width;
+        window_height = _screen_height;
+    } else if (window->maximized) {
+        window_x = 0;
+        window_y = TOP_BAR_HEIGHT;
+        window_width = _screen_width;
+        window_height = _screen_height > TOP_BAR_HEIGHT ? _screen_height - TOP_BAR_HEIGHT : 0;
+    }
+
+    gfx_rect_t content_rect = {0};
+    if (!_window_content_rect_from_geom(
+            window, window_x, window_y, window_width, window_height, &content_rect)) {
+        return false;
+    }
+
+    return _point_in_rect(
+        x, y, content_rect.x, content_rect.y, content_rect.width, content_rect.height);
 }
 
 void close_windows_by_owner(uint64_t owner_task_id)

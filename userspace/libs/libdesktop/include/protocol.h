@@ -6,6 +6,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <input.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -72,6 +73,8 @@ typedef enum {
     DESKTOP_EVENT_WINDOW_CLOSE,
     DESKTOP_EVENT_WINDOW_CLOSED,
     DESKTOP_EVENT_WINDOW_RESIZED,
+    DESKTOP_EVENT_WINDOW_KEYBOARD,
+    DESKTOP_EVENT_WINDOW_MOUSE,
     DESKTOP_EVENT_FRAMEBUFFER_READY,
 } desktop_event_type_t;
 
@@ -112,6 +115,18 @@ typedef struct
 typedef struct
 {
     uint16_t id;
+    input_keyboard_event_t keyboard;
+} window_keyboard_event_t;
+
+typedef struct
+{
+    uint16_t id;
+    input_mouse_event_t mouse;
+} window_mouse_event_t;
+
+typedef struct
+{
+    uint16_t id;
     uint16_t width;
     uint16_t height;
     uint32_t stride;
@@ -128,6 +143,8 @@ typedef struct
         window_close_event_t close;
         window_closed_event_t closed;
         window_resized_event_t resized;
+        window_keyboard_event_t keyboard;
+        window_mouse_event_t mouse;
         window_framebuffer_ready_event_t framebuffer_ready;
     } data;
 } desktop_event_t;

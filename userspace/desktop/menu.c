@@ -11,8 +11,6 @@
 #include "./window.h"
 
 #include <libgfx.h>
-#include <libgfx/fonts.h>
-#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -207,7 +205,8 @@ void menu_draw(gfx_context_t *context, const menu_t *menu)
 {
     uint32_t width = _menu_measure_width(menu);
     uint32_t height = _menu_measure_height(menu);
-    draw_transparent_box(context, (gfx_rect_t) {.x = menu->x, .y = menu->y, .width = width, .height = height});
+    draw_transparent_box(
+        context, (gfx_rect_t) {.x = menu->x, .y = menu->y, .width = width, .height = height});
 
     uint32_t cursor_y = menu->y + MENU_VERTICAL_PADDING;
     for (size_t i = 0; i < menu->item_count; i++) {
