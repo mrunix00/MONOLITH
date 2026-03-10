@@ -11,7 +11,6 @@
 #define DESKTOP_IPC_RETRY_COUNT 5000
 #define DESKTOP_EVENT_RECV_BUFFER_SIZE 4096
 #define DESKTOP_MAX_FRAMEBUFFERS 64
-#define DESKTOP_FRAMEBUFFER_MIN_CAPACITY 64
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
@@ -72,19 +71,27 @@ static int _protocol_send_request(const desktop_request_t *request)
     return -1;
 }
 
-static uint16_t _grow_capacity(uint16_t current, uint16_t required)
+static uint16_t _grow_capacity_2x(uint16_t current, uint16_t required)
 {
     if (required == 0)
         return 0;
+
     if (current >= required)
         return current;
 
-    uint32_t grown = current ? current : DESKTOP_FRAMEBUFFER_MIN_CAPACITY;
-    while (grown < required)
-        grown *= 2;
+    if (current == 0)
+        return required;
 
-    if (grown > UINT16_MAX)
-        grown = UINT16_MAX;
+    uint32_t grown = (uint32_t) current * 2u;
+    if (grown <= current)
+        grown = (uint32_t) current + 1u;
+
+    if (grown < required)
+        grown = required;
+
+    if (grown > 0xFFFFu)
+        grown = 0xFFFFu;
+
     return (uint16_t) grown;
 }
 
@@ -122,6 +129,9 @@ static void _clear_framebuffer_state(_desktop_framebuffer_state_t *state)
 {
     if (!state)
         return;
+
+    if (state->stale_pixels == state->pixels)
+        state->stale_pixels = NULL;
 
     _release_framebuffer_mapping(state->pixels);
     _release_framebuffer_mapping(state->stale_pixels);
@@ -195,10 +205,6 @@ static int _request_window_framebuffer_internal(
     if (!state || requested_width == 0 || requested_height == 0)
         return -1;
 
-    size_t size = (size_t) requested_width * (size_t) requested_height * sizeof(uint32_t);
-    if (size == 0)
-        return -1;
-
     desktop_request_t request = {
         .sequence = sequence,
         .type = DESKTOP_REQUEST_REQUEST_FRAMEBUFFER,
@@ -209,66 +215,6 @@ static int _request_window_framebuffer_internal(
 
     if (_protocol_send_request(&request) != 0)
         return -1;
-
-    if (desktop_connect() != 0) {
-        _last_error = DESKTOP_ERROR_CONNECT_FAILED;
-        return -1;
-    }
-
-    void *new_pixels = NULL;
-    if (ipc_request_shared_memory(_protocol_channel_id, size, IPC_SHM_FLAG_RW, &new_pixels) != 0) {
-        _last_error = DESKTOP_ERROR_SHM_FAILED;
-        return -1;
-    }
-
-    if (!new_pixels) {
-        _last_error = DESKTOP_ERROR_SHM_FAILED;
-        return -1;
-    }
-
-    uint32_t *old_pixels = (uint32_t *) state->pixels;
-    uint16_t old_width = state->buffer_width;
-    uint16_t old_height = state->buffer_height;
-    uint16_t copy_width = 0;
-    uint16_t copy_height = 0;
-
-    if (old_pixels && old_width > 0 && old_height > 0) {
-        copy_width = old_width < requested_width ? old_width : requested_width;
-        copy_height = old_height < requested_height ? old_height : requested_height;
-        for (uint16_t y = 0; y < copy_height; y++) {
-            uint32_t *dst_row = (uint32_t *) new_pixels + (size_t) y * requested_width;
-            uint32_t *src_row = old_pixels + (size_t) y * old_width;
-            memcpy(dst_row, src_row, (size_t) copy_width * sizeof(uint32_t));
-        }
-    }
-
-    for (uint16_t y = 0; y < copy_height; y++) {
-        uint32_t *dst_row = (uint32_t *) new_pixels + (size_t) y * requested_width;
-        if (requested_width > copy_width) {
-            memset(
-                dst_row + copy_width,
-                0,
-                (size_t) (requested_width - copy_width) * sizeof(uint32_t));
-        }
-    }
-
-    if (requested_height > copy_height) {
-        uint32_t *dst = (uint32_t *) new_pixels + (size_t) copy_height * requested_width;
-        memset(
-            dst,
-            0,
-            (size_t) (requested_height - copy_height) * requested_width * sizeof(uint32_t));
-    }
-
-    if (state->stale_pixels && state->stale_pixels != old_pixels)
-        _release_framebuffer_mapping(state->stale_pixels);
-
-    state->stale_pixels = old_pixels;
-
-    state->pixels = new_pixels;
-    state->size = size;
-    state->buffer_width = requested_width;
-    state->buffer_height = requested_height;
     state->pending_sequence = sequence;
     state->request_in_flight = true;
 
@@ -384,9 +330,11 @@ gfx_context_res_t desktop_request_window_framebuffer(
         return result;
     }
 
-    uint16_t requested_width = _grow_capacity(state->buffer_width, width);
-    uint16_t requested_height = _grow_capacity(state->buffer_height, height);
-    if (_request_window_framebuffer_internal(state, requested_width, requested_height, result.sequence)
+    uint16_t requested_width = _grow_capacity_2x(state->buffer_width, width);
+    uint16_t requested_height = _grow_capacity_2x(state->buffer_height, height);
+
+    if (_request_window_framebuffer_internal(
+            state, requested_width, requested_height, result.sequence)
         != 0) {
         return result;
     }
@@ -417,6 +365,20 @@ int desktop_handle_framebuffer_event(const desktop_event_t *event, gfx_context_t
 
     if (!state->request_in_flight || state->pending_sequence != event->sequence)
         return 0;
+
+    void *new_pixels = (void *) event->data.framebuffer_ready.address;
+    if (!new_pixels) {
+        _last_error = DESKTOP_ERROR_SHM_FAILED;
+        return -1;
+    }
+
+    void *old_pixels = state->pixels;
+
+    if (state->stale_pixels && state->stale_pixels != old_pixels)
+        _release_framebuffer_mapping(state->stale_pixels);
+
+    state->stale_pixels = old_pixels;
+    state->pixels = new_pixels;
 
     state->buffer_width = event->data.framebuffer_ready.width;
     state->buffer_height = event->data.framebuffer_ready.height;

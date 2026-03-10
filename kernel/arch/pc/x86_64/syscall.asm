@@ -68,8 +68,9 @@ extern sys_ipc_send_to
 extern sys_ipc_send
 extern sys_ipc_receive
 extern sys_ipc_disconnect
-extern sys_ipc_request_shm
 extern sys_ipc_release_shm
+extern sys_ipc_share_shm
+extern sys_unmap_pages
 
 section .rodata
 syscall_table:
@@ -101,8 +102,9 @@ syscall_table:
     dq sys_ipc_receive
     dq sys_ipc_disconnect
     dq sys_ipc_send_to
-    dq sys_ipc_request_shm
     dq sys_ipc_release_shm
+    dq sys_ipc_share_shm
+    dq sys_unmap_pages
 syscall_table_end:
 
 section .text

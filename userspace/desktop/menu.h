@@ -26,8 +26,6 @@ typedef struct
 
 typedef struct
 {
-    uint32_t x;
-    uint32_t y;
     const menu_item_t *items;
     size_t item_count;
     bool open;

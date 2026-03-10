@@ -480,18 +480,28 @@ int sys_ipc_send(channel_id_t channel_id, void *data, size_t size)
     return ipc_send(task_get_current(), channel_id, data, size);
 }
 
-int sys_ipc_request_shm(channel_id_t channel_id, size_t size, uint64_t flags, void **out_addr)
-{
-    if (!_user_ptr_range(out_addr, sizeof(*out_addr)))
-        return -1;
-    return ipc_request_shared_memory(task_get_current(), channel_id, size, flags, out_addr);
-}
-
 int sys_ipc_release_shm(channel_id_t channel_id, void *addr)
 {
     if (!_user_ptr_range(addr, 1))
         return -1;
     return ipc_release_shared_memory(task_get_current(), channel_id, addr);
+}
+
+void *sys_ipc_share_shm(channel_id_t channel_id, connection_t *cnx, void *owner_addr, size_t size)
+{
+    if (!_user_ptr_range(cnx, sizeof(*cnx)) || !_user_ptr_range(owner_addr, 1) || size == 0)
+        return NULL;
+    return ipc_share_memory(task_get_current(), channel_id, cnx, owner_addr, size);
+}
+
+int sys_unmap_pages(void *addr, size_t num_pages)
+{
+    if (!_user_ptr_range(addr, 1) || num_pages == 0)
+        return -1;
+    task_t *current = task_get_current();
+    if (!current)
+        return -1;
+    return task_unmap(current, (uintptr_t) addr, num_pages, true);
 }
 
 int sys_ipc_receive(channel_id_t channel_id, connection_t *sender, void *data, size_t size)

@@ -147,8 +147,9 @@ int main(void)
                 continue;
             }
 
-            framebuffer_ready = true;
-            _draw_about_view((uint16_t) window_id, width, height, &framebuffer);
+            framebuffer_ready = framebuffer.framebuffer && framebuffer.backbuffer;
+            if (framebuffer_ready)
+                _draw_about_view((uint16_t) window_id, width, height, &framebuffer);
 
             continue;
         }
@@ -168,7 +169,8 @@ int main(void)
             gfx_context_res_t framebuffer_res
                 = desktop_request_window_framebuffer(window_id, width, height);
             framebuffer = framebuffer_res.context;
-            if (desktop_get_error() == DESKTOP_ERROR_NONE) {
+            if (desktop_get_error() == DESKTOP_ERROR_NONE && framebuffer.framebuffer
+                && framebuffer.backbuffer) {
                 framebuffer_ready = true;
                 _draw_about_view((uint16_t) window_id, width, height, &framebuffer);
             } else {
@@ -187,7 +189,8 @@ int main(void)
                 gfx_context_res_t framebuffer_res
                     = desktop_request_window_framebuffer(window_id, width, height);
                 framebuffer = framebuffer_res.context;
-                if (desktop_get_error() == DESKTOP_ERROR_NONE) {
+                if (desktop_get_error() == DESKTOP_ERROR_NONE && framebuffer.framebuffer
+                    && framebuffer.backbuffer) {
                     framebuffer_ready = true;
                 } else {
                     framebuffer_ready = false;

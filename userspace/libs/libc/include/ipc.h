@@ -127,18 +127,28 @@ static inline int ipc_send(channel_id_t channel_id, void *data, size_t size)
 }
 
 /*
- * Request a shared memory region from the channel owner (client side).
- * channel_id: channel ID.
- * size: requested shared memory size in bytes.
- * flags: IPC_SHM_FLAG_* flags.
- * out_addr: output mapped address on success.
+ * Share an owner-allocated mapping with a specific connected client.
+ * channel_id: owner channel ID.
+ * connection: accepted client connection.
+ * owner_addr: owner virtual address to share.
+ * size: mapping size in bytes.
+ * Returns client virtual address on success, NULL on failure.
  */
-int ipc_request_shared_memory(channel_id_t channel_id, size_t size, uint64_t flags, void **out_addr);
+static inline void *ipc_share_memory(
+    channel_id_t channel_id, connection_t *connection, void *owner_addr, size_t size)
+{
+    return (void *) syscall4(
+        SYSCALL_IPC_SHARE_SHM,
+        (long) channel_id,
+        (long) connection,
+        (long) owner_addr,
+        (long) size);
+}
 
 /*
- * Release a previously requested shared memory region.
+ * Release a previously shared memory region mapping.
  * channel_id: channel ID.
- * addr: mapped address returned earlier by ipc_request_shared_memory.
+ * addr: mapped address returned by IPC sharing operations.
  */
 static inline int ipc_release_shared_memory(channel_id_t channel_id, void *addr)
 {

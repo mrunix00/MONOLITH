@@ -140,12 +140,3 @@ int ipc_receive(channel_id_t channel_id, connection_t *sender, void *data, size_
 
     return 0;
 }
-
-int ipc_request_shared_memory(channel_id_t channel_id, size_t size, uint64_t flags, void **out_addr)
-{
-    if (channel_id < 0 || !out_addr || size == 0)
-        return -1;
-
-    return (int)
-        syscall4(SYSCALL_IPC_REQUEST_SHM, (long) channel_id, (long) size, (long) flags, (long) out_addr);
-}

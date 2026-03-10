@@ -106,10 +106,10 @@ int ipc_send_to(task_t *, channel_id_t, connection_t *, void *data, size_t size)
 int ipc_send(task_t *, channel_id_t, void *data, size_t size);
 
 /*
- * Request a shared memory region from the channel owner (client side).
- * Returns 0 on success, -1 on failure.
+ * Share an owner-mapped region with a specific accepted client connection.
+ * Returns the mapped client virtual address on success, NULL on failure.
  */
-int ipc_request_shared_memory(task_t *, channel_id_t, size_t size, uint64_t flags, void **out_addr);
+void *ipc_share_memory(task_t *, channel_id_t, connection_t *, void *owner_addr, size_t size);
 
 /*
  * Release a previously mapped shared memory region by virtual address.
