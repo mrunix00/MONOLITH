@@ -19,8 +19,6 @@ extern gfx_font_t default_font;
 static menubar_t *active_menubar = NULL;
 static uint8_t previous_buttons = 0;
 static menu_t minimized_menu = {
-    .x = 0,
-    .y = TOP_BAR_HEIGHT - 1,
     .items = NULL,
     .item_count = 0,
     .open = false,
@@ -29,18 +27,9 @@ static menu_item_t *minimized_menu_items = NULL;
 static const char **minimized_menu_titles = NULL;
 static size_t minimized_menu_capacity = 0;
 
-static bool _point_in_rect(
-    uint32_t x, uint32_t y, uint32_t rx, uint32_t ry, uint32_t width, uint32_t height)
+static bool _point_in_rect(uint32_t x, uint32_t y, uint32_t rx, uint32_t ry, uint32_t w, uint32_t h)
 {
-    return x >= rx && x < (rx + width) && y >= ry && y < (ry + height);
-}
-
-static uint32_t _menu_item_height(const menu_item_t *item)
-{
-    if (item->type == MENU_ITEM_SEPARATOR) {
-        return MENU_SEPARATOR_HEIGHT;
-    }
-    return MENU_ITEM_HEIGHT;
+    return x >= rx && x < (rx + w) && y >= ry && y < (ry + h);
 }
 
 static uint32_t _text_width(const char *text)
@@ -49,6 +38,28 @@ static uint32_t _text_width(const char *text)
         return 0;
     }
     return (uint32_t) strlen(text) * MENU_TEXT_ADVANCE;
+}
+
+static gfx_pos_t _menu_position(const menubar_t *bar, const menu_t *menu)
+{
+    if (menu == &minimized_menu)
+        return (gfx_pos_t) {.x = 0, .y = TOP_BAR_HEIGHT - 1};
+
+    uint32_t cursor_x = 0;
+    for (size_t i = 0; i < bar->item_count; i++) {
+        const menubar_item_t *item = &bar->items[i];
+        uint32_t width = _text_width(item->label) + MENUBAR_ITEM_GAP;
+        if (item->menu == menu)
+            return (gfx_pos_t) {.x = cursor_x, .y = TOP_BAR_HEIGHT - 1};
+        cursor_x += width;
+    }
+
+    return (gfx_pos_t) {.x = 0, .y = TOP_BAR_HEIGHT - 1};
+}
+
+static uint32_t _menu_item_height(const menu_item_t *item)
+{
+    return item->type == MENU_ITEM_SEPARATOR ? MENU_SEPARATOR_HEIGHT : MENU_ITEM_HEIGHT;
 }
 
 static uint32_t _menu_measure_width(const menu_t *menu)
@@ -138,13 +149,14 @@ static bool _minimized_menu_refresh(void)
     return true;
 }
 
-static void _minimized_menu_position(gfx_context_t *context)
+static gfx_pos_t _minimized_menu_position(gfx_context_t *context)
 {
     uint32_t menu_width = _menu_measure_width(&minimized_menu);
     uint32_t desired_right = (uint32_t) context->width;
-    uint32_t pos_x = desired_right > menu_width ? desired_right - menu_width : 0;
-    minimized_menu.x = pos_x;
-    minimized_menu.y = TOP_BAR_HEIGHT - 1;
+    return (gfx_pos_t) {
+        .x = desired_right > menu_width ? desired_right - menu_width : 0,
+        .y = TOP_BAR_HEIGHT - 1,
+    };
 }
 
 static bool _minimized_menu_handle_click(gfx_context_t *context, uint32_t x, uint32_t y)
@@ -158,7 +170,6 @@ static bool _minimized_menu_handle_click(gfx_context_t *context, uint32_t x, uin
     uint32_t icon_w = 0;
     uint32_t icon_h = 0;
     _minimized_icon_rect(context, &icon_x, &icon_y, &icon_w, &icon_h);
-    _minimized_menu_position(context);
 
     if (_point_in_rect(x, y, icon_x, icon_y, icon_w, icon_h)) {
         minimized_menu.open = !minimized_menu.open;
@@ -203,12 +214,25 @@ static int32_t _menubar_hit_test(const menubar_t *bar, uint32_t x, uint32_t y)
 
 void menu_draw(gfx_context_t *context, const menu_t *menu)
 {
+    gfx_pos_t menu_pos;
+    if (menu == &minimized_menu) {
+        menu_pos = _minimized_menu_position(context);
+    } else {
+        menu_pos = _menu_position(active_menubar, menu);
+    }
+
     uint32_t width = _menu_measure_width(menu);
     uint32_t height = _menu_measure_height(menu);
     draw_transparent_box(
-        context, (gfx_rect_t) {.x = menu->x, .y = menu->y, .width = width, .height = height});
+        context,
+        (gfx_rect_t) {
+            .x = menu_pos.x,
+            .y = menu_pos.y,
+            .width = width,
+            .height = height,
+        });
 
-    uint32_t cursor_y = menu->y + MENU_VERTICAL_PADDING;
+    uint32_t cursor_y = menu_pos.y + MENU_VERTICAL_PADDING;
     for (size_t i = 0; i < menu->item_count; i++) {
         const menu_item_t *item = &menu->items[i];
         uint32_t item_height = _menu_item_height(item);
@@ -219,9 +243,9 @@ void menu_draw(gfx_context_t *context, const menu_t *menu)
             gfx_draw_line(
                 context,
                 (gfx_line_t) {
-                    .x1 = menu->x + BORDER_THICKNESS,
+                    .x1 = menu_pos.x + BORDER_THICKNESS,
                     .y1 = line_y,
-                    .x2 = menu->x + width - border_cut,
+                    .x2 = menu_pos.x + width - border_cut,
                     .y2 = line_y,
                     .thickness = BORDER_THICKNESS,
                 },
@@ -230,7 +254,7 @@ void menu_draw(gfx_context_t *context, const menu_t *menu)
             gfx_draw_text(
                 context,
                 &default_font,
-                (gfx_pos_t) {menu->x + MENUBAR_START_X, cursor_y + 18},
+                (gfx_pos_t) {menu_pos.x + MENUBAR_START_X, cursor_y + 18},
                 FONT_COLOR,
                 item->label);
         }
@@ -241,16 +265,18 @@ void menu_draw(gfx_context_t *context, const menu_t *menu)
 
 int32_t menu_hit_test(const menu_t *menu, uint32_t x, uint32_t y)
 {
+    gfx_pos_t menu_pos = _menu_position(active_menubar, menu);
+
     uint32_t width = _menu_measure_width(menu);
     uint32_t height = _menu_measure_height(menu);
-    if (!_point_in_rect(x, y, menu->x, menu->y, width, height)) {
+    if (!_point_in_rect(x, y, menu_pos.x, menu_pos.y, width, height)) {
         return -1;
     }
 
-    uint32_t cursor_y = menu->y + MENU_VERTICAL_PADDING;
+    uint32_t cursor_y = menu_pos.y + MENU_VERTICAL_PADDING;
     for (size_t i = 0; i < menu->item_count; i++) {
         uint32_t item_height = _menu_item_height(&menu->items[i]);
-        if (_point_in_rect(x, y, menu->x, cursor_y, width, item_height)) {
+        if (_point_in_rect(x, y, menu_pos.x, cursor_y, width, item_height)) {
             return (int32_t) i;
         }
         cursor_y += item_height;
@@ -261,9 +287,11 @@ int32_t menu_hit_test(const menu_t *menu, uint32_t x, uint32_t y)
 
 bool menu_contains_point(const menu_t *menu, uint32_t x, uint32_t y)
 {
+    gfx_pos_t menu_pos = _menu_position(active_menubar, menu);
+
     uint32_t width = _menu_measure_width(menu);
     uint32_t height = _menu_measure_height(menu);
-    return _point_in_rect(x, y, menu->x, menu->y, width, height);
+    return _point_in_rect(x, y, menu_pos.x, menu_pos.y, width, height);
 }
 
 void menubar_draw(gfx_context_t *context, const menubar_t *bar)
@@ -316,7 +344,6 @@ void menubar_draw_open_menus(gfx_context_t *context, const menubar_t *bar)
     }
 
     if (minimized_menu.open && minimized_menu.item_count > 0) {
-        _minimized_menu_position(context);
         menu_draw(context, &minimized_menu);
     }
 }

@@ -145,3 +145,14 @@ static inline void *alloc_pages(size_t num_pages, uint64_t flags)
 {
     return (void *) syscall2(SYSCALL_ALLOC_PAGES, (long) num_pages, (long) flags);
 }
+
+/**
+ * Unmap pages from the process's address space.
+ * @param addr Virtual address previously mapped.
+ * @param num_pages Number of pages to unmap.
+ * @return 0 on success, -1 on failure.
+ */
+static inline int unmap_pages(void *addr, size_t num_pages)
+{
+    return (int) syscall2(SYSCALL_UNMAP_PAGES, (long) addr, (long) num_pages);
+}

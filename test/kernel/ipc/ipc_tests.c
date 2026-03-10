@@ -364,65 +364,6 @@ static void test_ipc_task_cleanup_notifies_owner_on_client_disconnect(void)
     _cleanup_channel(&owner, owner_channel);
 }
 
-static void test_ipc_shared_memory_request_enqueues_owner_message(void)
-{
-    extern void task_registry_reset(void);
-    extern int task_registry_add(task_t *task);
-    extern int task_registry_remove(task_t *task);
-
-    task_registry_reset();
-
-    task_t owner = _make_task(100);
-    task_t client = _make_task(101);
-    TEST_ASSERT_EQUAL(0, task_registry_add(&owner));
-    TEST_ASSERT_EQUAL(0, task_registry_add(&client));
-
-    const char *name = "ipc_shm_request";
-    channel_id_t owner_channel = ipc_new_channel(&owner, name);
-    TEST_ASSERT_NOT_EQUAL(-1, owner_channel);
-
-    channel_id_t client_channel = ipc_connect(&client, name);
-    TEST_ASSERT_NOT_EQUAL(-1, client_channel);
-
-    connection_t pending = {0};
-    TEST_ASSERT_EQUAL(0, ipc_await_connection(&owner, owner_channel, &pending));
-    TEST_ASSERT_EQUAL(0, ipc_accept_connection(&owner, owner_channel, &pending));
-
-    void *client_addr = NULL;
-    size_t shm_size = 4096;
-    TEST_ASSERT_EQUAL(
-        0, ipc_request_shared_memory(&client, client_channel, shm_size, IPC_SHM_FLAG_RW, &client_addr));
-    TEST_ASSERT_NOT_NULL(client_addr);
-
-    char buf[128] = {0};
-    connection_t sender = {0};
-    int bytes_written = ipc_receive(&owner, owner_channel, &sender, buf, sizeof(buf));
-    TEST_ASSERT_EQUAL(
-        (int) (sizeof(_ipc_batch_entry_t) + sizeof(ipc_message_t)), bytes_written);
-
-    const void *payload = NULL;
-    size_t payload_size = 0;
-    uint64_t sender_task_id = 0;
-    TEST_ASSERT_EQUAL(
-        0, _decode_single_message(buf, bytes_written, &payload, &payload_size, &sender_task_id));
-
-    const ipc_message_t *msg = (const ipc_message_t *) payload;
-    TEST_ASSERT_EQUAL_UINT32(IPC_OWNER_MSG_TYPE_SHM_REQUEST, msg->type);
-    TEST_ASSERT_EQUAL(sizeof(ipc_message_t), payload_size);
-    TEST_ASSERT_EQUAL_UINT64(client.id, msg->sender_task_id);
-    TEST_ASSERT_EQUAL_UINT64(client.id, sender.task_id);
-    TEST_ASSERT_EQUAL_UINT64(client.id, sender_task_id);
-    TEST_ASSERT_EQUAL_UINT64(client.id, msg->payload.shm_request.client_task_id);
-    TEST_ASSERT_EQUAL_UINT64(shm_size, msg->payload.shm_request.size);
-    TEST_ASSERT_EQUAL_UINT64(IPC_SHM_FLAG_RW, msg->payload.shm_request.flags);
-    TEST_ASSERT_EQUAL_UINT64((uintptr_t) client_addr, msg->payload.shm_request.client_address);
-    TEST_ASSERT_NOT_EQUAL_UINT64(0, msg->payload.shm_request.owner_address);
-
-    _cleanup_channel(&owner, owner_channel);
-    TEST_ASSERT_EQUAL(0, task_registry_remove(&client));
-    TEST_ASSERT_EQUAL(0, task_registry_remove(&owner));
-}
-
 void ipc_tests(void)
 {
     RUN_TEST(test_ipc_new_null_params);
@@ -437,5 +378,4 @@ void ipc_tests(void)
     RUN_TEST(test_client_disconnect_removes_connection);
     RUN_TEST(test_ipc_task_cleanup_removes_owner_channel);
     RUN_TEST(test_ipc_task_cleanup_notifies_owner_on_client_disconnect);
-    RUN_TEST(test_ipc_shared_memory_request_enqueues_owner_message);
 }

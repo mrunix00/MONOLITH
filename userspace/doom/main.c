@@ -532,9 +532,12 @@ int main(void)
                 gfx_context_res_t framebuffer_res
                     = desktop_request_window_framebuffer(window_id, width, height);
                 framebuffer = framebuffer_res.context;
-                if (desktop_get_error() == DESKTOP_ERROR_NONE) {
+                if (desktop_get_error() == DESKTOP_ERROR_NONE && framebuffer.framebuffer
+                    && framebuffer.backbuffer) {
                     gfx_set_target_fps(&framebuffer, 60);
                     framebuffer_ready = true;
+                } else {
+                    framebuffer_ready = false;
                 }
 
                 continue;
@@ -555,7 +558,8 @@ int main(void)
                 gfx_context_res_t framebuffer_res
                     = desktop_request_window_framebuffer(window_id, width, height);
                 framebuffer = framebuffer_res.context;
-                if (desktop_get_error() == DESKTOP_ERROR_NONE) {
+                if (desktop_get_error() == DESKTOP_ERROR_NONE && framebuffer.framebuffer
+                    && framebuffer.backbuffer) {
                     gfx_set_target_fps(&framebuffer, 60);
                     framebuffer_ready = true;
                 } else {
@@ -580,9 +584,12 @@ int main(void)
                     gfx_context_res_t framebuffer_res
                         = desktop_request_window_framebuffer(window_id, width, height);
                     framebuffer = framebuffer_res.context;
-                    if (desktop_get_error() == DESKTOP_ERROR_NONE) {
+                    if (desktop_get_error() == DESKTOP_ERROR_NONE && framebuffer.framebuffer
+                        && framebuffer.backbuffer) {
                         gfx_set_target_fps(&framebuffer, 60);
                         framebuffer_ready = true;
+                    } else {
+                        framebuffer_ready = false;
                     }
                 }
             }

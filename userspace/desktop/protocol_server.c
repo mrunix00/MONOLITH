@@ -10,22 +10,20 @@
 #include <ipc.h>
 #include <string.h>
 
-#define MAX_PENDING_FB_REQUESTS 64
 #define PROTOCOL_SERVER_RECV_BUFFER_SIZE 4096
+#define MAX_PENDING_SURFACE_RELEASES 64
+#define PENDING_SURFACE_RELEASE_DELAY_MS 150
 
 typedef struct
 {
     uint64_t task_id;
-    uint32_t sequence;
-    uint16_t window_id;
-    uint16_t width;
-    uint16_t height;
+    void *pixels;
     size_t size;
-    int active;
-} pending_fb_request_t;
+} _pending_surface_release_t;
 
 static channel_id_t _channel_id = -1;
-static pending_fb_request_t _pending_fb[MAX_PENDING_FB_REQUESTS];
+static _pending_surface_release_t _pending_releases[MAX_PENDING_SURFACE_RELEASES];
+static size_t _pending_releases_count = 0;
 
 static int _send_event(uint64_t task_id, const desktop_event_t *event)
 {
@@ -54,37 +52,58 @@ static void _send_error(uint64_t task_id, uint32_t sequence, uint32_t code, cons
     _send_event(task_id, &event);
 }
 
-static pending_fb_request_t *_reserve_pending_fb_request(void)
+static size_t _pages_for_size(size_t size)
 {
-    for (size_t i = 0; i < MAX_PENDING_FB_REQUESTS; i++) {
-        if (_pending_fb[i].active)
-            continue;
-        _pending_fb[i].active = 1;
-        return &_pending_fb[i];
-    }
-
-    return NULL;
+    if (size == 0)
+        return 0;
+    return (size + PAGE_SIZE - 1) / PAGE_SIZE;
 }
 
-static pending_fb_request_t *_take_pending_fb_request(uint64_t task_id)
+static void _defer_surface_release(uint64_t task_id, void *pixels, size_t size)
 {
-    for (size_t i = 0; i < MAX_PENDING_FB_REQUESTS; i++) {
-        if (!_pending_fb[i].active || _pending_fb[i].task_id != task_id)
-            continue;
+    if (!pixels || size == 0)
+        return;
 
-        _pending_fb[i].active = 0;
-        return &_pending_fb[i];
+    if (_pending_releases_count >= MAX_PENDING_SURFACE_RELEASES) {
+        /* Table full -- release immediately as a last resort. */
+        if (ipc_release_shared_memory(_channel_id, pixels) != 0) {
+            size_t pages = _pages_for_size(size);
+            unmap_pages(pixels, pages);
+        }
+        return;
     }
 
-    return NULL;
+    _pending_surface_release_t *entry = &_pending_releases[_pending_releases_count++];
+    entry->task_id = task_id;
+    entry->pixels = pixels;
+    entry->size = size;
 }
 
-static void _drop_pending_fb_requests(uint64_t task_id)
+static void _flush_pending_releases(uint64_t task_id)
 {
-    for (size_t i = 0; i < MAX_PENDING_FB_REQUESTS; i++) {
-        if (_pending_fb[i].task_id != task_id)
+    size_t i = 0;
+    while (i < _pending_releases_count) {
+        if (_pending_releases[i].task_id != task_id) {
+            i++;
             continue;
-        _pending_fb[i].active = 0;
+        }
+
+        _pending_surface_release_t entry = _pending_releases[i];
+        size_t pages = _pages_for_size(entry.size);
+        unmap_pages(entry.pixels, pages);
+
+        _pending_releases[i] = _pending_releases[--_pending_releases_count];
+    }
+}
+
+static void _flush_expired_pending_releases(void)
+{
+    size_t i = 0;
+    while (i < _pending_releases_count) {
+        _pending_surface_release_t *entry = &_pending_releases[i];
+        size_t pages = _pages_for_size(entry->size);
+        unmap_pages(entry->pixels, pages);
+        _pending_releases[i] = _pending_releases[--_pending_releases_count];
     }
 }
 
@@ -92,6 +111,13 @@ static void _on_window_closed(window_t *window)
 {
     if (!window || window->owner_task_id == 0)
         return;
+
+    /* Don't release the surface here -- the client may still be mid-render
+     * (preempted by the timer). Defer release until the client disconnects. */
+    if (window->surface_pixels && window->surface_size > 0)
+        _defer_surface_release(
+            window->owner_task_id, window->surface_pixels, window->surface_size);
+    window_set_remote_surface(window, NULL, 0, 0, 0);
 
     desktop_event_t close_event = {
         .sequence = 0,
@@ -164,23 +190,66 @@ static void _handle_request_framebuffer(uint64_t task_id, const desktop_request_
         return;
     }
 
-    pending_fb_request_t *pending = _reserve_pending_fb_request();
-    if (!pending) {
-        _send_error(task_id, request->sequence, 3, "framebuffer queue full");
-        return;
-    }
-
-    pending->task_id = task_id;
-    pending->sequence = request->sequence;
-    pending->window_id = (uint16_t) window->id;
     uint16_t content_width = window_get_content_width(window);
     uint16_t content_height = window_get_content_height(window);
     uint16_t requested_width = request->data.request_framebuffer.width;
     uint16_t requested_height = request->data.request_framebuffer.height;
 
-    pending->width = requested_width > content_width ? requested_width : content_width;
-    pending->height = requested_height > content_height ? requested_height : content_height;
-    pending->size = (size_t) pending->width * (size_t) pending->height * sizeof(uint32_t);
+    uint16_t width = requested_width > content_width ? requested_width : content_width;
+    uint16_t height = requested_height > content_height ? requested_height : content_height;
+    size_t effective_size = (size_t) width * (size_t) height * sizeof(uint32_t);
+    size_t pages = _pages_for_size(effective_size);
+
+    if (width == 0 || height == 0 || pages == 0) {
+        _send_error(task_id, request->sequence, 4, "invalid framebuffer size");
+        return;
+    }
+
+    uint32_t *old_pixels = window->surface_pixels;
+    uint16_t old_width = window->surface_width;
+    uint16_t old_height = window->surface_height;
+
+    void *owner_pixels = alloc_pages(pages, ALLOC_PAGES_FLAG_RW);
+    if (!owner_pixels) {
+        _send_error(task_id, request->sequence, 5, "framebuffer allocation failed");
+        return;
+    }
+
+    memset(owner_pixels, 0, pages * PAGE_SIZE);
+    if (old_pixels && old_width > 0 && old_height > 0) {
+        uint16_t copy_width = old_width < width ? old_width : width;
+        uint16_t copy_height = old_height < height ? old_height : height;
+        for (uint16_t y = 0; y < copy_height; y++) {
+            memcpy(
+                (uint32_t *) owner_pixels + ((size_t) y * width),
+                old_pixels + ((size_t) y * old_width),
+                (size_t) copy_width * sizeof(uint32_t));
+        }
+    }
+
+    connection_t client = {
+        .task_id = task_id,
+    };
+    void *client_pixels = ipc_share_memory(_channel_id, &client, owner_pixels, pages * PAGE_SIZE);
+    if (!client_pixels) {
+        unmap_pages(owner_pixels, pages);
+        _send_error(task_id, request->sequence, 4, "framebuffer share failed");
+        return;
+    }
+
+    window_set_remote_surface(window, (uint32_t *) owner_pixels, width, height, effective_size);
+
+    desktop_event_t ready_event = {
+        .sequence = request->sequence,
+        .type = DESKTOP_EVENT_FRAMEBUFFER_READY,
+        .data.framebuffer_ready.id = (uint16_t) window->id,
+        .data.framebuffer_ready.address = (uintptr_t) client_pixels,
+        .data.framebuffer_ready.width = width,
+        .data.framebuffer_ready.height = height,
+        .data.framebuffer_ready.stride = (uint32_t) width * sizeof(uint32_t),
+        .data.framebuffer_ready.size = effective_size,
+    };
+    _send_event(task_id, &ready_event);
 }
 
 static void _handle_present_window(uint64_t task_id, const desktop_request_t *request)
@@ -216,76 +285,10 @@ static void _handle_client_request(uint64_t task_id, const desktop_request_t *re
     }
 }
 
-static void _handle_shm_request(const ipc_message_t *message)
-{
-    if (!message)
-        return;
-
-    pending_fb_request_t *pending = _take_pending_fb_request(message->sender_task_id);
-    if (!pending)
-        return;
-
-    window_t *window = get_window_by_owner(pending->task_id, pending->window_id);
-    if (!window)
-        return;
-
-    size_t shm_size = message->payload.shm_request.size;
-    uint16_t width = pending->width;
-    uint16_t height = pending->height;
-
-    if (shm_size == 0 || width == 0) {
-        _send_error(pending->task_id, pending->sequence, 4, "invalid framebuffer shm");
-        return;
-    }
-
-    size_t max_pixels = shm_size / sizeof(uint32_t);
-    if (max_pixels == 0) {
-        _send_error(pending->task_id, pending->sequence, 4, "invalid framebuffer shm");
-        return;
-    }
-
-    size_t max_rows = max_pixels / width;
-    if (max_rows == 0) {
-        width = (uint16_t) (max_pixels > UINT16_MAX ? UINT16_MAX : max_pixels);
-        if (width == 0) {
-            _send_error(pending->task_id, pending->sequence, 4, "invalid framebuffer shm");
-            return;
-        }
-        max_rows = max_pixels / width;
-        if (max_rows == 0)
-            max_rows = 1;
-    }
-
-    if ((size_t) height > max_rows)
-        height = (uint16_t) (max_rows > UINT16_MAX ? UINT16_MAX : max_rows);
-
-    size_t effective_size = (size_t) width * (size_t) height * sizeof(uint32_t);
-    if (effective_size > shm_size)
-        effective_size = shm_size;
-
-    window_set_remote_surface(
-        window,
-        (uint32_t *) message->payload.shm_request.owner_address,
-        width,
-        height,
-        effective_size);
-
-    desktop_event_t ready_event = {
-        .sequence = pending->sequence,
-        .type = DESKTOP_EVENT_FRAMEBUFFER_READY,
-        .data.framebuffer_ready.id = pending->window_id,
-        .data.framebuffer_ready.width = width,
-        .data.framebuffer_ready.height = height,
-        .data.framebuffer_ready.stride = (uint32_t) width * sizeof(uint32_t),
-        .data.framebuffer_ready.size = effective_size,
-    };
-    _send_event(pending->task_id, &ready_event);
-}
-
 static void _handle_disconnect(uint64_t task_id)
 {
-    _drop_pending_fb_requests(task_id);
     close_windows_by_owner(task_id);
+    _flush_pending_releases(task_id);
 }
 
 static bool _pump_input_events(void)
@@ -390,7 +393,6 @@ int protocol_server_init(void)
     if (_channel_id == -1)
         return -1;
 
-    memset(_pending_fb, 0, sizeof(_pending_fb));
     return 0;
 }
 
@@ -402,6 +404,7 @@ bool protocol_server_pump(void)
     bool had_activity = false;
 
     _accept_pending_connections();
+    _flush_expired_pending_releases();
 
     unsigned char raw_message[PROTOCOL_SERVER_RECV_BUFFER_SIZE] = {0};
     connection_t sender = {0};
@@ -418,9 +421,6 @@ bool protocol_server_pump(void)
             }
             _handle_client_request(
                 message->sender_task_id, (const desktop_request_t *) message->payload.data.data);
-            break;
-        case IPC_OWNER_MSG_TYPE_SHM_REQUEST:
-            _handle_shm_request(message);
             break;
         case IPC_OWNER_MSG_TYPE_DISCONNECT:
             _handle_disconnect(message->sender_task_id);

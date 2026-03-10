@@ -108,15 +108,11 @@ int main()
         {.label = "DOOM", .type = MENU_ITEM_ACTION, .action = _menu_action_doom},
     };
     menu_t system_menu = {
-        .x = 0,
-        .y = TOP_BAR_HEIGHT - 1,
         .items = system_menu_items,
         .item_count = sizeof(system_menu_items) / sizeof(system_menu_items[0]),
         .open = false,
     };
     menu_t apps_menu = {
-        .x = 70,
-        .y = TOP_BAR_HEIGHT - 1,
         .items = apps_items,
         .item_count = sizeof(apps_items) / sizeof(apps_items[0]),
         .open = false,

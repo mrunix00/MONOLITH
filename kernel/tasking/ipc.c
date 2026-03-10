@@ -80,16 +80,6 @@ static channel_id_t _next_channel_id = 1;
 
 static void _remove_connection(_ipc_channel_t *channel, size_t index);
 
-static uint64_t _ipc_shm_pt_flags(uint64_t flags)
-{
-    uint64_t pt_flags = PTFLAG_P | PTFLAG_US;
-    if (flags & IPC_SHM_FLAG_RW)
-        pt_flags |= PTFLAG_RW;
-    if (!(flags & IPC_SHM_FLAG_EXEC))
-        pt_flags |= PTFLAG_XD;
-    return pt_flags;
-}
-
 static int _ensure_shared_region_capacity(_ipc_channel_t *channel)
 {
     if (channel->shared_regions_count < channel->shared_regions_capacity)
@@ -106,6 +96,31 @@ static int _ensure_shared_region_capacity(_ipc_channel_t *channel)
     channel->shared_regions = new_regions;
     channel->shared_regions_capacity = new_capacity;
     return 0;
+}
+
+static task_memblock_t *_find_task_memblock(task_t *task, uintptr_t virt_addr, size_t required_size)
+{
+    if (!task || !task->memory.memblocks || required_size == 0)
+        return NULL;
+
+    uintptr_t required_end = virt_addr + required_size;
+    if (required_end < virt_addr)
+        return NULL;
+
+    for (size_t i = 0; i < task->memory.memblocks_count; i++) {
+        task_memblock_t *memblock = &task->memory.memblocks[i];
+        uintptr_t block_start = memblock->virt_addr;
+        uintptr_t block_end = block_start + memblock->page_count * PAGE_SIZE;
+        if (block_end < block_start)
+            continue;
+
+        if (virt_addr < block_start || required_end > block_end)
+            continue;
+
+        return memblock;
+    }
+
+    return NULL;
 }
 
 static void _remove_shared_region_at(_ipc_channel_t *channel, size_t index)
@@ -130,13 +145,15 @@ static void _release_shared_region_entry(_ipc_channel_t *channel, size_t index)
     task_t *owner = task_find_by_id(region.owner_task_id);
     task_t *client = task_find_by_id(region.client_task_id);
 
-    if (owner)
-        task_unmap(owner, region.owner_vaddr, pages, false);
-    if (client)
+    if (client && region.client_vaddr)
         task_unmap(client, region.client_vaddr, pages, false);
 
-    if (region.phys_addr)
+    if (region.phys_addr) {
+        if (owner && region.owner_vaddr)
+            task_unmap(owner, region.owner_vaddr, pages, false);
+
         pmm_free((void *) region.phys_addr, pages);
+    }
 
     _remove_shared_region_at(channel, index);
 }
@@ -149,8 +166,12 @@ static void _release_shared_regions_for_task(_ipc_channel_t *channel, uint64_t t
     size_t i = 0;
     while (i < channel->shared_regions_count) {
         _ipc_shared_region_t *region = &channel->shared_regions[i];
-        if (region->owner_task_id == task_id || region->client_task_id == task_id) {
+        if (region->owner_task_id == task_id) {
             _release_shared_region_entry(channel, i);
+            continue;
+        }
+        if (region->client_task_id == task_id) {
+            _remove_shared_region_at(channel, i);
             continue;
         }
         i++;
@@ -545,7 +566,7 @@ int ipc_send(task_t *task, channel_id_t channel_id, void *data, size_t size)
         return -1;
 
     if (ipc_channel->owner_task_id != task->id) {
-        _ipc_connection_t *conn =  _get_connection_by_task_id(ipc_channel, task->id);
+        _ipc_connection_t *conn = _get_connection_by_task_id(ipc_channel, task->id);
         if (!conn || conn->state != IPC_CONN_ACCEPTED)
             return -1;
 
@@ -579,92 +600,67 @@ int ipc_send(task_t *task, channel_id_t channel_id, void *data, size_t size)
     return 0;
 }
 
-int ipc_request_shared_memory(
-    task_t *task, channel_id_t channel_id, size_t size, uint64_t flags, void **out_addr)
+void *ipc_share_memory(
+    task_t *task, channel_id_t channel_id, connection_t *connection, void *owner_addr, size_t size)
 {
-    if (!task || channel_id < 0 || !out_addr || size == 0)
-        return -1;
+    if (!task || channel_id < 0 || !connection || !owner_addr || size == 0)
+        return NULL;
 
     _ipc_channel_t *ipc_channel = _get_channel_by_id(channel_id);
     if (!ipc_channel)
-        return -1;
+        return NULL;
 
-    if (ipc_channel->owner_task_id == 0)
-        return -1;
+    if (ipc_channel->owner_task_id != task->id)
+        return NULL;
 
-    _ipc_connection_t *conn =  _get_connection_by_task_id(ipc_channel, task->id);
+    _ipc_connection_t *conn = _get_connection_by_task_id(ipc_channel, connection->task_id);
     if (!conn || conn->state != IPC_CONN_ACCEPTED)
-        return -1;
+        return NULL;
+
+    task_t *client = task_find_by_id(connection->task_id);
+    if (!client)
+        return NULL;
 
     if (ipc_channel->shared_regions_count >= IPC_SHM_MAX_REGIONS)
-        return -1;
-
-    task_t *owner = task_find_by_id(ipc_channel->owner_task_id);
-    if (!owner)
-        return -1;
+        return NULL;
 
     size_t aligned_size = PAGE_UP(size);
     size_t num_pages = aligned_size / PAGE_SIZE;
+    if (num_pages == 0)
+        return NULL;
 
-    uintptr_t owner_vaddr = task_find_free_vaddr(owner, num_pages);
-    uintptr_t client_vaddr = task_find_free_vaddr(task, num_pages);
-    if (owner_vaddr == 0 || client_vaddr == 0)
-        return -1;
+    uintptr_t owner_vaddr = (uintptr_t) owner_addr;
+    task_memblock_t *owner_memblock = _find_task_memblock(task, owner_vaddr, aligned_size);
+    if (!owner_memblock)
+        return NULL;
 
-    void *phys_mem = pmm_alloc(num_pages);
-    if (!phys_mem)
-        return -1;
+    uintptr_t offset = owner_vaddr - owner_memblock->virt_addr;
+    uintptr_t phys_addr = owner_memblock->phys_addr + offset;
 
-    uint64_t pt_flags = _ipc_shm_pt_flags(flags);
+    uintptr_t client_vaddr = task_find_free_vaddr(client, num_pages);
+    if (client_vaddr == 0)
+        return NULL;
 
-    if (task_map(owner, owner_vaddr, (uintptr_t) phys_mem, num_pages, pt_flags, false) < 0) {
-        pmm_free(phys_mem, num_pages);
-        return -1;
-    }
-
-    if (task_map(task, client_vaddr, (uintptr_t) phys_mem, num_pages, pt_flags, false) < 0) {
-        task_unmap(owner, owner_vaddr, num_pages, false);
-        pmm_free(phys_mem, num_pages);
-        return -1;
+    if (task_map(client, client_vaddr, phys_addr, num_pages, owner_memblock->flags, false) < 0) {
+        return NULL;
     }
 
     if (_ensure_shared_region_capacity(ipc_channel) != 0) {
-        task_unmap(owner, owner_vaddr, num_pages, false);
-        task_unmap(task, client_vaddr, num_pages, false);
-        pmm_free(phys_mem, num_pages);
-        return -1;
+        task_unmap(client, client_vaddr, num_pages, false);
+        return NULL;
     }
 
     _ipc_shared_region_t *region = &ipc_channel->shared_regions[ipc_channel->shared_regions_count++];
     memset(region, 0, sizeof(*region));
-    region->owner_task_id = ipc_channel->owner_task_id;
-    region->client_task_id = task->id;
-    region->phys_addr = (uintptr_t) phys_mem;
+    region->owner_task_id = task->id;
+    region->client_task_id = client->id;
+    region->phys_addr = phys_addr;
     region->owner_vaddr = owner_vaddr;
     region->client_vaddr = client_vaddr;
     region->size = size;
-    region->flags = flags;
+    region->flags = owner_memblock->flags;
 
-    ipc_message_t owner_msg;
-    memset(&owner_msg, 0, sizeof(owner_msg));
-    owner_msg.type = IPC_OWNER_MSG_TYPE_SHM_REQUEST;
-    owner_msg.sender_task_id = task->id;
-    owner_msg.payload.shm_request.client_task_id = task->id;
-    owner_msg.payload.shm_request.owner_address = owner_vaddr;
-    owner_msg.payload.shm_request.client_address = client_vaddr;
-    owner_msg.payload.shm_request.size = size;
-    owner_msg.payload.shm_request.flags = flags;
-
-    if (_enqueue_owner_message(ipc_channel, task, &owner_msg, sizeof(owner_msg)) != 0) {
-        ipc_channel->shared_regions_count--;
-        task_unmap(owner, owner_vaddr, num_pages, false);
-        task_unmap(task, client_vaddr, num_pages, false);
-        pmm_free(phys_mem, num_pages);
-        return -1;
-    }
-
-    *out_addr = (void *) client_vaddr;
-    return 0;
+    return (void *) client_vaddr;
 }
 
 int ipc_release_shared_memory(task_t *task, channel_id_t channel_id, void *addr)
@@ -752,7 +748,7 @@ int ipc_receive(task_t *task, channel_id_t channel_id, connection_t *sender, voi
         return bytes_written;
     }
 
-    _ipc_connection_t *conn =  _get_connection_by_task_id(ipc_channel, task->id);
+    _ipc_connection_t *conn = _get_connection_by_task_id(ipc_channel, task->id);
     if (!conn || conn->state != IPC_CONN_ACCEPTED)
         return -1;
 
