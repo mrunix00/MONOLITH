@@ -7,5 +7,6 @@
 
 #include <libgfx/types.h>
 
-void draw_box(gfx_context_t *, gfx_rect_t rect);
-void draw_transparent_box(gfx_context_t *, gfx_rect_t rect);
+void prof_start(int id);
+void prof_end(int id);
+void draw_perf_stats(gfx_context_t *context);

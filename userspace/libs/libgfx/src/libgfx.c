@@ -130,7 +130,7 @@ gfx_context_t gfx_init_screen()
         .fps_frame_count = 0,
         .fps_last_value = 0,
         .backbuffer = malloc(fb.width * fb.height * sizeof(uint32_t)),
-        .clip_rect = {0, 0, (uint32_t) fb.width, (uint32_t) fb.height, {0, 0, 0, 0}, 0},
+        .clip_rect = {0, 0, (uint32_t) fb.width, (uint32_t) fb.height},
     };
     return ctx;
 }
@@ -263,7 +263,7 @@ void gfx_draw_pixel(gfx_context_t *ctx, gfx_pos_t point, gfx_color_t color)
     }
 }
 
-void gfx_set_clip(gfx_context_t *ctx, gfx_rect_t rect)
+void gfx_set_clip(gfx_context_t *ctx, gfx_area_t rect)
 {
     ctx->clip_rect = rect;
 

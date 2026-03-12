@@ -30,7 +30,7 @@ void gfx_draw_line(gfx_context_t *ctx, gfx_line_t line, gfx_color_t color);
 
 void gfx_draw_pixel(gfx_context_t *ctx, gfx_pos_t pos, gfx_color_t color);
 
-void gfx_set_clip(gfx_context_t *ctx, gfx_rect_t rect);
+void gfx_set_clip(gfx_context_t *ctx, gfx_area_t rect);
 
 void gfx_reset_clip(gfx_context_t *ctx);
 

@@ -15,7 +15,7 @@
 
 typedef struct window window_t;
 
-typedef void (*window_draw_cb_t)(gfx_context_t *context, window_t *window, gfx_rect_t content_rect);
+typedef void (*window_draw_cb_t)(gfx_context_t *context, window_t *window, gfx_area_t content_rect);
 typedef void (*window_close_cb_t)(window_t *window);
 
 struct window
