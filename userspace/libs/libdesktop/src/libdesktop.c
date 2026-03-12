@@ -161,14 +161,7 @@ static void _populate_context(const _desktop_framebuffer_state_t *state, gfx_con
 
     uint16_t clip_w = MIN(state->view_width, state->buffer_width);
     uint16_t clip_h = MIN(state->view_height, state->buffer_height);
-    out_context->clip_rect = (gfx_rect_t) {
-        .x = 0,
-        .y = 0,
-        .width = clip_w,
-        .height = clip_h,
-        .border_color = {0, 0, 0, 0},
-        .border_thickness = 0,
-    };
+    out_context->clip_rect = (gfx_area_t) {.x = 0, .y = 0, .width = clip_w, .height = clip_h};
 }
 
 static int _ensure_backbuffer(_desktop_framebuffer_state_t *state)
@@ -333,8 +326,7 @@ gfx_context_res_t desktop_request_window_framebuffer(
     uint16_t requested_width = _grow_capacity_2x(state->buffer_width, width);
     uint16_t requested_height = _grow_capacity_2x(state->buffer_height, height);
 
-    if (_request_window_framebuffer_internal(
-            state, requested_width, requested_height, result.sequence)
+    if (_request_window_framebuffer_internal(state, requested_width, requested_height, result.sequence)
         != 0) {
         return result;
     }

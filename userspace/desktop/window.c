@@ -7,7 +7,8 @@
 #include "./icons.h"
 #include "./input.h"
 #include "./magic.h"
-#include "./utils.h"
+#include "libgfx/types.h"
+// #include "./utils.h"
 
 #include <libgfx.h>
 #include <libgfx/fonts.h>
@@ -38,7 +39,6 @@ enum {
 };
 
 static const uint32_t WINDOW_BODY_TOP_OFFSET = WINDOW_TITLE_BAR_HEIGHT - BORDER_THICKNESS;
-static const uint32_t WINDOW_CONTENT_INSET = BORDER_THICKNESS + BORDER_SHADOW_THICKNESS;
 
 static bool _window_has_decorations(const window_t *window)
 {
@@ -52,65 +52,25 @@ static bool _point_in_rect(uint32_t x, uint32_t y, uint32_t rx, uint32_t ry, uin
     return x >= rx && x < rx + w && y >= ry && y < ry + h;
 }
 
-static bool _window_content_rect_from_geom(
-    const window_t *window,
-    uint32_t x,
-    uint32_t y,
-    uint32_t width,
-    uint32_t height,
-    gfx_rect_t *content_rect)
+gfx_area_t _window_content_rect_from_geom(
+    const window_t *window, uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 {
-    if (!content_rect)
-        return false;
-
-    if (!_window_has_decorations(window)) {
-        *content_rect = (gfx_rect_t) {
-            .x = x,
-            .y = y,
-            .width = width,
-            .height = height,
-            .border_color = (gfx_color_t) {0},
-            .border_thickness = 0,
-        };
-        return width > 0 && height > 0;
-    }
-
-    if (width <= WINDOW_BODY_MARGIN_X * 2)
-        return false;
-    if (height <= WINDOW_BODY_TOP_OFFSET + WINDOW_BODY_BOTTOM_MARGIN)
-        return false;
-
-    uint32_t body_x = x + WINDOW_BODY_MARGIN_X;
-    uint32_t body_y = y + WINDOW_BODY_TOP_OFFSET;
-    uint32_t body_w = width - WINDOW_BODY_MARGIN_X * 2;
-    uint32_t body_h = height - WINDOW_BODY_TOP_OFFSET - WINDOW_BODY_BOTTOM_MARGIN;
-
-    if (body_w <= WINDOW_CONTENT_INSET * 2 || body_h <= WINDOW_CONTENT_INSET * 2)
-        return false;
-
-    *content_rect = (gfx_rect_t) {
-        .x = body_x + WINDOW_CONTENT_INSET,
-        .y = body_y + WINDOW_CONTENT_INSET,
-        .width = body_w - WINDOW_CONTENT_INSET * 2,
-        .height = body_h - WINDOW_CONTENT_INSET * 2,
-        .border_color = (gfx_color_t) {0},
-        .border_thickness = 0,
+    if (!_window_has_decorations(window))
+        return (gfx_area_t) {.x = x, .y = y, .width = width, .height = height};
+    return (gfx_area_t) {
+        .x = x + WINDOW_BODY_MARGIN_X,
+        .y = y + WINDOW_BODY_TOP_OFFSET,
+        .width = width - WINDOW_BODY_MARGIN_X * 2,
+        .height = height - WINDOW_BODY_TOP_OFFSET - WINDOW_BODY_BOTTOM_MARGIN,
     };
-
-    return true;
 }
 
 static uint32_t _window_title_min_width(const char *title)
 {
-    size_t title_len = title ? strnlen(title, sizeof(((window_t *) 0)->title) - 1) : 0;
-    uint32_t text_width = (uint32_t) title_len * MENU_TEXT_ADVANCE;
+    uint32_t text_width = gfx_get_text_width(&default_font, title);
     uint32_t min_width = WINDOW_TITLE_PADDING_X + text_width + WINDOW_TITLE_BUTTONS_GAP
                          + WINDOW_TITLE_BUTTONS_WIDTH;
-
-    if (min_width < MIN_WINDOW_WIDTH)
-        min_width = MIN_WINDOW_WIDTH;
-
-    return min_width;
+    return min_width < MIN_WINDOW_WIDTH ? MIN_WINDOW_WIDTH : min_width;
 }
 
 static uint32_t _window_min_width(const window_t *window)
@@ -139,33 +99,19 @@ static void _restore_window_bounds(window_t *window)
     window->height = window->saved_height;
 }
 
-static void _window_geom(
-    gfx_context_t *context,
-    window_t *window,
-    uint32_t *x,
-    uint32_t *y,
-    uint32_t *width,
-    uint32_t *height)
+static gfx_area_t _window_geom(gfx_context_t *context, window_t *window)
 {
-    if (window->fullscreen) {
-        *x = 0;
-        *y = 0;
-        *width = (uint32_t) context->width;
-        *height = (uint32_t) context->height;
-        return;
-    }
-
-    *x = window->maximized ? 0 : window->pos_x;
-    *y = window->maximized ? TOP_BAR_HEIGHT : window->pos_y;
-    *width = window->maximized ? (uint32_t) context->width : window->width;
-    *height = window->maximized ? (uint32_t) (context->height - TOP_BAR_HEIGHT) : window->height;
-}
-
-static void _window_title_bar_geom(
-    gfx_context_t *context, window_t *window, uint32_t *x, uint32_t *y, uint32_t *width)
-{
-    uint32_t height = 0;
-    _window_geom(context, window, x, y, width, &height);
+    return window->fullscreen ? (gfx_area_t) {
+        window->maximized ? 0 : window->pos_x,
+        window->maximized ? TOP_BAR_HEIGHT : window->pos_y,
+        window->maximized ? (uint32_t) context->width : window->width,
+        window->maximized ? (uint32_t) (context->height - TOP_BAR_HEIGHT) : window->height,
+    } : (gfx_area_t) {
+        window->maximized ? 0 : window->pos_x,
+        window->maximized ? TOP_BAR_HEIGHT : window->pos_y,
+        window->maximized ? (uint32_t) context->width : window->width,
+        window->maximized ? (uint32_t) (context->height - TOP_BAR_HEIGHT) : window->height,
+    };
 }
 
 static void _remove_window(uint32_t id)
@@ -245,23 +191,19 @@ static bool _handle_title_bar_click(
     if (!_window_has_decorations(window))
         return false;
 
-    uint32_t window_x = 0;
-    uint32_t window_y = 0;
-    uint32_t window_width = 0;
+    gfx_area_t geom = _window_geom(context, window);
 
-    _window_title_bar_geom(context, window, &window_x, &window_y, &window_width);
-
-    if (!_point_in_rect(mouse_x, mouse_y, window_x, window_y, window_width, WINDOW_TITLE_BAR_HEIGHT)) {
+    if (!_point_in_rect(mouse_x, mouse_y, geom.x, geom.y, geom.width, WINDOW_TITLE_BAR_HEIGHT)) {
         return false;
     }
 
-    uint32_t close_button_x = window_x + window_width - 20;
-    uint32_t maximize_button_x = window_x + window_width - 40;
-    uint32_t minimize_button_x = window->resizable ? (window_x + window_width - 60)
-                                                   : (window_x + window_width - 40);
+    uint32_t close_button_x = geom.x + geom.width - 20;
+    uint32_t maximize_button_x = geom.x + geom.width - 40;
+    uint32_t minimize_button_x = window->resizable ? (geom.x + geom.width - 60)
+                                                   : (geom.x + geom.width - 40);
 
     if (_point_in_rect(
-            mouse_x, mouse_y, close_button_x, window_y + 10, WINDOW_BUTTON_SIZE, WINDOW_BUTTON_SIZE)) {
+            mouse_x, mouse_y, close_button_x, geom.y + 10, WINDOW_BUTTON_SIZE, WINDOW_BUTTON_SIZE)) {
         _remove_window(window_id);
         *dragging_window = NULL;
         return true;
@@ -271,7 +213,7 @@ static bool _handle_title_bar_click(
                 mouse_x,
                 mouse_y,
                 maximize_button_x,
-                window_y + 10,
+                geom.y + 10,
                 WINDOW_BUTTON_SIZE,
                 WINDOW_BUTTON_SIZE)) {
             if (window->maximized || window->snapped_left || window->snapped_right) {
@@ -297,7 +239,7 @@ static bool _handle_title_bar_click(
             mouse_x,
             mouse_y,
             minimize_button_x,
-            window_y + 15,
+            geom.y + 15,
             WINDOW_BUTTON_SIZE,
             WINDOW_BUTTON_SIZE)) {
         window->minimized = true;
@@ -311,7 +253,7 @@ static bool _handle_title_bar_click(
         if (saved_width == 0)
             saved_width = window->width;
         *drag_offset_x = saved_width / 2;
-        *drag_offset_y = mouse_y - window_y;
+        *drag_offset_y = mouse_y - geom.y;
     } else {
         *drag_offset_x = mouse_x - window->pos_x;
         *drag_offset_y = mouse_y - window->pos_y;
@@ -334,26 +276,20 @@ static bool _handle_resize_click(
         return false;
     }
 
-    uint32_t window_x = 0;
-    uint32_t window_y = 0;
-    uint32_t window_width = 0;
-    uint32_t window_height = 0;
-
-    _window_geom(context, window, &window_x, &window_y, &window_width, &window_height);
-
+    gfx_area_t geom = _window_geom(context, window);
     if (!_point_in_rect(
             mouse_x,
             mouse_y,
-            window_x + window_width - WINDOW_RESIZE_HANDLE_SIZE,
-            window_y + window_height - WINDOW_RESIZE_HANDLE_SIZE,
+            geom.x + geom.width - WINDOW_RESIZE_HANDLE_SIZE,
+            geom.y + geom.height - WINDOW_RESIZE_HANDLE_SIZE,
             WINDOW_RESIZE_HANDLE_SIZE,
             WINDOW_RESIZE_HANDLE_SIZE)) {
         return false;
     }
 
     *resizing_window = window;
-    *resize_offset_x = (window_x + window_width) - mouse_x;
-    *resize_offset_y = (window_y + window_height) - mouse_y;
+    *resize_offset_x = (geom.x + geom.width) - mouse_x;
+    *resize_offset_y = (geom.y + geom.height) - mouse_y;
     return true;
 }
 
@@ -444,9 +380,8 @@ window_t *get_window_by_owner(uint64_t owner_task_id, uint32_t id)
 window_t *get_active_window(void)
 {
     for (int32_t i = (int32_t) _window_list_size - 1; i >= 0; i--) {
-        if (!_window_list[i].minimized) {
+        if (!_window_list[i].minimized)
             return &_window_list[i];
-        }
     }
     return NULL;
 }
@@ -456,81 +391,144 @@ void draw_window(gfx_context_t *context, window_t *window)
     if (window->minimized)
         return;
 
-    uint32_t width = 0;
-    uint32_t height = 0;
-    uint32_t x = 0;
-    uint32_t y = 0;
+    gfx_area_t geom = _window_geom(context, window);
+    gfx_area_t content_rect
+        = _window_content_rect_from_geom(window, geom.x, geom.y, geom.width, geom.height);
 
-    _window_geom(context, window, &x, &y, &width, &height);
+    gfx_area_t prev_clip = context->clip_rect;
+    gfx_set_clip(context, content_rect);
+    gfx_colored_bitmap_t bitmap = {
+        .width = window->surface_width,
+        .height = window->surface_height,
+        .data = window->surface_pixels,
+    };
+    gfx_draw_colored_bitmap(context, &bitmap, (gfx_pos_t) {.x = content_rect.x, .y = content_rect.y});
+    context->clip_rect = prev_clip;
 
     if (_window_has_decorations(window)) {
-        draw_transparent_box(context, (gfx_rect_t) {.x = x, .y = y, .width = width, .height = height});
+        uint32_t bx = geom.x + WINDOW_BODY_MARGIN_X;
+        uint32_t by = geom.y + WINDOW_BODY_TOP_OFFSET;
+        uint32_t bw = geom.width - WINDOW_BODY_MARGIN_X * 2;
+        uint32_t bh = geom.height - WINDOW_BODY_TOP_OFFSET - WINDOW_BODY_BOTTOM_MARGIN;
 
-        gfx_draw_text(context, &default_font, (gfx_pos_t) {x + 10, y + 22}, FONT_COLOR, window->title);
+        /* Top strip */
+        gfx_draw_filled_rect(
+            context,
+            (gfx_rect_t) {.x = geom.x, .y = geom.y, .width = geom.width, .height = by - geom.y},
+            SURFACE_COLOR);
 
-        uint32_t close_button_x = x + width - 20;
-        uint32_t maximize_button_x = x + width - 40;
-        uint32_t minimize_button_x = window->resizable ? (x + width - 60) : (x + width - 40);
-
-        gfx_draw_bitmap(context, &close_icon_bitmap, (gfx_pos_t) {close_button_x, y + 10}, FONT_COLOR);
-        if (window->resizable) {
-            gfx_draw_bitmap(
-                context, &maximize_icon_bitmap, (gfx_pos_t) {maximize_button_x, y + 10}, FONT_COLOR);
-        }
-        gfx_draw_bitmap(
-            context, &minimize_icon_bitmap, (gfx_pos_t) {minimize_button_x, y + 15}, FONT_COLOR);
-
-        draw_box(
+        /* Bottom strip */
+        gfx_draw_filled_rect(
             context,
             (gfx_rect_t) {
-                .x = x + WINDOW_BODY_MARGIN_X,
-                .y = y + WINDOW_BODY_TOP_OFFSET,
-                .width = width - WINDOW_BODY_MARGIN_X * 2,
-                .height = height - WINDOW_BODY_TOP_OFFSET - WINDOW_BODY_BOTTOM_MARGIN,
+                .x = geom.x,
+                .y = by + bh,
+                .width = geom.width,
+                .height = (geom.y + geom.height) - (by + bh),
+            },
+            SURFACE_COLOR);
+
+        /* Left strip */
+        gfx_draw_filled_rect(
+            context,
+            (gfx_rect_t) {.x = geom.x, .y = by, .width = bx - geom.x, .height = bh},
+            SURFACE_COLOR);
+
+        /* Right strip */
+        gfx_draw_filled_rect(
+            context,
+            (gfx_rect_t) {
+                .x = bx + bw,
+                .y = by,
+                .width = (geom.x + geom.width) - (bx + bw),
+                .height = bh,
+            },
+            SURFACE_COLOR);
+
+        /* Outer border */
+        gfx_draw_rect(
+            context,
+            (gfx_rect_t) {
+                .x = geom.x,
+                .y = geom.y,
+                .width = geom.width,
+                .height = geom.height,
+                .border_color = BORDER_COLOR,
+                .border_thickness = BORDER_THICKNESS,
+            });
+
+        /* Inner highlight */
+        gfx_draw_rect(
+            context,
+            (gfx_rect_t) {
+                .x = geom.x + BORDER_THICKNESS,
+                .y = geom.y + BORDER_THICKNESS,
+                .width = geom.width - BORDER_THICKNESS * 2,
+                .height = geom.height - BORDER_THICKNESS * 2,
+                .border_color = BORDER_SHADOW_COLOR,
+                .border_thickness = BORDER_SHADOW_THICKNESS,
+            });
+
+        gfx_draw_text(
+            context,
+            &default_font,
+            (gfx_pos_t) {geom.x + 10, geom.y + 22},
+            FONT_COLOR,
+            window->title);
+
+        uint32_t close_button_x = geom.x + geom.width - 20;
+        uint32_t maximize_button_x = geom.x + geom.width - 40;
+        uint32_t minimize_button_x = window->resizable ? (geom.x + geom.width - 60)
+                                                       : (geom.x + geom.width - 40);
+
+        gfx_draw_bitmap(
+            context, &close_icon_bitmap, (gfx_pos_t) {close_button_x, geom.y + 10}, FONT_COLOR);
+        gfx_draw_bitmap(
+            context,
+            &minimize_icon_bitmap,
+            (gfx_pos_t) {minimize_button_x, geom.y + 15},
+            FONT_COLOR);
+        if (window->resizable)
+            gfx_draw_bitmap(
+                context,
+                &maximize_icon_bitmap,
+                (gfx_pos_t) {maximize_button_x, geom.y + 10},
+                FONT_COLOR);
+
+        /* Outer opaque border */
+        gfx_draw_rect(
+            context,
+            (gfx_rect_t) {
+                .x = content_rect.x,
+                .y = content_rect.y,
+                .width = content_rect.width,
+                .height = content_rect.height,
+                .border_color = (gfx_color_t) {.a = 0xff, .r = 0x00, .g = 0x00, .b = 0x00},
+                .border_thickness = BORDER_THICKNESS,
+            });
+        /* Inner transparent border */
+        gfx_draw_rect(
+            context,
+            (gfx_rect_t) {
+                .x = content_rect.x + BORDER_THICKNESS,
+                .y = content_rect.y + BORDER_THICKNESS,
+                .width = content_rect.width - BORDER_THICKNESS * 2,
+                .height = content_rect.height - BORDER_THICKNESS * 2,
+                .border_color = (gfx_color_t) {.a = 0x33, .r = 0xff, .g = 0xff, .b = 0xff},
+                .border_thickness = BORDER_THICKNESS,
             });
     }
 
-    gfx_rect_t content_rect = {0};
-    if (_window_content_rect_from_geom(window, x, y, width, height, &content_rect)) {
-        if (window->remote_surface && window->surface_pixels && window->surface_width > 0
-            && window->surface_height > 0) {
-            uint32_t bitmap_width = window->surface_width;
-            uint32_t bitmap_height = window->surface_height;
-            size_t max_pixels = window->surface_size / sizeof(uint32_t);
-            size_t max_rows = bitmap_width ? (max_pixels / bitmap_width) : 0;
-            if (bitmap_height > max_rows)
-                bitmap_height = (uint32_t) max_rows;
-
-            if (bitmap_height > 0) {
-                gfx_rect_t prev_clip = context->clip_rect;
-                gfx_set_clip(context, content_rect);
-                gfx_colored_bitmap_t bitmap = {
-                    .width = bitmap_width,
-                    .height = bitmap_height,
-                    .data = window->surface_pixels,
-                };
-                gfx_draw_colored_bitmap(
-                    context,
-                    &bitmap,
-                    (gfx_pos_t) {
-                        .x = content_rect.x,
-                        .y = content_rect.y,
-                    });
-                context->clip_rect = prev_clip;
-            }
-        }
-
-        if (window->draw_content != NULL) {
-            gfx_rect_t prev_clip = context->clip_rect;
-            gfx_set_clip(context, content_rect);
-            window->draw_content(context, window, content_rect);
-            context->clip_rect = prev_clip;
-        }
+    if (window->draw_content != NULL) {
+        gfx_area_t prev_clip = context->clip_rect;
+        gfx_set_clip(context, content_rect);
+        window->draw_content(context, window, content_rect);
+        context->clip_rect = prev_clip;
     }
 
     if (_window_has_decorations(window) && window->resizable) {
-        uint32_t handle_x = x + width - BORDER_THICKNESS - WINDOW_RESIZE_HANDLE_SIZE;
-        uint32_t handle_y = y + height - BORDER_THICKNESS - WINDOW_RESIZE_HANDLE_SIZE;
+        uint32_t handle_x = geom.x + geom.width - BORDER_THICKNESS - WINDOW_RESIZE_HANDLE_SIZE;
+        uint32_t handle_y = geom.y + geom.height - BORDER_THICKNESS - WINDOW_RESIZE_HANDLE_SIZE;
         for (uint32_t i = 0; i < 3; i++) {
             uint32_t offset = i * 3;
             gfx_draw_line(
@@ -795,7 +793,7 @@ uint16_t window_get_content_width(const window_t *window)
         return width > UINT16_MAX ? UINT16_MAX : (uint16_t) width;
     }
 
-    uint32_t total_horizontal_chrome = WINDOW_BODY_MARGIN_X * 2 + WINDOW_CONTENT_INSET * 2;
+    uint32_t total_horizontal_chrome = WINDOW_BODY_MARGIN_X * 2;
     if (width <= total_horizontal_chrome)
         return 0;
     return (uint16_t) (width - total_horizontal_chrome);
@@ -816,8 +814,7 @@ uint16_t window_get_content_height(const window_t *window)
         return height > UINT16_MAX ? UINT16_MAX : (uint16_t) height;
     }
 
-    uint32_t total_vertical_chrome = WINDOW_BODY_TOP_OFFSET + WINDOW_BODY_BOTTOM_MARGIN
-                                     + WINDOW_CONTENT_INSET * 2;
+    uint32_t total_vertical_chrome = WINDOW_BODY_TOP_OFFSET + WINDOW_BODY_BOTTOM_MARGIN;
     if (height <= total_vertical_chrome)
         return 0;
     return (uint16_t) (height - total_vertical_chrome);
@@ -845,14 +842,10 @@ bool window_contains_content_point(const window_t *window, uint32_t x, uint32_t 
         window_height = _screen_height > TOP_BAR_HEIGHT ? _screen_height - TOP_BAR_HEIGHT : 0;
     }
 
-    gfx_rect_t content_rect = {0};
-    if (!_window_content_rect_from_geom(
-            window, window_x, window_y, window_width, window_height, &content_rect)) {
-        return false;
-    }
-
+    gfx_area_t content_area
+        = _window_content_rect_from_geom(window, window_x, window_y, window_width, window_height);
     return _point_in_rect(
-        x, y, content_rect.x, content_rect.y, content_rect.width, content_rect.height);
+        x, y, content_area.x, content_area.y, content_area.width, content_area.height);
 }
 
 void close_windows_by_owner(uint64_t owner_task_id)

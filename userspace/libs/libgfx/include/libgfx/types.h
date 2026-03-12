@@ -20,6 +20,11 @@ typedef struct
 
 typedef struct
 {
+    uint32_t x, y, width, height;
+} gfx_area_t;
+
+typedef struct
+{
     uint32_t x, y;
     uint32_t width, height;
     gfx_color_t border_color;
@@ -59,7 +64,7 @@ typedef struct
     uint64_t fps_last_update_ticks;
     uint32_t fps_frame_count;
     uint32_t fps_last_value;
-    gfx_rect_t clip_rect;
+    gfx_area_t clip_rect;
 } gfx_context_t;
 
 typedef struct

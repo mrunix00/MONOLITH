@@ -7,7 +7,6 @@
 #include "./icons.h"
 #include "./input.h"
 #include "./magic.h"
-#include "./utils.h"
 #include "./window.h"
 
 #include <libgfx.h>
@@ -18,11 +17,7 @@ extern gfx_font_t default_font;
 
 static menubar_t *active_menubar = NULL;
 static uint8_t previous_buttons = 0;
-static menu_t minimized_menu = {
-    .items = NULL,
-    .item_count = 0,
-    .open = false,
-};
+static menu_t minimized_menu = {.items = NULL, .item_count = 0, .open = false};
 static menu_item_t *minimized_menu_items = NULL;
 static const char **minimized_menu_titles = NULL;
 static size_t minimized_menu_capacity = 0;
@@ -30,14 +25,6 @@ static size_t minimized_menu_capacity = 0;
 static bool _point_in_rect(uint32_t x, uint32_t y, uint32_t rx, uint32_t ry, uint32_t w, uint32_t h)
 {
     return x >= rx && x < (rx + w) && y >= ry && y < (ry + h);
-}
-
-static uint32_t _text_width(const char *text)
-{
-    if (!text) {
-        return 0;
-    }
-    return (uint32_t) strlen(text) * MENU_TEXT_ADVANCE;
 }
 
 static gfx_pos_t _menu_position(const menubar_t *bar, const menu_t *menu)
@@ -48,7 +35,7 @@ static gfx_pos_t _menu_position(const menubar_t *bar, const menu_t *menu)
     uint32_t cursor_x = 0;
     for (size_t i = 0; i < bar->item_count; i++) {
         const menubar_item_t *item = &bar->items[i];
-        uint32_t width = _text_width(item->label) + MENUBAR_ITEM_GAP;
+        uint32_t width = gfx_get_text_width(&default_font, item->label) + MENUBAR_ITEM_GAP;
         if (item->menu == menu)
             return (gfx_pos_t) {.x = cursor_x, .y = TOP_BAR_HEIGHT - 1};
         cursor_x += width;
@@ -68,10 +55,8 @@ static uint32_t _menu_measure_width(const menu_t *menu)
     for (size_t i = 0; i < menu->item_count; i++) {
         const menu_item_t *item = &menu->items[i];
         if (item->type == MENU_ITEM_ACTION) {
-            uint32_t width = _text_width(item->label);
-            if (width > max_width) {
-                max_width = width;
-            }
+            uint32_t width = gfx_get_text_width(&default_font, item->label);
+            max_width = width > max_width ? width : max_width;
         }
     }
 
@@ -180,8 +165,8 @@ static bool _minimized_menu_handle_click(gfx_context_t *context, uint32_t x, uin
         return false;
     }
 
-    if (menu_contains_point(&minimized_menu, x, y)) {
-        int32_t hit = menu_hit_test(&minimized_menu, x, y);
+    if (menu_contains_point(context, &minimized_menu, x, y)) {
+        int32_t hit = menu_hit_test(context, &minimized_menu, x, y);
         if (hit >= 0) {
             window_unminimize_at((size_t) hit);
         }
@@ -202,7 +187,7 @@ static int32_t _menubar_hit_test(const menubar_t *bar, uint32_t x, uint32_t y)
     uint32_t cursor_x = MENUBAR_START_X;
     for (size_t i = 0; i < bar->item_count; i++) {
         const menubar_item_t *item = &bar->items[i];
-        uint32_t width = _text_width(item->label) + MENUBAR_ITEM_GAP;
+        uint32_t width = gfx_get_text_width(&default_font, item->label) + MENUBAR_ITEM_GAP;
         if (_point_in_rect(x, y, cursor_x, 0, width, TOP_BAR_HEIGHT)) {
             return (int32_t) i;
         }
@@ -214,22 +199,30 @@ static int32_t _menubar_hit_test(const menubar_t *bar, uint32_t x, uint32_t y)
 
 void menu_draw(gfx_context_t *context, const menu_t *menu)
 {
-    gfx_pos_t menu_pos;
-    if (menu == &minimized_menu) {
-        menu_pos = _minimized_menu_position(context);
-    } else {
-        menu_pos = _menu_position(active_menubar, menu);
-    }
-
+    gfx_pos_t menu_pos = menu == &minimized_menu ? _minimized_menu_position(context)
+                                                 : _menu_position(active_menubar, menu);
     uint32_t width = _menu_measure_width(menu);
     uint32_t height = _menu_measure_height(menu);
-    draw_transparent_box(
+    gfx_draw_filled_rect(
         context,
         (gfx_rect_t) {
             .x = menu_pos.x,
             .y = menu_pos.y,
             .width = width,
             .height = height,
+            .border_color = BORDER_COLOR,
+            .border_thickness = BORDER_THICKNESS,
+        },
+        (gfx_color_t) {.a = 0xcc, .r = 0x21, .g = 0x21, .b = 0x21});
+    gfx_draw_rect(
+        context,
+        (gfx_rect_t) {
+            .x = menu_pos.x + BORDER_THICKNESS,
+            .y = menu_pos.y + BORDER_THICKNESS,
+            .width = width - BORDER_THICKNESS * 2,
+            .height = height - BORDER_THICKNESS * 2,
+            .border_color = (gfx_color_t) {.a = 0x33, .r = 0xff, .g = 0xff, .b = 0xff},
+            .border_thickness = BORDER_THICKNESS,
         });
 
     uint32_t cursor_y = menu_pos.y + MENU_VERTICAL_PADDING;
@@ -263,9 +256,10 @@ void menu_draw(gfx_context_t *context, const menu_t *menu)
     }
 }
 
-int32_t menu_hit_test(const menu_t *menu, uint32_t x, uint32_t y)
+int32_t menu_hit_test(gfx_context_t *context, const menu_t *menu, uint32_t x, uint32_t y)
 {
-    gfx_pos_t menu_pos = _menu_position(active_menubar, menu);
+    gfx_pos_t menu_pos = menu == &minimized_menu ? _minimized_menu_position(context)
+                                                 : _menu_position(active_menubar, menu);
 
     uint32_t width = _menu_measure_width(menu);
     uint32_t height = _menu_measure_height(menu);
@@ -285,9 +279,10 @@ int32_t menu_hit_test(const menu_t *menu, uint32_t x, uint32_t y)
     return -1;
 }
 
-bool menu_contains_point(const menu_t *menu, uint32_t x, uint32_t y)
+bool menu_contains_point(gfx_context_t *context, const menu_t *menu, uint32_t x, uint32_t y)
 {
-    gfx_pos_t menu_pos = _menu_position(active_menubar, menu);
+    gfx_pos_t menu_pos = menu == &minimized_menu ? _minimized_menu_position(context)
+                                                 : _menu_position(active_menubar, menu);
 
     uint32_t width = _menu_measure_width(menu);
     uint32_t height = _menu_measure_height(menu);
@@ -324,7 +319,7 @@ void menubar_draw(gfx_context_t *context, const menubar_t *bar)
         const menubar_item_t *item = &bar->items[i];
         gfx_draw_text(
             context, &default_font, (gfx_pos_t) {cursor_x, MENUBAR_LABEL_Y}, FONT_COLOR, item->label);
-        cursor_x += _text_width(item->label) + MENUBAR_ITEM_GAP;
+        cursor_x += gfx_get_text_width(&default_font, item->label) + MENUBAR_ITEM_GAP;
     }
 
     if (_minimized_menu_refresh()) {
@@ -358,7 +353,7 @@ void menubar_close_all(menubar_t *bar)
     }
 }
 
-void menubar_handle_click(menubar_t *bar, uint32_t x, uint32_t y)
+void menubar_handle_click(gfx_context_t *context, menubar_t *bar, uint32_t x, uint32_t y)
 {
     int32_t label_index = _menubar_hit_test(bar, x, y);
     if (label_index >= 0) {
@@ -379,11 +374,9 @@ void menubar_handle_click(menubar_t *bar, uint32_t x, uint32_t y)
             continue;
         }
 
-        if (!menu_contains_point(item->menu, x, y)) {
+        if (!menu_contains_point(context, item->menu, x, y))
             continue;
-        }
-
-        int32_t hit = menu_hit_test(item->menu, x, y);
+        int32_t hit = menu_hit_test(context, item->menu, x, y);
         if (hit >= 0) {
             const menu_item_t *menu_item = &item->menu->items[hit];
             if (menu_item->type == MENU_ITEM_ACTION && menu_item->action) {
@@ -427,7 +420,7 @@ bool update_menubar_state(gfx_context_t *context)
             previous_buttons = mouse.buttons;
             return true;
         }
-        menubar_handle_click(active_menubar, mouse_x, mouse_y);
+        menubar_handle_click(context, active_menubar, mouse_x, mouse_y);
         changed = true;
     }
 

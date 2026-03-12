@@ -123,7 +123,7 @@ static void _draw_cube_frame(gfx_context_t *ctx, uint32_t target_w, uint32_t tar
         (gfx_rect_t) {0, 0, draw_w, draw_h, {0}, 0},
         (gfx_color_t) {0xFF, 0x10, 0x14, 0x1E});
 
-    gfx_set_clip(ctx, (gfx_rect_t) {0, 0, draw_w, draw_h, {0, 0, 0, 0}, 0});
+    gfx_set_clip(ctx, (gfx_area_t) {0, 0, draw_w, draw_h});
 
     uint32_t projected_x[8] = {0};
     uint32_t projected_y[8] = {0};

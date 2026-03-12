@@ -46,7 +46,7 @@ static void _draw_about_view(uint16_t window_id, uint16_t width, uint16_t height
         (gfx_rect_t) {0, 0, draw_width, draw_height, {0}, 0},
         (gfx_color_t) {0xFF, 0x1F, 0x22, 0x28});
 
-    gfx_set_clip(ctx, (gfx_rect_t) {0, 0, draw_width, draw_height, {0, 0, 0, 0}, 0});
+    gfx_set_clip(ctx, (gfx_area_t) {0, 0, draw_width, draw_height});
 
     uint32_t title_width = gfx_get_text_width(&_about_font, title_text);
     uint32_t subtitle_width = gfx_get_text_width(&_about_font, subtitle_text);
