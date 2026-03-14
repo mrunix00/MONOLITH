@@ -231,6 +231,7 @@ static void doom_gettime_override(int *sec, int *usec)
 
 static void doom_exit_override(int code)
 {
+    (void) code;
     exit();
 }
 
@@ -422,8 +423,6 @@ static void handle_doom_keyboard_event(const window_keyboard_event_t *event)
         doom_key_down(key);
 }
 
-
-
 static void blit_doom_frame(gfx_context_t *ctx, uint32_t win_w, uint32_t win_h)
 {
     if (!ctx || !ctx->backbuffer)
@@ -455,8 +454,8 @@ static void blit_doom_frame(gfx_context_t *ctx, uint32_t win_w, uint32_t win_h)
             uint8_t g = pixel[1];
             uint8_t b = pixel[2];
             uint8_t a = 0xFF;
-            dst_row[x] = ((uint32_t) a << 24) | ((uint32_t) r << 16)
-                         | ((uint32_t) g << 8) | (uint32_t) b;
+            dst_row[x] = ((uint32_t) a << 24) | ((uint32_t) r << 16) | ((uint32_t) g << 8)
+                         | (uint32_t) b;
         }
     }
 }
@@ -493,6 +492,9 @@ int main(void)
     uint32_t height = 0;
 
     gfx_context_t framebuffer = {0};
+
+    if (desktop_connect() != 0)
+        exit();
 
     while (1) {
         if (!created && !create_pending) {

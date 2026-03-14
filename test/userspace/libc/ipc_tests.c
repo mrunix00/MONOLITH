@@ -121,7 +121,7 @@ static void test_ipc_receive_batches_and_caches(void)
     char buffer[64];
 
     int result = ipc_receive(channel, &sender, buffer, sizeof(buffer));
-    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT_EQUAL((int) strlen("hello") + 1, result);
     TEST_ASSERT_EQUAL_STRING("hello", buffer);
     TEST_ASSERT_EQUAL_UINT64(11, sender.task_id);
     TEST_ASSERT_EQUAL(1, g_syscall_calls);
@@ -130,7 +130,7 @@ static void test_ipc_receive_batches_and_caches(void)
 
     memset(buffer, 0, sizeof(buffer));
     result = ipc_receive(channel, &sender, buffer, sizeof(buffer));
-    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT_EQUAL((int) strlen("world") + 1, result);
     TEST_ASSERT_EQUAL_STRING("world", buffer);
     TEST_ASSERT_EQUAL_UINT64(22, sender.task_id);
     TEST_ASSERT_EQUAL(1, g_syscall_calls);
@@ -146,14 +146,14 @@ static void test_ipc_receive_refills_after_cache_empty(void)
     char buffer[64];
 
     int result = ipc_receive(channel, &sender, buffer, sizeof(buffer));
-    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT_EQUAL((int) strlen("one") + 1, result);
     TEST_ASSERT_EQUAL_STRING("one", buffer);
     TEST_ASSERT_EQUAL_UINT64(111, sender.task_id);
     TEST_ASSERT_EQUAL(1, g_syscall_calls);
 
     memset(buffer, 0, sizeof(buffer));
     result = ipc_receive(channel, &sender, buffer, sizeof(buffer));
-    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT_EQUAL((int) strlen("two") + 1, result);
     TEST_ASSERT_EQUAL_STRING("two", buffer);
     TEST_ASSERT_EQUAL_UINT64(222, sender.task_id);
     TEST_ASSERT_EQUAL(2, g_syscall_calls);
@@ -169,18 +169,18 @@ static void test_ipc_receive_cache_resets_on_channel_change(void)
     char buffer[64];
 
     int result = ipc_receive(channel_a, &sender, buffer, sizeof(buffer));
-    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT_EQUAL((int) strlen("hello") + 1, result);
     TEST_ASSERT_EQUAL(1, g_syscall_calls);
     TEST_ASSERT_EQUAL_INT64(channel_a, g_last_channel_id);
 
     memset(buffer, 0, sizeof(buffer));
     result = ipc_receive(channel_b, &sender, buffer, sizeof(buffer));
-    TEST_ASSERT_EQUAL(0, result);
+    TEST_ASSERT_EQUAL((int) strlen("hello") + 1, result);
     TEST_ASSERT_EQUAL(2, g_syscall_calls);
     TEST_ASSERT_EQUAL_INT64(channel_b, g_last_channel_id);
 }
 
-static void test_ipc_receive_no_message_returns_one(void)
+static void test_ipc_receive_no_message_returns_zero(void)
 {
     reset_test_state();
     g_stub_mode = 2;
@@ -190,7 +190,7 @@ static void test_ipc_receive_no_message_returns_one(void)
     char buffer[64] = {0};
 
     int result = ipc_receive(channel, &sender, buffer, sizeof(buffer));
-    TEST_ASSERT_EQUAL(1, result);
+    TEST_ASSERT_EQUAL(0, result);
     TEST_ASSERT_EQUAL(1, g_syscall_calls);
 }
 
@@ -220,6 +220,6 @@ void libc_ipc_tests(void)
     RUN_TEST(test_ipc_receive_batches_and_caches);
     RUN_TEST(test_ipc_receive_refills_after_cache_empty);
     RUN_TEST(test_ipc_receive_cache_resets_on_channel_change);
-    RUN_TEST(test_ipc_receive_no_message_returns_one);
+    RUN_TEST(test_ipc_receive_no_message_returns_zero);
     RUN_TEST(test_ipc_receive_invalid_args);
 }

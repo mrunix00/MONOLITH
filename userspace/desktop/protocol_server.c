@@ -380,7 +380,7 @@ static void _accept_pending_connections(void)
     connection_t connection;
     int result;
 
-    while ((result = ipc_await_connection(_channel_id, &connection)) == 0)
+    while ((result = ipc_poll_connection(_channel_id, &connection)) == 0)
         ipc_accept_connection(_channel_id, &connection);
 }
 
@@ -409,7 +409,7 @@ bool protocol_server_pump(void)
     unsigned char raw_message[PROTOCOL_SERVER_RECV_BUFFER_SIZE] = {0};
     connection_t sender = {0};
 
-    while (ipc_receive(_channel_id, &sender, raw_message, sizeof(raw_message)) == 0) {
+    while (ipc_receive(_channel_id, &sender, raw_message, sizeof(raw_message)) > 0) {
         had_activity = true;
         ipc_message_t *message = (ipc_message_t *) raw_message;
 

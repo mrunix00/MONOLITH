@@ -9,6 +9,7 @@
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
 #include <kernel/tasking/ipc.h>
+#include <kernel/timer.h>
 
 typedef enum {
     IPC_CONN_PENDING = 0,
@@ -448,7 +449,7 @@ channel_id_t ipc_connect(task_t *task, const char *name)
     return ipc_channel->id;
 }
 
-int ipc_await_connection(task_t *task, channel_id_t channel_id, connection_t *connection)
+int ipc_poll_connection(task_t *task, channel_id_t channel_id, connection_t *connection)
 {
     if (!task || channel_id < 0 || !connection)
         return -1;
@@ -466,6 +467,43 @@ int ipc_await_connection(task_t *task, channel_id_t channel_id, connection_t *co
     }
 
     return 1;
+}
+
+int ipc_await_connection(task_t *task, channel_id_t channel_id, connection_t *connection)
+{
+    if (!task || channel_id < 0 || !connection)
+        return -1;
+
+    _ipc_channel_t *ipc_channel = _get_channel_by_id(channel_id);
+    if (!ipc_channel)
+        return -1;
+
+    if (ipc_channel->owner_task_id == task->id) {
+        while (true) {
+            int result = ipc_poll_connection(task, channel_id, connection);
+            if (result <= 0)
+                return result;
+            sleep(1);
+        }
+    }
+
+    _ipc_connection_t *conn = _get_connection_by_task_id(ipc_channel, task->id);
+    if (!conn)
+        return -1;
+
+    while (true) {
+        if (conn->state == IPC_CONN_ACCEPTED) {
+            connection->task_id = task->id;
+            return 0;
+        }
+        if (conn->state == IPC_CONN_REJECTED)
+            return -1;
+
+        sleep(1);
+        conn = _get_connection_by_task_id(ipc_channel, task->id);
+        if (!conn)
+            return -1;
+    }
 }
 
 int ipc_accept_connection(task_t *task, channel_id_t channel_id, connection_t *connection)
@@ -714,9 +752,8 @@ int ipc_receive(task_t *task, channel_id_t channel_id, connection_t *sender, voi
         return -1;
 
     if (ipc_channel->owner_task_id == task->id) {
-        if (ipc_channel->owner_messages_count == 0) {
-            return 1;
-        }
+        if (ipc_channel->owner_messages_count == 0)
+            return bytes_written;
 
         size_t required_size = 0;
         for (size_t i = 0; i < ipc_channel->owner_messages_count; i++) {
@@ -753,7 +790,7 @@ int ipc_receive(task_t *task, channel_id_t channel_id, connection_t *sender, voi
         return -1;
 
     if (conn->messages_count == 0)
-        return 1;
+        return bytes_written;
 
     size_t required_size = 0;
     for (size_t i = 0; i < conn->messages_count; i++)

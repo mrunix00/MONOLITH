@@ -82,6 +82,11 @@ static inline int ipc_await_connection(channel_id_t channel_id, connection_t *co
     return syscall2(SYSCALL_IPC_WAIT_CONNECTION, (long) channel_id, (long) connection);
 }
 
+static inline int ipc_poll_connection(channel_id_t channel_id, connection_t *connection)
+{
+    return syscall2(SYSCALL_IPC_POLL_CONNECTION, (long) channel_id, (long) connection);
+}
+
 /*
  * Accept a pending connection (owner side).
  * channel_id: channel ID.
@@ -161,6 +166,7 @@ static inline int ipc_release_shared_memory(channel_id_t channel_id, void *addr)
  * sender: output sender info (task_id).
  * data: receive buffer.
  * size: buffer size in bytes.
+ * Returns number of bytes written, -1 on error.
  */
 int ipc_receive(channel_id_t channel_id, connection_t *sender, void *data, size_t size);
 

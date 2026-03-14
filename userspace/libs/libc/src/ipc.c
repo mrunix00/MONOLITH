@@ -108,8 +108,8 @@ int ipc_receive(channel_id_t channel_id, connection_t *sender, void *data, size_
             (long) _ipc_cache.data,
             (long) _ipc_cache.capacity);
 
-        if (result == 1 || result == 0)
-            return 1;
+        if (result == 0)
+            return 0;
         if (result < 0)
             return -1;
 
@@ -138,5 +138,5 @@ int ipc_receive(channel_id_t channel_id, connection_t *sender, void *data, size_
     if (_ipc_cache.offset >= _ipc_cache.length)
         _ipc_cache_reset();
 
-    return 0;
+    return (int) entry->size;
 }

@@ -64,6 +64,12 @@ channel_id_t ipc_new_channel(task_t *, const char *name);
 channel_id_t ipc_connect(task_t *, const char *name);
 
 /*
+ * Poll for a pending connection on a channel.
+ * Returns 0 and sets connection on success, 1 if none, -1 on failure.
+ */
+int ipc_poll_connection(task_t *, channel_id_t, connection_t *);
+
+/*
  * Await a pending connection on a channel.
  * Returns 0 and sets connection on success, -1 on failure.
  */

@@ -70,6 +70,7 @@ extern sys_ipc_receive
 extern sys_ipc_disconnect
 extern sys_ipc_release_shm
 extern sys_ipc_share_shm
+extern sys_ipc_poll_connection
 extern sys_unmap_pages
 
 section .rodata
@@ -105,6 +106,7 @@ syscall_table:
     dq sys_ipc_release_shm
     dq sys_ipc_share_shm
     dq sys_unmap_pages
+    dq sys_ipc_poll_connection
 syscall_table_end:
 
 section .text

@@ -92,6 +92,9 @@ int main(void)
     uint32_t height = 0;
     uint32_t window_id = 0;
 
+    if (desktop_connect() != 0)
+        exit();
+
     while (1) {
         if (!created) {
             if (!create_pending) {
