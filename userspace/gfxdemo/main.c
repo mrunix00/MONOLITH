@@ -189,6 +189,9 @@ int main(void)
     float angle = 0.0f;
     gfx_context_t framebuffer = {0};
 
+    if (desktop_connect() != 0)
+        exit();
+
     while (1) {
         if (!created && !create_pending) {
             create_sequence = desktop_create_window(

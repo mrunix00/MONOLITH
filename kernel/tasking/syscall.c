@@ -451,6 +451,13 @@ int sys_ipc_wait_connection(channel_id_t channel_id, connection_t *connection)
     return ipc_await_connection(task_get_current(), channel_id, connection);
 }
 
+int sys_ipc_poll_connection(channel_id_t channel_id, connection_t *connection)
+{
+    if (!_user_ptr_range(connection, sizeof(*connection)))
+        return -1;
+    return ipc_poll_connection(task_get_current(), channel_id, connection);
+}
+
 int sys_ipc_accept_connection(channel_id_t channel_id, connection_t *connection)
 {
     if (!_user_ptr_range(connection, sizeof(*connection)))

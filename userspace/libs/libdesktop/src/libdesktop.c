@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define DESKTOP_IPC_RETRY_COUNT 5000
 #define DESKTOP_EVENT_RECV_BUFFER_SIZE 4096
 #define DESKTOP_MAX_FRAMEBUFFERS 64
 
@@ -17,18 +16,12 @@
 typedef struct
 {
     bool active;
-    bool request_in_flight;
     uint16_t window_id;
     uint16_t view_width;
     uint16_t view_height;
-    uint16_t buffer_width;
-    uint16_t buffer_height;
-    void *pixels;
+    void *framebuffer;
     uint32_t *backbuffer;
     size_t backbuffer_size;
-    void *stale_pixels;
-    size_t size;
-    uint32_t pending_sequence;
 } _desktop_framebuffer_state_t;
 
 static channel_id_t _protocol_channel_id = -1;
@@ -36,63 +29,17 @@ static uint32_t _sequence = 0;
 static desktop_error_t _last_error = DESKTOP_ERROR_NONE;
 static _desktop_framebuffer_state_t _framebuffer_states[DESKTOP_MAX_FRAMEBUFFERS];
 
-static int _release_framebuffer_mapping(void *addr)
-{
-    if (!addr)
-        return 0;
-    if (_protocol_channel_id == -1)
-        return -1;
-    return ipc_release_shared_memory(_protocol_channel_id, addr);
-}
-
 static int _protocol_send_request(const desktop_request_t *request)
 {
-    if (!request) {
-        _last_error = DESKTOP_ERROR_INVALID_ARGUMENT;
-        return -1;
-    }
-
-    for (uint32_t attempt = 0; attempt < DESKTOP_IPC_RETRY_COUNT; attempt++) {
-        if (_protocol_channel_id == -1) {
-            if (desktop_connect() != 0) {
-                usleep(1);
-                continue;
-            }
-        }
-
-        if (ipc_send(_protocol_channel_id, (void *) request, sizeof(*request)) == 0)
-            return 0;
-
-        _last_error = DESKTOP_ERROR_SEND_FAILED;
-        usleep(1);
-    }
-
+    if (ipc_send(_protocol_channel_id, (void *) request, sizeof(*request)) == 0)
+        return 0;
     _last_error = DESKTOP_ERROR_SEND_FAILED;
     return -1;
 }
 
-static uint16_t _grow_capacity_2x(uint16_t current, uint16_t required)
+static uint32_t _grow_capacity(uint32_t current, uint32_t required)
 {
-    if (required == 0)
-        return 0;
-
-    if (current >= required)
-        return current;
-
-    if (current == 0)
-        return required;
-
-    uint32_t grown = (uint32_t) current * 2u;
-    if (grown <= current)
-        grown = (uint32_t) current + 1u;
-
-    if (grown < required)
-        grown = required;
-
-    if (grown > 0xFFFFu)
-        grown = 0xFFFFu;
-
-    return (uint16_t) grown;
+    return current * 2 < required ? required : current * 2;
 }
 
 static _desktop_framebuffer_state_t *_find_framebuffer_state(uint16_t window_id)
@@ -118,7 +65,6 @@ static _desktop_framebuffer_state_t *_get_or_create_framebuffer_state(uint16_t w
         memset(&_framebuffer_states[i], 0, sizeof(_framebuffer_states[i]));
         _framebuffer_states[i].active = true;
         _framebuffer_states[i].window_id = window_id;
-        _framebuffer_states[i].pending_sequence = 0;
         return &_framebuffer_states[i];
     }
 
@@ -127,29 +73,19 @@ static _desktop_framebuffer_state_t *_get_or_create_framebuffer_state(uint16_t w
 
 static void _clear_framebuffer_state(_desktop_framebuffer_state_t *state)
 {
-    if (!state)
-        return;
-
-    if (state->stale_pixels == state->pixels)
-        state->stale_pixels = NULL;
-
-    _release_framebuffer_mapping(state->pixels);
-    _release_framebuffer_mapping(state->stale_pixels);
+    ipc_release_shared_memory(_protocol_channel_id, state->framebuffer);
     free(state->backbuffer);
     memset(state, 0, sizeof(*state));
 }
 
 static void _populate_context(const _desktop_framebuffer_state_t *state, gfx_context_t *out_context)
 {
-    if (!state || !out_context)
-        return;
-
     memset(out_context, 0, sizeof(*out_context));
-    out_context->framebuffer = (uint32_t *) state->pixels;
+    out_context->framebuffer = (uint32_t *) state->framebuffer;
     out_context->backbuffer = state->backbuffer;
-    out_context->width = state->buffer_width;
-    out_context->height = state->buffer_height;
-    out_context->pitch = (size_t) state->buffer_width * sizeof(uint32_t);
+    out_context->width = state->view_width;
+    out_context->height = state->view_height;
+    out_context->pitch = (size_t) state->view_width * sizeof(uint32_t);
     out_context->bpp = 32;
     out_context->memory_model = 1;
     out_context->red_mask_size = 8;
@@ -158,18 +94,13 @@ static void _populate_context(const _desktop_framebuffer_state_t *state, gfx_con
     out_context->green_mask_shift = 8;
     out_context->blue_mask_size = 8;
     out_context->blue_mask_shift = 0;
-
-    uint16_t clip_w = MIN(state->view_width, state->buffer_width);
-    uint16_t clip_h = MIN(state->view_height, state->buffer_height);
-    out_context->clip_rect = (gfx_area_t) {.x = 0, .y = 0, .width = clip_w, .height = clip_h};
+    out_context->clip_rect
+        = (gfx_area_t) {.x = 0, .y = 0, .width = state->view_width, .height = state->view_height};
 }
 
 static int _ensure_backbuffer(_desktop_framebuffer_state_t *state)
 {
-    if (!state)
-        return -1;
-
-    size_t backbuffer_size = (size_t) state->buffer_width * (size_t) state->buffer_height
+    size_t backbuffer_size = (size_t) state->view_width * (size_t) state->view_height
                              * sizeof(uint32_t);
     if (backbuffer_size == 0)
         return 0;
@@ -189,38 +120,33 @@ static int _ensure_backbuffer(_desktop_framebuffer_state_t *state)
     return 0;
 }
 
-static int _request_window_framebuffer_internal(
-    _desktop_framebuffer_state_t *state,
-    uint16_t requested_width,
-    uint16_t requested_height,
-    uint32_t sequence)
+static int _request_window_framebuffer(
+    _desktop_framebuffer_state_t *state, uint16_t width, uint16_t height, uint32_t sequence)
 {
-    if (!state || requested_width == 0 || requested_height == 0)
-        return -1;
-
     desktop_request_t request = {
         .sequence = sequence,
         .type = DESKTOP_REQUEST_REQUEST_FRAMEBUFFER,
         .data.request_framebuffer.id = state->window_id,
-        .data.request_framebuffer.width = requested_width,
-        .data.request_framebuffer.height = requested_height,
+        .data.request_framebuffer.width = width,
+        .data.request_framebuffer.height = height,
     };
 
     if (_protocol_send_request(&request) != 0)
         return -1;
-    state->pending_sequence = sequence;
-    state->request_in_flight = true;
 
     return 0;
 }
 
 int desktop_connect(void)
 {
-    if (_protocol_channel_id != -1)
-        return 0;
-
     _protocol_channel_id = ipc_connect(DESKTOP_CHANNEL_NAME);
     if (_protocol_channel_id == -1) {
+        _last_error = DESKTOP_ERROR_CONNECT_FAILED;
+        return -1;
+    }
+
+    connection_t connection = {0};
+    if (ipc_await_connection(_protocol_channel_id, &connection) != 0) {
         _last_error = DESKTOP_ERROR_CONNECT_FAILED;
         return -1;
     }
@@ -228,20 +154,16 @@ int desktop_connect(void)
     return 0;
 }
 
-uint32_t desktop_create_window(
-    uint16_t width, uint16_t height, window_flags_t flags, const char *title)
+uint32_t desktop_create_window(uint16_t w, uint16_t h, window_flags_t flags, const char *title)
 {
     _last_error = DESKTOP_ERROR_NONE;
-
-    if (!title)
-        title = "";
 
     uint32_t sequence = _sequence++;
     desktop_request_t request = {
         .sequence = sequence,
         .type = DESKTOP_REQUEST_CREATE_WINDOW,
-        .data.create_window.width = width,
-        .data.create_window.height = height,
+        .data.create_window.width = w,
+        .data.create_window.height = h,
         .data.create_window.flags = flags,
     };
     size_t title_len = strnlen(title, sizeof(request.data.create_window.title) - 1);
@@ -288,14 +210,10 @@ int desktop_present_window(uint16_t window_id)
     return _protocol_send_request(&request);
 }
 
-gfx_context_res_t desktop_request_window_framebuffer(
-    uint16_t window_id, uint16_t width, uint16_t height)
+gfx_context_res_t desktop_request_window_framebuffer(uint16_t window_id, uint16_t w, uint16_t h)
 {
-    gfx_context_res_t result;
-    memset(&result, 0, sizeof(result));
-
+    gfx_context_res_t result = {0};
     _last_error = DESKTOP_ERROR_NONE;
-
     result.sequence = _sequence++;
 
     _desktop_framebuffer_state_t *state = _get_or_create_framebuffer_state(window_id);
@@ -304,29 +222,16 @@ gfx_context_res_t desktop_request_window_framebuffer(
         return result;
     }
 
-    state->view_width = width;
-    state->view_height = height;
-
-    if (state->pixels && !state->request_in_flight && state->buffer_width >= width
-        && state->buffer_height >= height) {
+    if (state->framebuffer && state->view_width >= w && state->view_height >= h) {
         if (_ensure_backbuffer(state) != 0)
             return result;
         _populate_context(state, &result.context);
         return result;
     }
 
-    if (state->request_in_flight) {
-        if (_ensure_backbuffer(state) != 0)
-            return result;
-        _populate_context(state, &result.context);
-        result.sequence = state->pending_sequence;
-        return result;
-    }
-
-    uint16_t requested_width = _grow_capacity_2x(state->buffer_width, width);
-    uint16_t requested_height = _grow_capacity_2x(state->buffer_height, height);
-
-    if (_request_window_framebuffer_internal(state, requested_width, requested_height, result.sequence)
+    uint16_t requested_width = _grow_capacity(state->view_width, w);
+    uint16_t requested_height = _grow_capacity(state->view_height, h);
+    if (_request_window_framebuffer(state, requested_width, requested_height, result.sequence)
         != 0) {
         return result;
     }
@@ -345,17 +250,11 @@ desktop_error_t desktop_get_error(void)
 
 int desktop_handle_framebuffer_event(const desktop_event_t *event, gfx_context_t *out_context)
 {
-    if (!event)
-        return -1;
-
     if (event->type != DESKTOP_EVENT_FRAMEBUFFER_READY)
         return 0;
 
     _desktop_framebuffer_state_t *state = _find_framebuffer_state(event->data.framebuffer_ready.id);
     if (!state)
-        return 0;
-
-    if (!state->request_in_flight || state->pending_sequence != event->sequence)
         return 0;
 
     void *new_pixels = (void *) event->data.framebuffer_ready.address;
@@ -364,27 +263,13 @@ int desktop_handle_framebuffer_event(const desktop_event_t *event, gfx_context_t
         return -1;
     }
 
-    void *old_pixels = state->pixels;
-
-    if (state->stale_pixels && state->stale_pixels != old_pixels)
-        _release_framebuffer_mapping(state->stale_pixels);
-
-    state->stale_pixels = old_pixels;
-    state->pixels = new_pixels;
-
-    state->buffer_width = event->data.framebuffer_ready.width;
-    state->buffer_height = event->data.framebuffer_ready.height;
-    state->size = event->data.framebuffer_ready.size;
-    state->request_in_flight = false;
-    state->pending_sequence = 0;
+    ipc_release_shared_memory(_protocol_channel_id, state->framebuffer);
+    state->framebuffer = new_pixels;
+    state->view_width = event->data.framebuffer_ready.width;
+    state->view_height = event->data.framebuffer_ready.height;
 
     if (_ensure_backbuffer(state) != 0)
         return -1;
-
-    if (state->stale_pixels && state->stale_pixels != state->pixels) {
-        _release_framebuffer_mapping(state->stale_pixels);
-        state->stale_pixels = NULL;
-    }
 
     _populate_context(state, out_context);
 
@@ -396,28 +281,19 @@ int desktop_release_window_framebuffer(void *framebuffer_addr)
     if (!framebuffer_addr)
         return 0;
 
-    if (desktop_connect() != 0)
-        return -1;
-
     return ipc_release_shared_memory(_protocol_channel_id, framebuffer_addr);
 }
 
 int desktop_poll_event(desktop_event_t *event)
 {
-    if (!event)
-        return -1;
-
-    if (desktop_connect() != 0)
-        return -1;
-
     unsigned char recv_buffer[DESKTOP_EVENT_RECV_BUFFER_SIZE];
     memset(recv_buffer, 0, sizeof(recv_buffer));
 
     connection_t sender = {0};
     int result = ipc_receive(_protocol_channel_id, &sender, recv_buffer, sizeof(recv_buffer));
-    if (result == 1)
+    if (result == 0)
         return 1;
-    if (result != 0)
+    if (result < 0)
         return -1;
 
     memcpy(event, recv_buffer, sizeof(*event));
