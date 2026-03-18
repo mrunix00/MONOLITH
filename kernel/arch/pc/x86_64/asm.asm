@@ -45,3 +45,18 @@ global asm_read_rsp
 asm_read_rsp:
     mov rax, rsp
     ret
+
+global asm_pause
+asm_pause:
+    pause
+    ret
+
+global asm_cli
+asm_cli:
+    cli
+    ret
+
+global asm_sti
+asm_sti:
+    sti
+    ret

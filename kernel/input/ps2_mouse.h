@@ -20,4 +20,3 @@ typedef struct
 } mouse_state_t;
 
 void ps2_mouse_init();
-void ps2_mouse_get_state(mouse_state_t *state);
