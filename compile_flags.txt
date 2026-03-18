@@ -1,0 +1,7 @@
+-I./
+-Ilibs/PureDOOM
+-Iuserspace/libs/libdesktop/include
+-Iuserspace/libs/libc/include
+-Iuserspace/libs/libgfx/include
+-Wall
+-Wextra

@@ -75,21 +75,3 @@ determining executable automatically.  Try using the "file" command.
 Reading symbols from build/kernel.bin...
 (gdb)
 ```
-
-## Clangd configuration
-
-The following `.clangd` file can be found in the root project directory:
-
-```yaml
-CompileFlags:
-  Add: [-std=c99, -Wall, -Wextra, -xc]
-
-Index:
-  Background: Build
-```
-
-Add the following to the compiler flags:
-
-```
--I/path/to/project/directory/
-```
