@@ -12,7 +12,6 @@
 
 #define PROTOCOL_SERVER_RECV_BUFFER_SIZE 4096
 #define MAX_PENDING_SURFACE_RELEASES 64
-#define PENDING_SURFACE_RELEASE_DELAY_MS 150
 
 typedef struct
 {
@@ -96,17 +95,6 @@ static void _flush_pending_releases(uint64_t task_id)
     }
 }
 
-static void _flush_expired_pending_releases(void)
-{
-    size_t i = 0;
-    while (i < _pending_releases_count) {
-        _pending_surface_release_t *entry = &_pending_releases[i];
-        size_t pages = _pages_for_size(entry->size);
-        unmap_pages(entry->pixels, pages);
-        _pending_releases[i] = _pending_releases[--_pending_releases_count];
-    }
-}
-
 static void _on_window_closed(window_t *window)
 {
     if (!window || window->owner_task_id == 0)
@@ -115,8 +103,7 @@ static void _on_window_closed(window_t *window)
     /* Don't release the surface here -- the client may still be mid-render
      * (preempted by the timer). Defer release until the client disconnects. */
     if (window->surface_pixels && window->surface_size > 0)
-        _defer_surface_release(
-            window->owner_task_id, window->surface_pixels, window->surface_size);
+        _defer_surface_release(window->owner_task_id, window->surface_pixels, window->surface_size);
     window_set_remote_surface(window, NULL, 0, 0, 0);
 
     desktop_event_t close_event = {
@@ -404,8 +391,6 @@ bool protocol_server_pump(void)
     bool had_activity = false;
 
     _accept_pending_connections();
-    _flush_expired_pending_releases();
-
     unsigned char raw_message[PROTOCOL_SERVER_RECV_BUFFER_SIZE] = {0};
     connection_t sender = {0};
 

@@ -295,7 +295,7 @@ void gfx_draw_rect(gfx_context_t *ctx, gfx_rect_t rect)
     /* Top and bottom lines */
     gfx_draw_line(
         ctx,
-        (gfx_line_t) {
+        (gfx_line_t){
             rect.x,
             rect.y,
             rect.x + rect.width - 1,
@@ -305,7 +305,7 @@ void gfx_draw_rect(gfx_context_t *ctx, gfx_rect_t rect)
         rect.border_color);
     gfx_draw_line(
         ctx,
-        (gfx_line_t) {
+        (gfx_line_t){
             rect.x,
             rect.y + rect.height - 1,
             rect.x + rect.width - 1,
@@ -317,21 +317,21 @@ void gfx_draw_rect(gfx_context_t *ctx, gfx_rect_t rect)
     /* Left and right lines */
     gfx_draw_line(
         ctx,
-        (gfx_line_t) {
+        (gfx_line_t){
             rect.x,
-            rect.y,
+            rect.y + rect.border_thickness,
             rect.x,
-            rect.y + rect.height - 1,
+            rect.y + rect.height - 1 - rect.border_thickness,
             rect.border_thickness,
         },
         rect.border_color);
     gfx_draw_line(
         ctx,
-        (gfx_line_t) {
+        (gfx_line_t){
             rect.x + rect.width - 1,
-            rect.y,
+            rect.y + rect.border_thickness,
             rect.x + rect.width - 1,
-            rect.y + rect.height - 1,
+            rect.y + rect.height - 1 - rect.border_thickness,
             rect.border_thickness,
         },
         rect.border_color);

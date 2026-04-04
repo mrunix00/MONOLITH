@@ -15,7 +15,7 @@ LIB_OPTFLAGS ?= -O2
 LIB_EXTRA_CFLAGS ?=
 ARFLAGS ?= rcs
 
-SOURCES := $(wildcard $(SRC_DIR)/*.c)
+SOURCES ?= $(shell find $(SRC_DIR) -type f -name '*.c' | sort)
 OBJECTS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SOURCES))
 
 CC := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc
@@ -32,6 +32,7 @@ $(LIB_TARGET): $(OBJECTS)
 	$(AR) $(ARFLAGS) $@ $(OBJECTS)
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
+	@mkdir -p $(dir $@)
 	$(CC) $(LIB_CFLAGS) -c $< -o $@
 
 $(OBJ_DIR):

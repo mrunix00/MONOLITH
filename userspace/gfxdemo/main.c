@@ -111,19 +111,26 @@ static void _draw_cube_frame(gfx_context_t *ctx, uint32_t target_w, uint32_t tar
     };
 
     static const edge_t cube_edges[12] = {
-        {0, 1}, {1, 2}, {2, 3}, {3, 0},
-        {4, 5}, {5, 6}, {6, 7}, {7, 4},
-        {0, 4}, {1, 5}, {2, 6}, {3, 7},
+        {0, 1},
+        {1, 2},
+        {2, 3},
+        {3, 0},
+        {4, 5},
+        {5, 6},
+        {6, 7},
+        {7, 4},
+        {0, 4},
+        {1, 5},
+        {2, 6},
+        {3, 7},
     };
 
     gfx_begin_frame(ctx);
 
     gfx_draw_filled_rect(
-        ctx,
-        (gfx_rect_t) {0, 0, draw_w, draw_h, {0}, 0},
-        (gfx_color_t) {0xFF, 0x10, 0x14, 0x1E});
+        ctx, (gfx_rect_t){0, 0, draw_w, draw_h, {0}, 0}, (gfx_color_t){0xFF, 0x10, 0x14, 0x1E});
 
-    gfx_set_clip(ctx, (gfx_area_t) {0, 0, draw_w, draw_h});
+    gfx_set_clip(ctx, (gfx_area_t){0, 0, draw_w, draw_h});
 
     uint32_t projected_x[8] = {0};
     uint32_t projected_y[8] = {0};
@@ -162,14 +169,14 @@ static void _draw_cube_frame(gfx_context_t *ctx, uint32_t target_w, uint32_t tar
 
         gfx_draw_line(
             ctx,
-            (gfx_line_t) {
+            (gfx_line_t){
                 .x1 = projected_x[a],
                 .y1 = projected_y[a],
                 .x2 = projected_x[b],
                 .y2 = projected_y[b],
                 .thickness = 2,
             },
-            (gfx_color_t) {0xFF, 0x71, 0xD0, 0xFF});
+            (gfx_color_t){0xFF, 0x71, 0xD0, 0xFF});
     }
 
     gfx_end_frame(ctx);
@@ -194,17 +201,8 @@ int main(void)
 
     while (1) {
         if (!created && !create_pending) {
-            create_sequence = desktop_create_window(
-                560,
-                420,
-                (window_flags_t) {
-                    .borderless = false,
-                    .fullscreen = false,
-                    .resizable = true,
-                    .maximized = false,
-                    .minimized = false,
-                },
-                "GFX Demo - Rotating Cube");
+            create_sequence
+                = desktop_create_window(560, 420, (window_flags_t){.resizable = true}, "GFX Demo");
             create_pending = true;
         }
 
@@ -226,25 +224,14 @@ int main(void)
                 window_id = event.data.created.id;
                 width = event.data.created.width;
                 height = event.data.created.height;
-
-                gfx_context_res_t framebuffer_res
-                    = desktop_request_window_framebuffer(window_id, width, height);
-                framebuffer = framebuffer_res.context;
-                if (desktop_get_error() == DESKTOP_ERROR_NONE && framebuffer.framebuffer
-                    && framebuffer.backbuffer) {
-                    framebuffer.target_fps = 60;
-                    framebuffer_ready = true;
-                } else {
-                    framebuffer_ready = false;
-                }
-
+                desktop_request_window_framebuffer(window_id, width, height);
                 continue;
             }
 
             if (event.type == DESKTOP_EVENT_FRAMEBUFFER_READY
                 && event.data.framebuffer_ready.id == window_id
                 && desktop_handle_framebuffer_event(&event, &framebuffer) == 1) {
-                framebuffer.target_fps = 60;
+                gfx_set_target_fps(&framebuffer, 60);
                 framebuffer_ready = true;
                 continue;
             }
@@ -252,39 +239,13 @@ int main(void)
             if (event.type == DESKTOP_EVENT_WINDOW_RESIZED && event.data.resized.id == window_id) {
                 width = event.data.resized.new_width;
                 height = event.data.resized.new_height;
-
-                gfx_context_res_t framebuffer_res
-                    = desktop_request_window_framebuffer(window_id, width, height);
-                framebuffer = framebuffer_res.context;
-                if (desktop_get_error() == DESKTOP_ERROR_NONE && framebuffer.framebuffer
-                    && framebuffer.backbuffer) {
-                    framebuffer.target_fps = 60;
-                    framebuffer_ready = true;
-                } else {
-                    framebuffer_ready = false;
-                }
-                continue;
+                framebuffer_ready = desktop_request_window_framebuffer(window_id, width, height)
+                                    == 1;
             }
 
             if ((event.type == DESKTOP_EVENT_WINDOW_CLOSE && event.data.close.id == window_id)
-                || (event.type == DESKTOP_EVENT_WINDOW_CLOSED && event.data.closed.id == window_id)) {
+                || (event.type == DESKTOP_EVENT_WINDOW_CLOSED && event.data.closed.id == window_id))
                 break;
-            }
-
-            if (event.type == DESKTOP_EVENT_ERROR) {
-                if (created && !framebuffer_ready) {
-                    gfx_context_res_t framebuffer_res
-                        = desktop_request_window_framebuffer(window_id, width, height);
-                    framebuffer = framebuffer_res.context;
-                    if (desktop_get_error() == DESKTOP_ERROR_NONE && framebuffer.framebuffer
-                        && framebuffer.backbuffer) {
-                        framebuffer.target_fps = 60;
-                        framebuffer_ready = true;
-                    } else {
-                        framebuffer_ready = false;
-                    }
-                }
-            }
         }
 
         if (created && framebuffer_ready) {

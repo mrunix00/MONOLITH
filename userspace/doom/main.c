@@ -498,17 +498,7 @@ int main(void)
 
     while (1) {
         if (!created && !create_pending) {
-            create_sequence = desktop_create_window(
-                640,
-                480,
-                (window_flags_t) {
-                    .borderless = false,
-                    .fullscreen = false,
-                    .resizable = false,
-                    .maximized = false,
-                    .minimized = false,
-                },
-                "DOOM");
+            create_sequence = desktop_create_window(640, 480, (window_flags_t){0}, "DOOM");
             create_pending = true;
         }
 
@@ -520,7 +510,6 @@ int main(void)
                 && event.sequence == create_sequence) {
                 if (event.data.created.status != WINDOW_CREATED_SUCCESS) {
                     create_pending = false;
-                    usleep(1);
                     continue;
                 }
 
@@ -530,18 +519,7 @@ int main(void)
                 window_id = event.data.created.id;
                 width = event.data.created.width;
                 height = event.data.created.height;
-
-                gfx_context_res_t framebuffer_res
-                    = desktop_request_window_framebuffer(window_id, width, height);
-                framebuffer = framebuffer_res.context;
-                if (desktop_get_error() == DESKTOP_ERROR_NONE && framebuffer.framebuffer
-                    && framebuffer.backbuffer) {
-                    gfx_set_target_fps(&framebuffer, 60);
-                    framebuffer_ready = true;
-                } else {
-                    framebuffer_ready = false;
-                }
-
+                desktop_request_window_framebuffer(window_id, width, height);
                 continue;
             }
 
@@ -550,23 +528,6 @@ int main(void)
                 && desktop_handle_framebuffer_event(&event, &framebuffer) == 1) {
                 gfx_set_target_fps(&framebuffer, 60);
                 framebuffer_ready = true;
-                continue;
-            }
-
-            if (event.type == DESKTOP_EVENT_WINDOW_RESIZED && event.data.resized.id == window_id) {
-                width = event.data.resized.new_width;
-                height = event.data.resized.new_height;
-
-                gfx_context_res_t framebuffer_res
-                    = desktop_request_window_framebuffer(window_id, width, height);
-                framebuffer = framebuffer_res.context;
-                if (desktop_get_error() == DESKTOP_ERROR_NONE && framebuffer.framebuffer
-                    && framebuffer.backbuffer) {
-                    gfx_set_target_fps(&framebuffer, 60);
-                    framebuffer_ready = true;
-                } else {
-                    framebuffer_ready = false;
-                }
                 continue;
             }
 
@@ -579,21 +540,6 @@ int main(void)
                 || (event.type == DESKTOP_EVENT_WINDOW_CLOSED
                     && event.data.closed.id == window_id)) {
                 break;
-            }
-
-            if (event.type == DESKTOP_EVENT_ERROR) {
-                if (created && !framebuffer_ready) {
-                    gfx_context_res_t framebuffer_res
-                        = desktop_request_window_framebuffer(window_id, width, height);
-                    framebuffer = framebuffer_res.context;
-                    if (desktop_get_error() == DESKTOP_ERROR_NONE && framebuffer.framebuffer
-                        && framebuffer.backbuffer) {
-                        gfx_set_target_fps(&framebuffer, 60);
-                        framebuffer_ready = true;
-                    } else {
-                        framebuffer_ready = false;
-                    }
-                }
             }
         }
 

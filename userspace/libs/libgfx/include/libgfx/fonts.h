@@ -8,12 +8,6 @@
 #include <libgfx/types.h>
 #include <stdint.h>
 
-typedef enum {
-    GFX_FONT_INVALID = 0,
-    GFX_FONT_MONOSPACE,
-    GFX_FONT_POLYSPACE,
-} gfx_font_type_t;
-
 typedef struct
 {
     uint32_t width, height;
@@ -32,35 +26,15 @@ typedef struct
 
 typedef struct
 {
-    gfx_font_type_t type;
-    union {
-        struct
-        {
-            gfx_font_size_t size;
-        } monospace;
-        struct
-        {
-            gfx_font_size_t size;
-            uint8_t first_char;
-            uint8_t last_char;
-        } polyspace;
-    } params;
-    union {
-        const uint8_t *monospace_atlas;
-        struct
-        {
-            const uint8_t *atlas;
-            gfx_font_size_t atlas_size;
-            const gfx_glyph_t *glyphs;
-        } polyspace;
-    } data;
+    gfx_font_size_t size;
+    uint8_t first_char;
+    uint8_t last_char;
+    const uint8_t *atlas;
+    gfx_font_size_t atlas_size;
+    const gfx_glyph_t *glyphs;
 } gfx_font_t;
 
-gfx_font_t gfx_load_ttf(void *data, float size);
-
-gfx_font_t gfx_load_monospace_font(const uint8_t *atlas, uint8_t width, uint8_t height);
-
-gfx_font_t gfx_load_polyspace_font(
+gfx_font_t gfx_load_font(
     const uint8_t *atlas,
     gfx_font_size_t atlas_size,
     const gfx_glyph_t *glyphs,
@@ -68,14 +42,18 @@ gfx_font_t gfx_load_polyspace_font(
     uint8_t last_char,
     gfx_font_size_t size);
 
-void gfx_unload_font(gfx_font_t *font);
-
 void gfx_draw_char(gfx_context_t *, gfx_font_t *, gfx_pos_t, gfx_color_t, char);
 
 void gfx_draw_text(gfx_context_t *, gfx_font_t *, gfx_pos_t, gfx_color_t, const char *);
 
-void gfx_draw_text_centered(gfx_context_t *, gfx_font_t *, gfx_rect_t, gfx_color_t, const char *);
+void gfx_draw_text_centered(gfx_context_t *, gfx_font_t *, gfx_area_t, gfx_color_t, const char *);
 
 uint32_t gfx_get_char_width(gfx_font_t *font, char c);
 
+uint32_t gfx_get_char_height(gfx_font_t *font, char c);
+
 uint32_t gfx_get_text_width(gfx_font_t *font, const char *text);
+
+uint32_t gfx_get_text_height(gfx_font_t *font, const char *text);
+
+gfx_area_t gfx_get_text_area(gfx_font_t *font, const char *text);

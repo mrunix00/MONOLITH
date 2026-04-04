@@ -5,6 +5,7 @@
 
 #include <ipc.h>
 #include <libdesktop.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -19,9 +20,12 @@ typedef struct
     uint16_t window_id;
     uint16_t view_width;
     uint16_t view_height;
+    uint16_t buffer_width;
+    uint16_t buffer_height;
     void *framebuffer;
     uint32_t *backbuffer;
     size_t backbuffer_size;
+    gfx_context_t *bound_context;
 } _desktop_framebuffer_state_t;
 
 static channel_id_t _protocol_channel_id = -1;
@@ -37,9 +41,19 @@ static int _protocol_send_request(const desktop_request_t *request)
     return -1;
 }
 
-static uint32_t _grow_capacity(uint32_t current, uint32_t required)
+static uint16_t _grow_capacity(uint16_t current, uint16_t required)
 {
-    return current * 2 < required ? required : current * 2;
+    if (required == 0)
+        return 0;
+    if (current == 0)
+        return required;
+
+    uint32_t grown = (uint32_t) current * 2;
+    if (grown < required)
+        grown = required;
+    if (grown > UINT16_MAX)
+        return UINT16_MAX;
+    return (uint16_t) grown;
 }
 
 static _desktop_framebuffer_state_t *_find_framebuffer_state(uint16_t window_id)
@@ -47,25 +61,6 @@ static _desktop_framebuffer_state_t *_find_framebuffer_state(uint16_t window_id)
     for (size_t i = 0; i < DESKTOP_MAX_FRAMEBUFFERS; i++) {
         if (_framebuffer_states[i].active && _framebuffer_states[i].window_id == window_id)
             return &_framebuffer_states[i];
-    }
-
-    return NULL;
-}
-
-static _desktop_framebuffer_state_t *_get_or_create_framebuffer_state(uint16_t window_id)
-{
-    _desktop_framebuffer_state_t *state = _find_framebuffer_state(window_id);
-    if (state)
-        return state;
-
-    for (size_t i = 0; i < DESKTOP_MAX_FRAMEBUFFERS; i++) {
-        if (_framebuffer_states[i].active)
-            continue;
-
-        memset(&_framebuffer_states[i], 0, sizeof(_framebuffer_states[i]));
-        _framebuffer_states[i].active = true;
-        _framebuffer_states[i].window_id = window_id;
-        return &_framebuffer_states[i];
     }
 
     return NULL;
@@ -80,12 +75,17 @@ static void _clear_framebuffer_state(_desktop_framebuffer_state_t *state)
 
 static void _populate_context(const _desktop_framebuffer_state_t *state, gfx_context_t *out_context)
 {
+    if (!out_context)
+        return;
+
+    uint32_t target_fps = out_context->target_fps;
     memset(out_context, 0, sizeof(*out_context));
+
     out_context->framebuffer = (uint32_t *) state->framebuffer;
     out_context->backbuffer = state->backbuffer;
     out_context->width = state->view_width;
     out_context->height = state->view_height;
-    out_context->pitch = (size_t) state->view_width * sizeof(uint32_t);
+    out_context->pitch = (size_t) state->buffer_width * sizeof(uint32_t);
     out_context->bpp = 32;
     out_context->memory_model = 1;
     out_context->red_mask_size = 8;
@@ -94,21 +94,22 @@ static void _populate_context(const _desktop_framebuffer_state_t *state, gfx_con
     out_context->green_mask_shift = 8;
     out_context->blue_mask_size = 8;
     out_context->blue_mask_shift = 0;
+    out_context->target_fps = target_fps;
     out_context->clip_rect
-        = (gfx_area_t) {.x = 0, .y = 0, .width = state->view_width, .height = state->view_height};
+        = (gfx_area_t){.x = 0, .y = 0, .width = state->view_width, .height = state->view_height};
 }
 
 static int _ensure_backbuffer(_desktop_framebuffer_state_t *state)
 {
-    size_t backbuffer_size = (size_t) state->view_width * (size_t) state->view_height
+    size_t backbuffer_size = (size_t) state->buffer_width * (size_t) state->buffer_height
                              * sizeof(uint32_t);
     if (backbuffer_size == 0)
         return 0;
 
-    if (!state->backbuffer || state->backbuffer_size != backbuffer_size) {
+    if (!state->backbuffer || state->backbuffer_size < backbuffer_size) {
         uint32_t *new_backbuffer = malloc(backbuffer_size);
         if (!new_backbuffer) {
-            _last_error = DESKTOP_ERROR_OUT_OF_MEMORY;
+            _last_error = DESKTOP_ERROR_ALLOC_FAILED;
             return -1;
         }
 
@@ -121,12 +122,12 @@ static int _ensure_backbuffer(_desktop_framebuffer_state_t *state)
 }
 
 static int _request_window_framebuffer(
-    _desktop_framebuffer_state_t *state, uint16_t width, uint16_t height, uint32_t sequence)
+    uint16_t window_id, uint16_t width, uint16_t height, uint32_t sequence)
 {
     desktop_request_t request = {
         .sequence = sequence,
         .type = DESKTOP_REQUEST_REQUEST_FRAMEBUFFER,
-        .data.request_framebuffer.id = state->window_id,
+        .data.request_framebuffer.id = window_id,
         .data.request_framebuffer.width = width,
         .data.request_framebuffer.height = height,
     };
@@ -210,37 +211,51 @@ int desktop_present_window(uint16_t window_id)
     return _protocol_send_request(&request);
 }
 
-gfx_context_res_t desktop_request_window_framebuffer(uint16_t window_id, uint16_t w, uint16_t h)
+static _desktop_framebuffer_state_t *new_framebuffer_state(uint16_t window_id)
 {
-    gfx_context_res_t result = {0};
+    for (size_t i = 0; i < DESKTOP_MAX_FRAMEBUFFERS; i++) {
+        if (_framebuffer_states[i].active)
+            continue;
+        _framebuffer_states[i] = (_desktop_framebuffer_state_t){0};
+        _framebuffer_states[i].active = true;
+        _framebuffer_states[i].window_id = window_id;
+        return &_framebuffer_states[i];
+    }
+    return NULL;
+}
+
+int desktop_request_window_framebuffer(uint16_t window_id, uint16_t w, uint16_t h)
+{
     _last_error = DESKTOP_ERROR_NONE;
-    result.sequence = _sequence++;
 
-    _desktop_framebuffer_state_t *state = _get_or_create_framebuffer_state(window_id);
-    if (!state) {
-        _last_error = DESKTOP_ERROR_OUT_OF_MEMORY;
-        return result;
+    _desktop_framebuffer_state_t *state = _find_framebuffer_state(window_id);
+    if (state == NULL) {
+        state = new_framebuffer_state(window_id);
+        if (state == NULL) {
+            _last_error = DESKTOP_ERROR_ALLOC_FAILED;
+            return -1;
+        }
     }
 
-    if (state->framebuffer && state->view_width >= w && state->view_height >= h) {
-        if (_ensure_backbuffer(state) != 0)
-            return result;
-        _populate_context(state, &result.context);
-        return result;
+    state->view_width = w;
+    state->view_height = h;
+
+    if (state->framebuffer && state->buffer_width >= w && state->buffer_height >= h) {
+        if (!state->backbuffer) {
+            _last_error = DESKTOP_ERROR_ALLOC_FAILED;
+            return -1;
+        }
+        if (state->bound_context)
+            _populate_context(state, state->bound_context);
+        return 1;
     }
 
-    uint16_t requested_width = _grow_capacity(state->view_width, w);
-    uint16_t requested_height = _grow_capacity(state->view_height, h);
-    if (_request_window_framebuffer(state, requested_width, requested_height, result.sequence)
-        != 0) {
-        return result;
-    }
+    uint16_t requested_width = _grow_capacity(state->buffer_width, w);
+    uint16_t requested_height = _grow_capacity(state->buffer_height, h);
+    if (_request_window_framebuffer(window_id, requested_width, requested_height, _sequence++) != 0)
+        return -1;
 
-    if (_ensure_backbuffer(state) != 0)
-        return result;
-
-    _populate_context(state, &result.context);
-    return result;
+    return 0;
 }
 
 desktop_error_t desktop_get_error(void)
@@ -265,12 +280,17 @@ int desktop_handle_framebuffer_event(const desktop_event_t *event, gfx_context_t
 
     ipc_release_shared_memory(_protocol_channel_id, state->framebuffer);
     state->framebuffer = new_pixels;
-    state->view_width = event->data.framebuffer_ready.width;
-    state->view_height = event->data.framebuffer_ready.height;
+    state->buffer_width = event->data.framebuffer_ready.width;
+    state->buffer_height = event->data.framebuffer_ready.height;
+    if (state->view_width == 0 || state->view_width > state->buffer_width)
+        state->view_width = state->buffer_width;
+    if (state->view_height == 0 || state->view_height > state->buffer_height)
+        state->view_height = state->buffer_height;
 
     if (_ensure_backbuffer(state) != 0)
         return -1;
 
+    state->bound_context = out_context;
     _populate_context(state, out_context);
 
     return 1;
@@ -301,7 +321,7 @@ int desktop_poll_event(desktop_event_t *event)
     return 0;
 }
 
-int desktop_disconnect(void)
+int desktop_disconnect()
 {
     for (size_t i = 0; i < DESKTOP_MAX_FRAMEBUFFERS; i++) {
         if (!_framebuffer_states[i].active)

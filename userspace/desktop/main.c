@@ -38,22 +38,22 @@ static gfx_colored_bitmap_t _load_wallpaper(const char *wallpaper, uint32_t widt
 {
     int fd = open(wallpaper, O_RDONLY);
     if (fd < 0)
-        return (gfx_colored_bitmap_t) {0};
+        return (gfx_colored_bitmap_t){0};
 
     file_stats_t stats;
     if (fstat(fd, &stats) < 0) {
         close(fd);
-        return (gfx_colored_bitmap_t) {0};
+        return (gfx_colored_bitmap_t){0};
     }
     if (stats.type != TYPE_FILE || stats.size == 0) {
         close(fd);
-        return (gfx_colored_bitmap_t) {0};
+        return (gfx_colored_bitmap_t){0};
     }
 
     uint8_t *img_data = malloc((size_t) stats.size);
     if (img_data == NULL) {
         close(fd);
-        return (gfx_colored_bitmap_t) {0};
+        return (gfx_colored_bitmap_t){0};
     }
 
     uint64_t read_size = 0;
@@ -64,7 +64,7 @@ static gfx_colored_bitmap_t _load_wallpaper(const char *wallpaper, uint32_t widt
         if (bytes_read <= 0) {
             close(fd);
             free(img_data);
-            return (gfx_colored_bitmap_t) {0};
+            return (gfx_colored_bitmap_t){0};
         }
         read_size += (uint64_t) bytes_read;
     } while (read_size < stats.size);
@@ -86,13 +86,13 @@ int main()
     gfx_context_t context = gfx_init_screen();
     if (FRAME_RATE > 0)
         gfx_set_target_fps(&context, FRAME_RATE);
-    default_font = gfx_load_polyspace_font(
+    default_font = gfx_load_font(
         font_atlas,
-        (gfx_font_size_t) {FONT_ATLAS_WIDTH, FONT_ATLAS_HEIGHT},
+        (gfx_font_size_t){FONT_ATLAS_WIDTH, FONT_ATLAS_HEIGHT},
         font_glyphs,
         FONT_FIRST_CHAR,
         FONT_LAST_CHAR,
-        (gfx_font_size_t) {13, FONT_LINE_HEIGHT});
+        (gfx_font_size_t){13, FONT_LINE_HEIGHT});
 
     gfx_colored_bitmap_t wallpaper
         = _load_wallpaper("system://assets/wallpaper.jpg", context.width, context.height);
@@ -154,9 +154,9 @@ int main()
         gfx_begin_frame(&context);
 
         if (wallpaper.data)
-            gfx_draw_colored_bitmap(&context, &wallpaper, (gfx_pos_t) {0, 0});
+            gfx_draw_colored_bitmap(&context, &wallpaper, (gfx_pos_t){0, 0});
         else
-            gfx_clear(&context, (gfx_color_t) {0xff, 0x18, 0x18, 0x18});
+            gfx_clear(&context, (gfx_color_t){0xff, 0x18, 0x18, 0x18});
 
         draw_all_windows(&context);
         draw_menubar(&context);
@@ -164,8 +164,8 @@ int main()
         gfx_draw_fps_counter(
             &context,
             &default_font,
-            (gfx_color_t) {0xff, 0xff, 0xff, 0xff},
-            (gfx_pos_t) {context.width - 60, context.height - 10});
+            (gfx_color_t){0xff, 0xff, 0xff, 0xff},
+            (gfx_pos_t){context.width - 60, context.height - 10});
 
         gfx_end_frame(&context);
         needs_redraw = false;
