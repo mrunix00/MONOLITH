@@ -32,6 +32,7 @@ static task_t _task_list_head;
 static task_t *_task_list_tail;
 static task_t *_current_task;
 static task_t *_next_task;
+static task_t *_deferred_destroy_list;
 static uint64_t _next_task_id = 1;
 
 extern void _task_switch_gate_stub();
@@ -40,6 +41,24 @@ static void _task_state_save(task_t *task, interrupt_registers_t *regs);
 static void _task_state_load(task_t *task, interrupt_registers_t *regs);
 static void _task_unlink(task_t *task);
 static void _task_destroy(task_t *task);
+
+static void _task_defer_destroy(task_t *task)
+{
+    if (task == &_task_list_head)
+        return;
+    task->next = _deferred_destroy_list;
+    _deferred_destroy_list = task;
+}
+
+static void _task_destroy_deferred(void)
+{
+    while (_deferred_destroy_list) {
+        task_t *task = _deferred_destroy_list;
+        _deferred_destroy_list = task->next;
+        task->next = NULL;
+        _task_destroy(task);
+    }
+}
 
 task_t *task_create(void *entry_point, const char *name, task_mode_t mode)
 {
@@ -227,10 +246,15 @@ void task_remove(task_t *task)
     if (!task || task == &_task_list_head)
         return;
 
-    if (_current_task == task)
+    bool removing_current = (_current_task == task);
+    if (removing_current)
         _current_task = task->next ? task->next : &_task_list_head;
 
     _task_unlink(task);
+    if (removing_current) {
+        _task_defer_destroy(task);
+        return;
+    }
     _task_destroy(task);
 }
 
@@ -238,6 +262,8 @@ void _task_switch_gate(interrupt_registers_t *regs)
 {
     task_t *current = _current_task;
     task_t *target = _next_task;
+
+    _task_destroy_deferred();
 
     if (!target) {
         target = task_next(current);
@@ -255,7 +281,7 @@ void _task_switch_gate(interrupt_registers_t *regs)
         _task_unlink(exiting_task);
         if (target == exiting_task || !target)
             target = task_next(NULL);
-        _task_destroy(exiting_task);
+        _task_defer_destroy(exiting_task);
     }
 
     if (!target) {
