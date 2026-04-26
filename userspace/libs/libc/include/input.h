@@ -5,9 +5,9 @@
 
 #pragma once
 
-#include "unistd.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include <unistd.h>
 
 typedef enum : uint8_t {
     INPUT_EVENT_NONE = 0,

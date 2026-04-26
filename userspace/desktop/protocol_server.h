@@ -5,8 +5,14 @@
 
 #pragma once
 
+#include <protocol.h>
 #include <stdbool.h>
+#include <stdint.h>
 
-int protocol_server_init(void);
+int protocol_server_init();
 
-bool protocol_server_pump(void);
+bool protocol_server_pump();
+
+int protocol_send_event(uint64_t task_id, desktop_event_t event);
+
+void protocol_send_error(uint64_t task_id, uint32_t sequence, uint32_t code, const char *message);

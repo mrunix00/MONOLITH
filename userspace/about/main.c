@@ -130,7 +130,7 @@ int main(void)
             create_pending = false;
             width = event.data.created.width;
             height = event.data.created.height;
-            window_id = event.data.created.id;
+            window_id = event.data.created.window_id;
             desktop_request_window_framebuffer(window_id, width, height);
             continue;
         }
@@ -142,7 +142,8 @@ int main(void)
             continue;
         }
 
-        if (event.type == DESKTOP_EVENT_WINDOW_RESIZED && event.data.resized.id == window_id) {
+        if (event.type == DESKTOP_EVENT_WINDOW_RESIZED
+            && event.data.resized.window_id == window_id) {
             width = event.data.resized.new_width;
             height = event.data.resized.new_height;
             if (desktop_request_window_framebuffer(window_id, width, height) == 1)
@@ -150,8 +151,12 @@ int main(void)
             continue;
         }
 
-        if ((event.type == DESKTOP_EVENT_WINDOW_CLOSE && event.data.close.id == window_id)
-            || (event.type == DESKTOP_EVENT_WINDOW_CLOSED && event.data.closed.id == window_id))
+        if (event.type == DESKTOP_EVENT_WINDOW_CLOSE && event.data.close.window_id == window_id) {
+            desktop_destroy_window((uint16_t) window_id);
+            continue;
+        }
+
+        if (event.type == DESKTOP_EVENT_WINDOW_CLOSED && event.data.closed.window_id == window_id)
             break;
     }
 

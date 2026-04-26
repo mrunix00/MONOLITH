@@ -43,15 +43,5 @@ typedef struct
     size_t item_count;
 } menubar_t;
 
-void menu_draw(gfx_context_t *context, const menu_t *menu);
-int32_t menu_hit_test(gfx_context_t *context, const menu_t *menu, uint32_t x, uint32_t y);
-bool menu_contains_point(gfx_context_t *context, const menu_t *menu, uint32_t x, uint32_t y);
-
-void menubar_draw(gfx_context_t *context, const menubar_t *bar);
-void menubar_draw_open_menus(gfx_context_t *context, const menubar_t *bar);
-void menubar_handle_click(gfx_context_t *context, menubar_t *bar, uint32_t x, uint32_t y);
-void menubar_close_all(menubar_t *bar);
-
 bool update_menubar_state(gfx_context_t *context);
 void draw_menubar(gfx_context_t *context);
-menubar_t *menubar_state_get_active(void);

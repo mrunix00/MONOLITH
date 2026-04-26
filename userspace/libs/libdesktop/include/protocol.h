@@ -86,7 +86,7 @@ typedef struct
 
 typedef struct
 {
-    uint16_t id;
+    uint16_t window_id;
     uint16_t width;
     uint16_t height;
     enum {
@@ -97,30 +97,30 @@ typedef struct
 
 typedef struct
 {
-    uint16_t id;
+    uint16_t window_id;
 } window_close_event_t;
 
 typedef struct
 {
-    uint16_t id;
+    uint16_t window_id;
 } window_closed_event_t;
 
 typedef struct
 {
-    uint16_t id;
+    uint16_t window_id;
     uint16_t new_width;
     uint16_t new_height;
 } window_resized_event_t;
 
 typedef struct
 {
-    uint16_t id;
+    uint16_t window_id;
     input_keyboard_event_t keyboard;
 } window_keyboard_event_t;
 
 typedef struct
 {
-    uint16_t id;
+    uint16_t window_id;
     input_mouse_event_t mouse;
 } window_mouse_event_t;
 

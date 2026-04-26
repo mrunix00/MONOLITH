@@ -11,114 +11,14 @@
 #include <string.h>
 
 #define PROTOCOL_SERVER_RECV_BUFFER_SIZE 4096
-#define MAX_PENDING_SURFACE_RELEASES 64
-
-typedef struct
-{
-    uint64_t task_id;
-    void *pixels;
-    size_t size;
-} _pending_surface_release_t;
 
 static channel_id_t _channel_id = -1;
-static _pending_surface_release_t _pending_releases[MAX_PENDING_SURFACE_RELEASES];
-static size_t _pending_releases_count = 0;
-
-static int _send_event(uint64_t task_id, const desktop_event_t *event)
-{
-    if (_channel_id == -1 || !event || task_id == 0)
-        return -1;
-
-    connection_t connection = {.task_id = task_id};
-    return ipc_send_to(_channel_id, &connection, (void *) event, sizeof(*event));
-}
-
-static void _send_error(uint64_t task_id, uint32_t sequence, uint32_t code, const char *message)
-{
-    desktop_event_t event = {
-        .sequence = sequence,
-        .type = DESKTOP_EVENT_ERROR,
-        .data.error.error_code = code,
-    };
-
-    if (!message)
-        message = "desktop error";
-
-    size_t len = strnlen(message, sizeof(event.data.error.error_message) - 1);
-    memcpy(event.data.error.error_message, message, len);
-    event.data.error.error_message[len] = '\0';
-
-    _send_event(task_id, &event);
-}
 
 static size_t _pages_for_size(size_t size)
 {
     if (size == 0)
         return 0;
     return (size + PAGE_SIZE - 1) / PAGE_SIZE;
-}
-
-static void _defer_surface_release(uint64_t task_id, void *pixels, size_t size)
-{
-    if (!pixels || size == 0)
-        return;
-
-    if (_pending_releases_count >= MAX_PENDING_SURFACE_RELEASES) {
-        /* Table full -- release immediately as a last resort. */
-        if (ipc_release_shared_memory(_channel_id, pixels) != 0) {
-            size_t pages = _pages_for_size(size);
-            unmap_pages(pixels, pages);
-        }
-        return;
-    }
-
-    _pending_surface_release_t *entry = &_pending_releases[_pending_releases_count++];
-    entry->task_id = task_id;
-    entry->pixels = pixels;
-    entry->size = size;
-}
-
-static void _flush_pending_releases(uint64_t task_id)
-{
-    size_t i = 0;
-    while (i < _pending_releases_count) {
-        if (_pending_releases[i].task_id != task_id) {
-            i++;
-            continue;
-        }
-
-        _pending_surface_release_t entry = _pending_releases[i];
-        size_t pages = _pages_for_size(entry.size);
-        unmap_pages(entry.pixels, pages);
-
-        _pending_releases[i] = _pending_releases[--_pending_releases_count];
-    }
-}
-
-static void _on_window_closed(window_t *window)
-{
-    if (!window || window->owner_task_id == 0)
-        return;
-
-    /* Don't release the surface here -- the client may still be mid-render
-     * (preempted by the timer). Defer release until the client disconnects. */
-    if (window->surface_pixels && window->surface_size > 0)
-        _defer_surface_release(window->owner_task_id, window->surface_pixels, window->surface_size);
-    window_set_remote_surface(window, NULL, 0, 0, 0);
-
-    desktop_event_t close_event = {
-        .sequence = 0,
-        .type = DESKTOP_EVENT_WINDOW_CLOSE,
-        .data.close.id = (uint16_t) window->id,
-    };
-    _send_event(window->owner_task_id, &close_event);
-
-    desktop_event_t closed_event = {
-        .sequence = 0,
-        .type = DESKTOP_EVENT_WINDOW_CLOSED,
-        .data.closed.id = (uint16_t) window->id,
-    };
-    _send_event(window->owner_task_id, &closed_event);
 }
 
 static void _handle_create_window(uint64_t task_id, const desktop_request_t *request)
@@ -135,47 +35,55 @@ static void _handle_create_window(uint64_t task_id, const desktop_request_t *req
     desktop_event_t event = {
         .sequence = request->sequence,
         .type = DESKTOP_EVENT_WINDOW_CREATED,
-        .data.created.id = 0,
+        .data.created.window_id = 0,
         .data.created.width = request->data.create_window.width,
         .data.created.height = request->data.create_window.height,
         .data.created.status = WINDOW_CREATED_ERROR,
     };
 
     if (!window) {
-        _send_event(task_id, &event);
+        protocol_send_event(task_id, event);
         return;
     }
 
     window->owner_task_id = task_id;
-    window_set_close_callback(window, _on_window_closed);
-
-    event.data.created.id = (uint16_t) window->id;
+    event.data.created.window_id = (uint16_t) window->id;
     event.data.created.width = window_get_content_width(window);
     event.data.created.height = window_get_content_height(window);
     window->notified_content_width = event.data.created.width;
     window->notified_content_height = event.data.created.height;
     event.data.created.status = WINDOW_CREATED_SUCCESS;
-    _send_event(task_id, &event);
+    protocol_send_event(task_id, event);
 }
 
 static void _handle_destroy_window(uint64_t task_id, const desktop_request_t *request)
 {
     window_t *window = get_window_by_owner(task_id, request->data.close_window.id);
-    if (!window) {
-        _send_error(task_id, request->sequence, 2, "unknown window");
-        return;
+    if (!window)
+        return protocol_send_error(task_id, request->sequence, 2, "unknown window");
+
+    if (window->surface_pixels && window->surface_size > 0) {
+        if (ipc_release_shared_memory(_channel_id, window->surface_pixels) != 0) {
+            size_t pages = _pages_for_size(window->surface_size);
+            unmap_pages(window->surface_pixels, pages);
+        }
     }
 
+    protocol_send_event(
+        window->owner_task_id,
+        (desktop_event_t){
+            .sequence = 0,
+            .type = DESKTOP_EVENT_WINDOW_CLOSED,
+            .data.closed.window_id = window->id,
+        });
     close_window_by_id(window->id);
 }
 
 static void _handle_request_framebuffer(uint64_t task_id, const desktop_request_t *request)
 {
     window_t *window = get_window_by_owner(task_id, request->data.request_framebuffer.id);
-    if (!window) {
-        _send_error(task_id, request->sequence, 2, "unknown window");
-        return;
-    }
+    if (!window)
+        return protocol_send_error(task_id, request->sequence, 2, "unknown window");
 
     uint16_t content_width = window_get_content_width(window);
     uint16_t content_height = window_get_content_height(window);
@@ -187,20 +95,16 @@ static void _handle_request_framebuffer(uint64_t task_id, const desktop_request_
     size_t effective_size = (size_t) width * (size_t) height * sizeof(uint32_t);
     size_t pages = _pages_for_size(effective_size);
 
-    if (width == 0 || height == 0 || pages == 0) {
-        _send_error(task_id, request->sequence, 4, "invalid framebuffer size");
-        return;
-    }
+    if (width == 0 || height == 0 || pages == 0)
+        return protocol_send_error(task_id, request->sequence, 4, "invalid framebuffer size");
 
     uint32_t *old_pixels = window->surface_pixels;
     uint16_t old_width = window->surface_width;
     uint16_t old_height = window->surface_height;
 
     void *owner_pixels = alloc_pages(pages, ALLOC_PAGES_FLAG_RW);
-    if (!owner_pixels) {
-        _send_error(task_id, request->sequence, 5, "framebuffer allocation failed");
-        return;
-    }
+    if (!owner_pixels)
+        return protocol_send_error(task_id, request->sequence, 5, "framebuffer allocation failed");
 
     memset(owner_pixels, 0, pages * PAGE_SIZE);
     if (old_pixels && old_width > 0 && old_height > 0) {
@@ -220,32 +124,29 @@ static void _handle_request_framebuffer(uint64_t task_id, const desktop_request_
     void *client_pixels = ipc_share_memory(_channel_id, &client, owner_pixels, pages * PAGE_SIZE);
     if (!client_pixels) {
         unmap_pages(owner_pixels, pages);
-        _send_error(task_id, request->sequence, 4, "framebuffer share failed");
-        return;
+        return protocol_send_error(task_id, request->sequence, 4, "framebuffer share failed");
     }
 
     window_set_remote_surface(window, (uint32_t *) owner_pixels, width, height, effective_size);
-
-    desktop_event_t ready_event = {
-        .sequence = request->sequence,
-        .type = DESKTOP_EVENT_FRAMEBUFFER_READY,
-        .data.framebuffer_ready.id = (uint16_t) window->id,
-        .data.framebuffer_ready.address = (uintptr_t) client_pixels,
-        .data.framebuffer_ready.width = width,
-        .data.framebuffer_ready.height = height,
-        .data.framebuffer_ready.stride = (uint32_t) width * sizeof(uint32_t),
-        .data.framebuffer_ready.size = effective_size,
-    };
-    _send_event(task_id, &ready_event);
+    protocol_send_event(
+        task_id,
+        (desktop_event_t){
+            .sequence = request->sequence,
+            .type = DESKTOP_EVENT_FRAMEBUFFER_READY,
+            .data.framebuffer_ready.id = (uint16_t) window->id,
+            .data.framebuffer_ready.address = (uintptr_t) client_pixels,
+            .data.framebuffer_ready.width = width,
+            .data.framebuffer_ready.height = height,
+            .data.framebuffer_ready.stride = (uint32_t) width * sizeof(uint32_t),
+            .data.framebuffer_ready.size = effective_size,
+        });
 }
 
 static void _handle_present_window(uint64_t task_id, const desktop_request_t *request)
 {
     window_t *window = get_window_by_owner(task_id, request->data.present_window.id);
-    if (!window) {
-        _send_error(task_id, request->sequence, 2, "unknown window");
-        return;
-    }
+    if (!window)
+        return protocol_send_error(task_id, request->sequence, 2, "unknown window");
 }
 
 static void _handle_client_request(uint64_t task_id, const desktop_request_t *request)
@@ -267,7 +168,7 @@ static void _handle_client_request(uint64_t task_id, const desktop_request_t *re
         _handle_present_window(task_id, request);
         break;
     default:
-        _send_error(task_id, request->sequence, 1, "unsupported request");
+        protocol_send_error(task_id, request->sequence, 1, "unsupported request");
         break;
     }
 }
@@ -275,10 +176,9 @@ static void _handle_client_request(uint64_t task_id, const desktop_request_t *re
 static void _handle_disconnect(uint64_t task_id)
 {
     close_windows_by_owner(task_id);
-    _flush_pending_releases(task_id);
 }
 
-static bool _pump_input_events(void)
+static bool _pump_input_events()
 {
     bool had_input = false;
     input_event_t input_event = {0};
@@ -297,9 +197,9 @@ static bool _pump_input_events(void)
 
         if (input_event.type == INPUT_EVENT_KEYBOARD) {
             event.type = DESKTOP_EVENT_WINDOW_KEYBOARD;
-            event.data.keyboard.id = (uint16_t) window->id;
+            event.data.keyboard.window_id = (uint16_t) window->id;
             event.data.keyboard.keyboard = input_event.data.keyboard;
-            _send_event(window->owner_task_id, &event);
+            protocol_send_event(window->owner_task_id, event);
             continue;
         }
 
@@ -311,16 +211,16 @@ static bool _pump_input_events(void)
                 continue;
 
             event.type = DESKTOP_EVENT_WINDOW_MOUSE;
-            event.data.mouse.id = (uint16_t) window->id;
+            event.data.mouse.window_id = (uint16_t) window->id;
             event.data.mouse.mouse = input_event.data.mouse;
-            _send_event(window->owner_task_id, &event);
+            protocol_send_event(window->owner_task_id, event);
         }
     }
 
     return had_input;
 }
 
-static bool _pump_window_resize_events(void)
+static bool _pump_window_resize_events()
 {
     bool had_resize_event = false;
     size_t window_count = window_get_count();
@@ -345,14 +245,15 @@ static bool _pump_window_resize_events(void)
             continue;
         }
 
-        desktop_event_t resize_event = {
-            .sequence = 0,
-            .type = DESKTOP_EVENT_WINDOW_RESIZED,
-            .data.resized.id = (uint16_t) window->id,
-            .data.resized.new_width = content_width,
-            .data.resized.new_height = content_height,
-        };
-        _send_event(window->owner_task_id, &resize_event);
+        protocol_send_event(
+            window->owner_task_id,
+            (desktop_event_t){
+                .sequence = 0,
+                .type = DESKTOP_EVENT_WINDOW_RESIZED,
+                .data.resized.window_id = (uint16_t) window->id,
+                .data.resized.new_width = content_width,
+                .data.resized.new_height = content_height,
+            });
         had_resize_event = true;
 
         window->notified_content_width = content_width;
@@ -362,7 +263,7 @@ static bool _pump_window_resize_events(void)
     return had_resize_event;
 }
 
-static void _accept_pending_connections(void)
+static void _accept_pending_connections()
 {
     connection_t connection;
     int result;
@@ -371,7 +272,7 @@ static void _accept_pending_connections(void)
         ipc_accept_connection(_channel_id, &connection);
 }
 
-int protocol_server_init(void)
+int protocol_server_init()
 {
     if (_channel_id != -1)
         return 0;
@@ -383,7 +284,7 @@ int protocol_server_init(void)
     return 0;
 }
 
-bool protocol_server_pump(void)
+bool protocol_server_pump()
 {
     if (_channel_id == -1)
         return false;
@@ -401,7 +302,7 @@ bool protocol_server_pump(void)
         switch (message->type) {
         case IPC_OWNER_MSG_TYPE_DATA:
             if (message->payload.data.size < sizeof(desktop_request_t)) {
-                _send_error(message->sender_task_id, 0, 4, "invalid request size");
+                protocol_send_error(message->sender_task_id, 0, 4, "invalid request size");
                 break;
             }
             _handle_client_request(
@@ -422,4 +323,28 @@ bool protocol_server_pump(void)
         had_activity = true;
 
     return had_activity;
+}
+
+int protocol_send_event(uint64_t task_id, desktop_event_t event)
+{
+    connection_t connection = {.task_id = task_id};
+    return ipc_send_to(_channel_id, &connection, (void *) &event, sizeof(event));
+}
+
+void protocol_send_error(uint64_t task_id, uint32_t sequence, uint32_t code, const char *message)
+{
+    desktop_event_t event = {
+        .sequence = sequence,
+        .type = DESKTOP_EVENT_ERROR,
+        .data.error.error_code = code,
+    };
+
+    if (!message)
+        message = "desktop error";
+
+    size_t len = strnlen(message, sizeof(event.data.error.error_message) - 1);
+    memcpy(event.data.error.error_message, message, len);
+    event.data.error.error_message[len] = '\0';
+
+    protocol_send_event(task_id, event);
 }

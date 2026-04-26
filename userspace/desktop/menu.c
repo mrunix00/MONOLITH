@@ -22,6 +22,9 @@ static menu_item_t *minimized_menu_items = NULL;
 static const char **minimized_menu_titles = NULL;
 static size_t minimized_menu_capacity = 0;
 
+// static int32_t menu_hit_test(gfx_context_t *context, const menu_t *menu, uint32_t x, uint32_t y);
+// static bool menu_contains_point(gfx_context_t *context, const menu_t *menu, uint32_t x, uint32_t y);
+
 static bool _point_in_rect(uint32_t x, uint32_t y, uint32_t rx, uint32_t ry, uint32_t w, uint32_t h)
 {
     return x >= rx && x < (rx + w) && y >= ry && y < (ry + h);
@@ -30,18 +33,18 @@ static bool _point_in_rect(uint32_t x, uint32_t y, uint32_t rx, uint32_t ry, uin
 static gfx_pos_t _menu_position(const menubar_t *bar, const menu_t *menu)
 {
     if (menu == &minimized_menu)
-        return (gfx_pos_t) {.x = 0, .y = TOP_BAR_HEIGHT - 1};
+        return (gfx_pos_t){.x = 0, .y = TOP_BAR_HEIGHT - 1};
 
     uint32_t cursor_x = 0;
     for (size_t i = 0; i < bar->item_count; i++) {
         const menubar_item_t *item = &bar->items[i];
         uint32_t width = gfx_get_text_width(&default_font, item->label) + MENUBAR_ITEM_GAP;
         if (item->menu == menu)
-            return (gfx_pos_t) {.x = cursor_x, .y = TOP_BAR_HEIGHT - 1};
+            return (gfx_pos_t){.x = cursor_x, .y = TOP_BAR_HEIGHT - 1};
         cursor_x += width;
     }
 
-    return (gfx_pos_t) {.x = 0, .y = TOP_BAR_HEIGHT - 1};
+    return (gfx_pos_t){.x = 0, .y = TOP_BAR_HEIGHT - 1};
 }
 
 static uint32_t _menu_item_height(const menu_item_t *item)
@@ -138,10 +141,43 @@ static gfx_pos_t _minimized_menu_position(gfx_context_t *context)
 {
     uint32_t menu_width = _menu_measure_width(&minimized_menu);
     uint32_t desired_right = (uint32_t) context->width;
-    return (gfx_pos_t) {
+    return (gfx_pos_t){
         .x = desired_right > menu_width ? desired_right - menu_width : 0,
         .y = TOP_BAR_HEIGHT - 1,
     };
+}
+
+static int32_t menu_hit_test(gfx_context_t *context, const menu_t *menu, uint32_t x, uint32_t y)
+{
+    gfx_pos_t menu_pos = menu == &minimized_menu ? _minimized_menu_position(context)
+                                                 : _menu_position(active_menubar, menu);
+
+    uint32_t width = _menu_measure_width(menu);
+    uint32_t height = _menu_measure_height(menu);
+    if (!_point_in_rect(x, y, menu_pos.x, menu_pos.y, width, height)) {
+        return -1;
+    }
+
+    uint32_t cursor_y = menu_pos.y + MENU_VERTICAL_PADDING;
+    for (size_t i = 0; i < menu->item_count; i++) {
+        uint32_t item_height = _menu_item_height(&menu->items[i]);
+        if (_point_in_rect(x, y, menu_pos.x, cursor_y, width, item_height)) {
+            return (int32_t) i;
+        }
+        cursor_y += item_height;
+    }
+
+    return -1;
+}
+
+static bool menu_contains_point(gfx_context_t *context, const menu_t *menu, uint32_t x, uint32_t y)
+{
+    gfx_pos_t menu_pos = menu == &minimized_menu ? _minimized_menu_position(context)
+                                                 : _menu_position(active_menubar, menu);
+
+    uint32_t width = _menu_measure_width(menu);
+    uint32_t height = _menu_measure_height(menu);
+    return _point_in_rect(x, y, menu_pos.x, menu_pos.y, width, height);
 }
 
 static bool _minimized_menu_handle_click(gfx_context_t *context, uint32_t x, uint32_t y)
@@ -197,7 +233,7 @@ static int32_t _menubar_hit_test(const menubar_t *bar, uint32_t x, uint32_t y)
     return -1;
 }
 
-void menu_draw(gfx_context_t *context, const menu_t *menu)
+static void menu_draw(gfx_context_t *context, const menu_t *menu)
 {
     gfx_pos_t menu_pos = menu == &minimized_menu ? _minimized_menu_position(context)
                                                  : _menu_position(active_menubar, menu);
@@ -205,7 +241,7 @@ void menu_draw(gfx_context_t *context, const menu_t *menu)
     uint32_t height = _menu_measure_height(menu);
     gfx_draw_filled_rect(
         context,
-        (gfx_rect_t) {
+        (gfx_rect_t){
             .x = menu_pos.x,
             .y = menu_pos.y,
             .width = width,
@@ -213,15 +249,15 @@ void menu_draw(gfx_context_t *context, const menu_t *menu)
             .border_color = BORDER_COLOR,
             .border_thickness = BORDER_THICKNESS,
         },
-        (gfx_color_t) {.a = 0xcc, .r = 0x21, .g = 0x21, .b = 0x21});
+        (gfx_color_t){.a = 0xcc, .r = 0x21, .g = 0x21, .b = 0x21});
     gfx_draw_rect(
         context,
-        (gfx_rect_t) {
+        (gfx_rect_t){
             .x = menu_pos.x + BORDER_THICKNESS,
             .y = menu_pos.y + BORDER_THICKNESS,
             .width = width - BORDER_THICKNESS * 2,
             .height = height - BORDER_THICKNESS * 2,
-            .border_color = (gfx_color_t) {.a = 0x33, .r = 0xff, .g = 0xff, .b = 0xff},
+            .border_color = (gfx_color_t){.a = 0x33, .r = 0xff, .g = 0xff, .b = 0xff},
             .border_thickness = BORDER_THICKNESS,
         });
 
@@ -235,19 +271,19 @@ void menu_draw(gfx_context_t *context, const menu_t *menu)
             uint32_t border_cut = (BORDER_THICKNESS * 3) / 2;
             gfx_draw_line(
                 context,
-                (gfx_line_t) {
+                (gfx_line_t){
                     .x1 = menu_pos.x + BORDER_THICKNESS,
                     .y1 = line_y,
                     .x2 = menu_pos.x + width - border_cut,
                     .y2 = line_y,
                     .thickness = BORDER_THICKNESS,
                 },
-                (gfx_color_t) {.a = 0x33, .r = 0xff, .g = 0xff, .b = 0xff});
+                (gfx_color_t){.a = 0x33, .r = 0xff, .g = 0xff, .b = 0xff});
         } else {
             gfx_draw_text(
                 context,
                 &default_font,
-                (gfx_pos_t) {menu_pos.x + MENUBAR_START_X, cursor_y + 18},
+                (gfx_pos_t){menu_pos.x + MENUBAR_START_X, cursor_y + 18},
                 FONT_COLOR,
                 item->label);
         }
@@ -256,45 +292,12 @@ void menu_draw(gfx_context_t *context, const menu_t *menu)
     }
 }
 
-int32_t menu_hit_test(gfx_context_t *context, const menu_t *menu, uint32_t x, uint32_t y)
-{
-    gfx_pos_t menu_pos = menu == &minimized_menu ? _minimized_menu_position(context)
-                                                 : _menu_position(active_menubar, menu);
-
-    uint32_t width = _menu_measure_width(menu);
-    uint32_t height = _menu_measure_height(menu);
-    if (!_point_in_rect(x, y, menu_pos.x, menu_pos.y, width, height)) {
-        return -1;
-    }
-
-    uint32_t cursor_y = menu_pos.y + MENU_VERTICAL_PADDING;
-    for (size_t i = 0; i < menu->item_count; i++) {
-        uint32_t item_height = _menu_item_height(&menu->items[i]);
-        if (_point_in_rect(x, y, menu_pos.x, cursor_y, width, item_height)) {
-            return (int32_t) i;
-        }
-        cursor_y += item_height;
-    }
-
-    return -1;
-}
-
-bool menu_contains_point(gfx_context_t *context, const menu_t *menu, uint32_t x, uint32_t y)
-{
-    gfx_pos_t menu_pos = menu == &minimized_menu ? _minimized_menu_position(context)
-                                                 : _menu_position(active_menubar, menu);
-
-    uint32_t width = _menu_measure_width(menu);
-    uint32_t height = _menu_measure_height(menu);
-    return _point_in_rect(x, y, menu_pos.x, menu_pos.y, width, height);
-}
-
-void menubar_draw(gfx_context_t *context, const menubar_t *bar)
+static void menubar_draw(gfx_context_t *context, const menubar_t *bar)
 {
     uint32_t border_cut = (BORDER_THICKNESS * 3) / 2;
     gfx_draw_filled_rect(
         context,
-        (gfx_rect_t) {
+        (gfx_rect_t){
             .x = 0,
             .y = 0,
             .width = context->width,
@@ -302,23 +305,23 @@ void menubar_draw(gfx_context_t *context, const menubar_t *bar)
             .border_thickness = BORDER_THICKNESS,
             .border_color = BORDER_COLOR,
         },
-        (gfx_color_t) {0x80, 0x21, 0x21, 0x21});
+        (gfx_color_t){0x80, 0x21, 0x21, 0x21});
     gfx_draw_line(
         context,
-        (gfx_line_t) {
+        (gfx_line_t){
             .x1 = BORDER_THICKNESS,
             .y1 = BORDER_THICKNESS,
             .x2 = context->width - border_cut,
             .y2 = BORDER_THICKNESS,
             .thickness = BORDER_SHADOW_THICKNESS,
         },
-        (gfx_color_t) {0x33, 0xFF, 0xFF, 0xFF});
+        (gfx_color_t){0x33, 0xFF, 0xFF, 0xFF});
 
     uint32_t cursor_x = MENUBAR_START_X;
     for (size_t i = 0; i < bar->item_count; i++) {
         const menubar_item_t *item = &bar->items[i];
         gfx_draw_text(
-            context, &default_font, (gfx_pos_t) {cursor_x, MENUBAR_LABEL_Y}, FONT_COLOR, item->label);
+            context, &default_font, (gfx_pos_t){cursor_x, MENUBAR_LABEL_Y}, FONT_COLOR, item->label);
         cursor_x += gfx_get_text_width(&default_font, item->label) + MENUBAR_ITEM_GAP;
     }
 
@@ -326,11 +329,11 @@ void menubar_draw(gfx_context_t *context, const menubar_t *bar)
         uint32_t icon_x = 0;
         uint32_t icon_y = 0;
         _minimized_icon_rect(context, &icon_x, &icon_y, NULL, NULL);
-        gfx_draw_bitmap(context, &background_windows_bitmap, (gfx_pos_t) {icon_x, icon_y}, FONT_COLOR);
+        gfx_draw_bitmap(context, &background_windows_bitmap, (gfx_pos_t){icon_x, icon_y}, FONT_COLOR);
     }
 }
 
-void menubar_draw_open_menus(gfx_context_t *context, const menubar_t *bar)
+static void menubar_draw_open_menus(gfx_context_t *context, const menubar_t *bar)
 {
     for (size_t i = 0; i < bar->item_count; i++) {
         const menubar_item_t *item = &bar->items[i];
@@ -343,7 +346,7 @@ void menubar_draw_open_menus(gfx_context_t *context, const menubar_t *bar)
     }
 }
 
-void menubar_close_all(menubar_t *bar)
+static void menubar_close_all(menubar_t *bar)
 {
     for (size_t i = 0; i < bar->item_count; i++) {
         menubar_item_t *item = &bar->items[i];
@@ -353,7 +356,7 @@ void menubar_close_all(menubar_t *bar)
     }
 }
 
-void menubar_handle_click(gfx_context_t *context, menubar_t *bar, uint32_t x, uint32_t y)
+static void menubar_handle_click(gfx_context_t *context, menubar_t *bar, uint32_t x, uint32_t y)
 {
     int32_t label_index = _menubar_hit_test(bar, x, y);
     if (label_index >= 0) {
@@ -434,9 +437,4 @@ void draw_menubar(gfx_context_t *context)
         return;
     menubar_draw(context, active_menubar);
     menubar_draw_open_menus(context, active_menubar);
-}
-
-menubar_t *menubar_state_get_active(void)
-{
-    return active_menubar;
 }

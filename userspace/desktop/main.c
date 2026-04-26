@@ -30,10 +30,6 @@ static void _menu_action_doom(void)
     syscall1(SYSCALL_SPAWN_TASK, (long) "system:/doom");
 }
 
-static void _menu_action_shutdown(void) {}
-
-static void _menu_action_reboot(void) {}
-
 static gfx_colored_bitmap_t _load_wallpaper(const char *wallpaper, uint32_t width, uint32_t height)
 {
     int fd = open(wallpaper, O_RDONLY);
@@ -99,9 +95,6 @@ int main()
 
     const menu_item_t system_menu_items[] = {
         {.label = "About MONOLITH", .type = MENU_ITEM_ACTION, .action = _menu_action_about},
-        {.label = NULL, .type = MENU_ITEM_SEPARATOR, .action = NULL},
-        {.label = "Shutdown", .type = MENU_ITEM_ACTION, .action = _menu_action_shutdown},
-        {.label = "Reboot", .type = MENU_ITEM_ACTION, .action = _menu_action_reboot},
     };
     const menu_item_t apps_items[] = {
         {.label = "GFX Demo", .type = MENU_ITEM_ACTION, .action = _menu_action_gfxdemo},
@@ -120,7 +113,6 @@ int main()
     menubar_item_t menubar_items[] = {
         {.label = "System", .menu = &system_menu},
         {.label = "Apps", .menu = &apps_menu},
-        {.label = "File", .menu = NULL},
     };
     menubar_t system_menubar = {
         .items = menubar_items,

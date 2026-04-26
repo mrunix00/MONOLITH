@@ -1,5 +1,6 @@
 -I./
 -Ilibs/PureDOOM
+-Ilibs/stb
 -Iuserspace/libs/libdesktop/include
 -Iuserspace/libs/libc/include
 -Iuserspace/libs/libgfx/include
