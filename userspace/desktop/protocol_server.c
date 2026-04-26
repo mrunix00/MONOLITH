@@ -5,12 +5,15 @@
 
 #include "./protocol_server.h"
 #include "./input.h"
+#include "./magic.h"
 #include "./window.h"
 
 #include <ipc.h>
 #include <string.h>
 
 #define PROTOCOL_SERVER_RECV_BUFFER_SIZE 4096
+#define WINDOW_CONTENT_MARGIN_X 5
+#define WINDOW_CONTENT_TOP_OFFSET (WINDOW_TITLE_BAR_HEIGHT - BORDER_THICKNESS)
 
 static channel_id_t _channel_id = -1;
 
@@ -210,9 +213,17 @@ static bool _pump_input_events()
             if (!window_contains_content_point(window, mouse_x, mouse_y))
                 continue;
 
+            uint32_t content_x = window->pos_x;
+            uint32_t content_y = window->pos_y;
+            if (!window->borderless) {
+                content_x += WINDOW_CONTENT_MARGIN_X;
+                content_y += WINDOW_CONTENT_TOP_OFFSET;
+            }
             event.type = DESKTOP_EVENT_WINDOW_MOUSE;
             event.data.mouse.window_id = (uint16_t) window->id;
             event.data.mouse.mouse = input_event.data.mouse;
+            event.data.mouse.mouse.x = (int32_t) (mouse_x - content_x);
+            event.data.mouse.mouse.y = (int32_t) (mouse_y - content_y);
             protocol_send_event(window->owner_task_id, event);
         }
     }
