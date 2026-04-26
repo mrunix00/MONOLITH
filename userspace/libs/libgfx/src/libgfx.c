@@ -244,8 +244,29 @@ void gfx_draw_fps_counter(gfx_context_t *ctx, gfx_font_t *font, gfx_color_t colo
 void gfx_clear(gfx_context_t *ctx, gfx_color_t color)
 {
     uint32_t packed = pack_color(color);
-    for (size_t i = 0; i < ctx->width * ctx->height; i++) {
-        ctx->backbuffer[i] = packed;
+
+    uint32_t x1 = ctx->clip_rect.x;
+    uint32_t y1 = ctx->clip_rect.y;
+    uint32_t x2 = ctx->clip_rect.x + ctx->clip_rect.width;
+    uint32_t y2 = ctx->clip_rect.y + ctx->clip_rect.height;
+
+    if (x1 > ctx->width)
+        x1 = (uint32_t) ctx->width;
+    if (y1 > ctx->height)
+        y1 = (uint32_t) ctx->height;
+    if (x2 > ctx->width)
+        x2 = (uint32_t) ctx->width;
+    if (y2 > ctx->height)
+        y2 = (uint32_t) ctx->height;
+
+    if (x1 >= x2 || y1 >= y2)
+        return;
+
+    uint32_t draw_width = x2 - x1;
+    for (uint32_t y = y1; y < y2; y++) {
+        uint32_t *dst_row = ctx->backbuffer + (size_t) y * ctx->width + x1;
+        for (uint32_t x = 0; x < draw_width; x++)
+            dst_row[x] = packed;
     }
 }
 
