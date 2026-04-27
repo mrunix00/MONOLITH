@@ -4,5 +4,6 @@
 -Iuserspace/libs/libdesktop/include
 -Iuserspace/libs/libc/include
 -Iuserspace/libs/libgfx/include
+-Iuserspace/libs/libui/include
 -Wall
 -Wextra

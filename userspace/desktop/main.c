@@ -17,7 +17,7 @@ gfx_font_t default_font;
 
 static void _menu_action_about(void)
 {
-    syscall1(SYSCALL_SPAWN_TASK, (long) "system:/about");
+    syscall1(SYSCALL_SPAWN_TASK, (long) "system:/uidemo");
 }
 
 static void _menu_action_gfxdemo(void)
