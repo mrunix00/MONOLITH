@@ -40,6 +40,7 @@
 %endmacro
 
 section .text
+extern syscall_kernel_stack_top
 extern sys_exit
 extern sys_request_fb
 extern sys_poll_input_event
@@ -109,13 +110,30 @@ syscall_table:
     dq sys_ipc_poll_connection
 syscall_table_end:
 
+section .bss
+syscall_saved_user_rsp:
+    resq 1
+
 section .text
 global _syscall_handler
 _syscall_handler:
+    mov [rel syscall_saved_user_rsp], rsp
+    mov rsp, [rel syscall_kernel_stack_top]
+
+    ; Build an iretq frame. syscall saves the userspace RIP in RCX and
+    ; RFLAGS in R11, but does not save or switch RSP for us.
+    push qword 0x23
+    push qword [rel syscall_saved_user_rsp]
+    push r11
+    push qword 0x1B
+    push rcx
+
     cmp rax, (syscall_table_end-syscall_table) / 8
     jge .invalid
+
     PUSHALL
     xor rbp, rbp
+    mov rcx, r10
     call [syscall_table + rax * 8]
     POPALL
     iretq

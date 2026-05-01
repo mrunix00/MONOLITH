@@ -18,3 +18,5 @@ uintptr_t asm_read_rsp();
 void asm_pause();
 void asm_cli();
 void asm_sti();
+uint64_t asm_read_msr(uint32_t msr);
+void asm_write_msr(uint32_t msr, uint64_t value);

@@ -55,6 +55,8 @@ struct
 
 static tss_entry_t _tss = {0};
 
+extern uintptr_t syscall_kernel_stack_top;
+
 void gdt_init()
 {
     debug_log("[*] Initializing the GDT...\n");
@@ -69,6 +71,7 @@ void gdt_init()
     /* TSS */
     _tss.iomap_base = sizeof(_tss);
     _tss.rsp0 = 0xFFFFFFFFFFFFF000LL; /* Kernel stack pointer */
+    syscall_kernel_stack_top = _tss.rsp0;
     gdt_tss_load(&_tss);
 
     gdtr.limit = sizeof(gdt) - 1;
@@ -84,6 +87,7 @@ void gdt_init()
 void gdt_tss_set_rsp0(uint64_t rsp0)
 {
     _tss.rsp0 = rsp0;
+    syscall_kernel_stack_top = rsp0;
 }
 
 void gdt_set_gate(int index, uint32_t base, uint32_t limit, uint8_t access, uint8_t gran)

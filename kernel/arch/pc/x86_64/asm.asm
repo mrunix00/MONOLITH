@@ -60,3 +60,20 @@ global asm_sti
 asm_sti:
     sti
     ret
+
+global asm_read_msr
+asm_read_msr:
+    mov ecx, edi
+    rdmsr
+    shl rdx, 32
+    or rax, rdx
+    ret
+
+global asm_write_msr
+asm_write_msr:
+    mov ecx, edi
+    mov rax, rsi
+    mov rdx, rsi
+    shr rdx, 32
+    wrmsr
+    ret

@@ -21,9 +21,25 @@
 extern void _syscall_handler();
 static task_t *_fb_owner;
 
+#define IA32_EFER 0xC0000080
+#define IA32_STAR 0xC0000081
+#define IA32_LSTAR 0xC0000082
+#define IA32_FMASK 0xC0000084
+#define IA32_EFER_SCE (1ULL << 0)
+#define KERNEL_CODE_SELECTOR 0x08
+#define USER_CODE_SELECTOR 0x1B
+
+uintptr_t syscall_kernel_stack_top;
+
 void syscalls_init()
 {
-    idt_set_gate(0x80, _syscall_handler, IDT_TYPE_SOFTWARE);
+    uint64_t efer = asm_read_msr(IA32_EFER);
+    asm_write_msr(IA32_EFER, efer | IA32_EFER_SCE);
+    asm_write_msr(
+        IA32_STAR,
+        ((uint64_t) (USER_CODE_SELECTOR & ~0x3) << 48) | ((uint64_t) KERNEL_CODE_SELECTOR << 32));
+    asm_write_msr(IA32_LSTAR, (uint64_t) _syscall_handler);
+    asm_write_msr(IA32_FMASK, 0);
 }
 
 #define USER_SPACE_START 0x0000000000001000ULL
@@ -130,7 +146,7 @@ static int _fd_close(task_t *task, int fd)
     if (file->internal == NULL)
         return -1;
 
-    *file = (file_t) {0};
+    *file = (file_t){0};
 
     while (task->fd_count > 0) {
         size_t last = task->fd_count - 1;
@@ -179,7 +195,7 @@ int sys_request_fb(_fb_info_t *fb_info)
         PTFLAG_P | PTFLAG_RW | PTFLAG_US | PTFLAG_PAT,
         true);
 
-    *fb_info = (_fb_info_t) {
+    *fb_info = (_fb_info_t){
         .address = fb->address,
         .width = fb->width,
         .height = fb->height,
