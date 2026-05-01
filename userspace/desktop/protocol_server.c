@@ -24,6 +24,26 @@ static size_t _pages_for_size(size_t size)
     return (size + PAGE_SIZE - 1) / PAGE_SIZE;
 }
 
+static void _release_surface_mapping(uint32_t *pixels, size_t size)
+{
+    if (!pixels || size == 0)
+        return;
+    if (ipc_release_shared_memory(_channel_id, pixels) != 0) {
+        size_t pages = _pages_for_size(size);
+        if (pages > 0)
+            unmap_pages(pixels, pages);
+    }
+}
+
+void protocol_release_window_surface(window_t *window)
+{
+    if (!window || !window->surface_pixels || window->surface_size == 0)
+        return;
+
+    _release_surface_mapping(window->surface_pixels, window->surface_size);
+    window_set_remote_surface(window, NULL, 0, 0, 0);
+}
+
 static void _handle_create_window(uint64_t task_id, const desktop_request_t *request)
 {
     uint32_t total_width = request->data.create_window.width;
@@ -65,12 +85,7 @@ static void _handle_destroy_window(uint64_t task_id, const desktop_request_t *re
     if (!window)
         return protocol_send_error(task_id, request->sequence, 2, "unknown window");
 
-    if (window->surface_pixels && window->surface_size > 0) {
-        if (ipc_release_shared_memory(_channel_id, window->surface_pixels) != 0) {
-            size_t pages = _pages_for_size(window->surface_size);
-            unmap_pages(window->surface_pixels, pages);
-        }
-    }
+    protocol_release_window_surface(window);
 
     protocol_send_event(
         window->owner_task_id,
@@ -104,6 +119,7 @@ static void _handle_request_framebuffer(uint64_t task_id, const desktop_request_
     uint32_t *old_pixels = window->surface_pixels;
     uint16_t old_width = window->surface_width;
     uint16_t old_height = window->surface_height;
+    size_t old_size = window->surface_size;
 
     void *owner_pixels = alloc_pages(pages, ALLOC_PAGES_FLAG_RW);
     if (!owner_pixels)
@@ -131,6 +147,7 @@ static void _handle_request_framebuffer(uint64_t task_id, const desktop_request_
     }
 
     window_set_remote_surface(window, (uint32_t *) owner_pixels, width, height, effective_size);
+    _release_surface_mapping(old_pixels, old_size);
     protocol_send_event(
         task_id,
         (desktop_event_t){

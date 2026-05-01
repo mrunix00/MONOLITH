@@ -135,6 +135,22 @@ static void _remove_shared_region_at(_ipc_channel_t *channel, size_t index)
     channel->shared_regions_count--;
 }
 
+static void _release_shared_region_client(_ipc_channel_t *channel, size_t index)
+{
+    if (index >= channel->shared_regions_count)
+        return;
+
+    _ipc_shared_region_t *region = &channel->shared_regions[index];
+    size_t pages = PAGE_UP(region->size) / PAGE_SIZE;
+    task_t *client = task_find_by_id(region->client_task_id);
+
+    if (client && region->client_vaddr)
+        task_unmap(client, region->client_vaddr, pages, false);
+
+    region->client_task_id = 0;
+    region->client_vaddr = 0;
+}
+
 static void _release_shared_region_entry(_ipc_channel_t *channel, size_t index)
 {
     if (index >= channel->shared_regions_count)
@@ -171,10 +187,8 @@ static void _release_shared_regions_for_task(_ipc_channel_t *channel, uint64_t t
             _release_shared_region_entry(channel, i);
             continue;
         }
-        if (region->client_task_id == task_id) {
-            _remove_shared_region_at(channel, i);
-            continue;
-        }
+        if (region->client_task_id == task_id)
+            _release_shared_region_client(channel, i);
         i++;
     }
 }
@@ -733,7 +747,7 @@ int ipc_release_shared_memory(task_t *task, channel_id_t channel_id, void *addr)
             continue;
         if (region->client_vaddr != target_addr)
             continue;
-        _release_shared_region_entry(ipc_channel, i);
+        _release_shared_region_client(ipc_channel, i);
         return 0;
     }
 

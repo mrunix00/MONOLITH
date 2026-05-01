@@ -116,6 +116,7 @@ static gfx_area_t _window_geom(gfx_context_t *context, window_t *window)
 static void _remove_window(uint32_t id)
 {
     if (id < _window_list_size) {
+        protocol_release_window_surface(&_window_list[id]);
         memmove(
             &_window_list[id],
             &_window_list[id + 1],
