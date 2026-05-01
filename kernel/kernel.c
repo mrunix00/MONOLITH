@@ -29,24 +29,19 @@ __attribute__((used, section(".limine_requests"))) static volatile uint64_t limi
     = LIMINE_BASE_REVISION(4);
 
 __attribute__((used, section(".limine_requests_start"))) static volatile uint64_t
-    limine_requests_start_marker[]
-    = LIMINE_REQUESTS_START_MARKER;
+    limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;
 
 __attribute__((used, section(".limine_requests"))) volatile struct limine_framebuffer_request
-    framebuffer_request
-    = {.id = LIMINE_FRAMEBUFFER_REQUEST_ID, .revision = 0};
+    framebuffer_request = {.id = LIMINE_FRAMEBUFFER_REQUEST_ID, .revision = 0};
 
 __attribute__((used, section(".limine_requests"))) volatile struct limine_memmap_request
-    limine_mmap_request
-    = {.id = LIMINE_MEMMAP_REQUEST_ID, .revision = 0};
+    limine_mmap_request = {.id = LIMINE_MEMMAP_REQUEST_ID, .revision = 0};
 
 __attribute__((used, section(".limine_requests"))) volatile struct limine_module_request
-    limine_module_request
-    = {.id = LIMINE_MODULE_REQUEST_ID, .revision = 0};
+    limine_module_request = {.id = LIMINE_MODULE_REQUEST_ID, .revision = 0};
 
 __attribute__((used, section(".limine_requests_end"))) static volatile uint64_t
-    limine_requests_end_marker[]
-    = LIMINE_REQUESTS_END_MARKER;
+    limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
 
 struct flanterm_context *_fb_ctx;
 
@@ -61,12 +56,12 @@ void kmain()
     start_debug_serial(SERIAL_COM1);
     start_debug_console(framebuffer_request.response);
 
+    timer_init();
     gdt_init();
     idt_init();
     pmm_init(limine_mmap_request.response);
     vmm_init(limine_mmap_request.response);
     heap_init(10);
-    timer_init();
     syscalls_init();
     task_switching_init();
 
@@ -75,13 +70,13 @@ void kmain()
 
     /* Optionally populate tmpfs with initrd contents if available */
     if (limine_module_request.response != NULL && limine_module_request.response->module_count > 0) {
-        debug_log("[*] Loading initrd into tmpfs...\n");
+        debug_log("Loading initrd into tmpfs...\n");
         for (uint64_t i = 0; i < limine_module_request.response->module_count; i++) {
             struct limine_file *module = limine_module_request.response->modules[i];
             if (tmpfs_populate_from_initrd(tmpfs_drive, (void *) module->address) == 0) {
-                debug_log_fmt("[+] Loaded \"%s\" into tmpfs\n", module->path);
+                debug_log_fmt("Loaded \"%s\" into tmpfs\n", module->path);
             } else {
-                debug_log_fmt("[-] Failed to load \"%s\" into tmpfs\n", module->path);
+                debug_log_fmt("Failed to load \"%s\" into tmpfs\n", module->path);
             }
         }
     }
@@ -90,11 +85,10 @@ void kmain()
     ps2_init_keyboard();
     ps2_mouse_init();
 
-    debug_log("[*] Launching desktop...\n");
-
+    debug_log("Launching desktop...\n");
     task_t *task = load_elf("system:/desktop");
     if (task < 0) {
-        debug_log("[-] Failed to load desktop ELF\n");
+        debug_log("Failed to load desktop ELF\n");
         while (1)
             asm_hlt();
     }

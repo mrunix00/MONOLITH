@@ -5,8 +5,6 @@
 
 #include <kernel/arch/pc/asm.h>
 #include <kernel/serial.h>
-#include <stdarg.h>
-#include <stdint.h>
 
 bool init_serial(serial_port_t port)
 {

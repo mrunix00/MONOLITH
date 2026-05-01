@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include <kernel/debug.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
-#include <kernel/debug.h>
 
 static uint8_t *_bitmap;
 static uint8_t *_bitmap_end;
@@ -17,7 +17,7 @@ static size_t _allocated_pages = 0;
 
 pmm_stats_t pmm_get_stats()
 {
-    return (pmm_stats_t) {
+    return (pmm_stats_t){
         .total_memory = _physical_memory_size,
         .total_pages = _bitmap_page_count,
         .used_pages = _allocated_pages,
@@ -107,9 +107,9 @@ static const char *_get_mmap_type(int t)
 
 void pmm_init(struct limine_memmap_response *mmap_response)
 {
-    debug_log("[*] Initializing PMM\n");
+    debug_log("Initializing PMM\n");
 
-    debug_log_fmt("[*] Number of memory map entries: %d\n", mmap_response->entry_count);
+    debug_log_fmt("Number of memory map entries: %d\n", mmap_response->entry_count);
 
     /* Calculate the address of the end of kernel and physical memory start address and size */
     size_t kernel_end_addr = 0;
@@ -117,7 +117,7 @@ void pmm_init(struct limine_memmap_response *mmap_response)
     for (size_t i = 0; i < mmap_response->entry_count; i++) {
         struct limine_memmap_entry *entry = mmap_response->entries[i];
         debug_log_fmt(
-            "[*]\tMmap Entry %d (type: %s, base: 0x%x, length: %d bytes)\n",
+            "\tMmap Entry %d (type: %s, base: 0x%x, length: %d bytes)\n",
             i,
             _get_mmap_type(entry->type),
             entry->base,
@@ -135,7 +135,7 @@ void pmm_init(struct limine_memmap_response *mmap_response)
             _physical_memory_size += entry->length;
         }
     }
-    debug_log_fmt("[*] Found %d MB of physical memory\n", _physical_memory_size / 1048576);
+    debug_log_fmt("Found %d MB of physical memory\n", _physical_memory_size / 1048576);
 
     _bitmap = vmm_get_hhdm_addr((void *) biggest->base);
     _bitmap_page_count = _physical_memory_size / PAGE_SIZE;
@@ -144,17 +144,17 @@ void pmm_init(struct limine_memmap_response *mmap_response)
     _phys_memory_start = (void *) (((uintptr_t) vmm_get_lhdm_addr(_bitmap_end) + PAGE_SIZE - 1)
                                    & ~(PAGE_SIZE - 1));
 
-    debug_log_fmt("[*] Physical memory start: 0x%x\n", _phys_memory_start);
-    debug_log_fmt("[*] End of kernel address: 0x%x\n", kernel_end_addr);
-    debug_log_fmt("[*] Bitmap address range: 0x%x-0x%x\n", _bitmap, _bitmap_end);
-    debug_log_fmt("[*] Bitmap page count: %d pages\n", _bitmap_page_count);
-    debug_log_fmt("[*] Bitmap size: %d bytes\n", _bitmap_size);
+    debug_log_fmt("Physical memory start: 0x%x\n", _phys_memory_start);
+    debug_log_fmt("End of kernel address: 0x%x\n", kernel_end_addr);
+    debug_log_fmt("Bitmap address range: 0x%x-0x%x\n", _bitmap, _bitmap_end);
+    debug_log_fmt("Bitmap page count: %d pages\n", _bitmap_page_count);
+    debug_log_fmt("Bitmap size: %d bytes\n", _bitmap_size);
 
-    debug_log("[*] Initializing the bitmap...\n");
+    debug_log("Initializing the bitmap...\n");
     for (size_t i = 0; i < _bitmap_size; i++)
         _bitmap[i] = 0;
 
-    debug_log("[+] PMM initialized\n");
+    debug_log("PMM initialized\n");
 }
 
 void *pmm_alloc(size_t pages)
@@ -176,7 +176,7 @@ void *pmm_alloc(size_t pages)
         }
     }
 
-    debug_log_fmt("[-] pmm_alloc failed: Could not find %d contiguous pages\n", pages);
+    debug_log_fmt("pmm_alloc failed: Could not find %d contiguous pages\n", pages);
     return NULL;
 }
 

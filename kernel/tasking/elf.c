@@ -12,13 +12,13 @@ int parse_elf_header(file_t *file, void *buffer)
 {
     file_seek(file, 0, SEEK_SET);
     if (file_read(file, buffer, sizeof(elf_header_t)) < 0) {
-        debug_log("[-] I/O Error");
+        debug_log("I/O Error");
         return -1;
     }
 
     elf_header_t *header = buffer;
     if (strncmp(header->magic, ELF_MAGIC, sizeof(header->magic)) != 0) {
-        debug_log("[-] Invalid ELF Header!\n");
+        debug_log("Invalid ELF Header!\n");
         return -1;
     }
 
@@ -29,13 +29,13 @@ int parse_elf_header(file_t *file, void *buffer)
     } else if (header->format == ELF_FORMAT_64BIT) {
         rest_size = sizeof(elf64_header_t) - sizeof(elf_header_t);
     } else {
-        debug_log("[-] Invalid ELF format!\n");
+        debug_log("Invalid ELF format!\n");
         return -1;
     }
 
     bytes = file_read(file, (uint8_t *) buffer + sizeof(elf_header_t), rest_size);
     if (bytes < 0) {
-        debug_log("[-] I/O Error\n");
+        debug_log("I/O Error\n");
         return -1;
     }
     return bytes + sizeof(elf_header_t);

@@ -59,7 +59,7 @@ extern uintptr_t syscall_kernel_stack_top;
 
 void gdt_init()
 {
-    debug_log("[*] Initializing the GDT...\n");
+    debug_log("Initializing the GDT...\n");
 
     /* https://wiki.osdev.org/GDT_Tutorial#Flat_/_Long_Mode_Setup */
     gdt_set_gate(0, 0, 0, 0, 0);                /* Null segment */
@@ -77,11 +77,11 @@ void gdt_init()
     gdtr.limit = sizeof(gdt) - 1;
     gdtr.base = (uint64_t) &gdt;
 
-    debug_log("[*] Flushing the GDT...\n");
+    debug_log("Flushing the GDT...\n");
     gdt_flush();
-    debug_log("[*] Flushing the TSS...\n");
+    debug_log("Flushing the TSS...\n");
     gdt_flush_tss();
-    debug_log("[+] GDT initialized\n");
+    debug_log("Initialized the GDT\n");
 }
 
 void gdt_tss_set_rsp0(uint64_t rsp0)

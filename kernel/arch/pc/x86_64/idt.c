@@ -96,7 +96,7 @@ extern void _irq15();
 
 void idt_init()
 {
-    debug_log("[*] Initializing the IDT...\n");
+    debug_log("Initializing the IDT...\n");
 
     _idtr.limit = sizeof(_idt_entries) - 1;
     _idtr.base = (uint64_t) &_idt_entries;
@@ -164,9 +164,9 @@ void idt_init()
     idt_set_gate(46, (void *) _irq14, IDT_TYPE_INTERRUPT);
     idt_set_gate(47, (void *) _irq15, IDT_TYPE_INTERRUPT);
 
-    debug_log("[*] Flushing the IDT...\n");
+    debug_log("Flushing the IDT...\n");
     idt_flush();
-    debug_log("[+] IDT initialized\n");
+    debug_log("IDT initialized\n");
 }
 
 void idt_set_gate(uint8_t num, void *handler, uint8_t flags)
@@ -252,9 +252,9 @@ void isr_handler(struct interrupt_registers *regs)
 
         task_t *current = task_get_current();
         if (current != NULL && current->user_mode) {
-            debug_log_fmt("[-] Task crashed!\n");
-            debug_log_fmt("[-] %s\n", error_message);
-            debug_log_fmt("[-] RIP = 0x%x\n", regs->rip);
+            debug_log_fmt("Task crashed!\n");
+            debug_log_fmt("%s\n", error_message);
+            debug_log_fmt("RIP = 0x%x\n", regs->rip);
 
             task_t *next = task_next(current);
             task_mark_exiting(current);
@@ -264,8 +264,8 @@ void isr_handler(struct interrupt_registers *regs)
                 next = task_idle();
             task_switch(next);
         } else {
-            debug_log_fmt("[-] System panic!\n");
-            debug_log_fmt("[-] %s\n", error_message);
+            debug_log_fmt("System panic!\n");
+            debug_log_fmt("%s\n", error_message);
             panic(error_messages[regs->isr_number], regs);
             while (1)
                 __asm__("hlt");

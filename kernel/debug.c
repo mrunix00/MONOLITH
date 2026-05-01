@@ -5,6 +5,7 @@
 
 #include <kernel/debug.h>
 #include <kernel/klibc/string.h>
+#include <kernel/timer.h>
 #include <libs/flanterm/src/flanterm_backends/fb.h>
 #include <stdarg.h>
 
@@ -20,11 +21,69 @@ static serial_port_t _debug_port = 0;
  */
 extern struct flanterm_context *_fb_ctx;
 
+static inline void _debug_write_char(char c)
+{
+    if (_debug_port)
+        write_serial(_debug_port, c);
+    if (_fb_ctx != NULL)
+        flanterm_write(_fb_ctx, &c, 1);
+}
+
+static inline void _debug_write_string(const char *str)
+{
+    if (_debug_port)
+        write_string(_debug_port, str);
+    if (_fb_ctx != NULL)
+        flanterm_write(_fb_ctx, str, strlen(str));
+}
+
+static inline void _debug_logu64(uint64_t value)
+{
+    char buffer[21];
+    int i = 0;
+
+    if (value == 0) {
+        buffer[i++] = '0';
+    } else {
+        while (value > 0) {
+            buffer[i++] = '0' + (value % 10);
+            value /= 10;
+        }
+    }
+
+    for (int j = 0; j < i / 2; j++) {
+        char tmp = buffer[j];
+        buffer[j] = buffer[i - j - 1];
+        buffer[i - j - 1] = tmp;
+    }
+
+    buffer[i] = '\0';
+    _debug_write_string(buffer);
+}
+
+static inline void _debug_log_ms3(uint64_t milliseconds)
+{
+    _debug_write_char('0' + ((milliseconds / 100) % 10));
+    _debug_write_char('0' + ((milliseconds / 10) % 10));
+    _debug_write_char('0' + (milliseconds % 10));
+}
+
+static inline void _debug_log_timestamp(void)
+{
+    uint64_t ticks = timer_get_ticks();
+
+    _debug_write_char('[');
+    _debug_logu64(ticks / 1000);
+    _debug_write_char('.');
+    _debug_log_ms3(ticks % 1000);
+    _debug_write_string("s] ");
+}
+
 bool start_debug_serial(serial_port_t port)
 {
     if (init_serial(port)) {
         _debug_port = port;
-        debug_log("[+] Started serial debugging\n");
+        debug_log("Started serial debugging\n");
         return true;
     }
     return false;
@@ -73,10 +132,8 @@ void stop_debug_console(void)
 
 void debug_log(const char *message)
 {
-    if (_debug_port)
-        write_string(_debug_port, message);
-    if (_fb_ctx != NULL)
-        flanterm_write(_fb_ctx, message, strlen(message));
+    _debug_log_timestamp();
+    _debug_write_string(message);
 }
 
 static inline void _debug_logd(int d)
@@ -110,10 +167,7 @@ static inline void _debug_logd(int d)
 
     buffer[i] = '\0';
 
-    if (_debug_port)
-        write_string(_debug_port, buffer);
-    if (_fb_ctx != NULL)
-        flanterm_write(_fb_ctx, buffer, strlen(buffer));
+    _debug_write_string(buffer);
 }
 
 static inline void _debug_logx(uint64_t x)
@@ -143,20 +197,18 @@ static inline void _debug_logx(uint64_t x)
 
     buffer[i] = '\0';
 
-    if (_debug_port)
-        write_string(_debug_port, buffer);
-    if (_fb_ctx != NULL)
-        flanterm_write(_fb_ctx, buffer, strlen(buffer));
+    _debug_write_string(buffer);
 }
 
 void debug_log_fmt(const char *format, ...)
 {
     va_list args;
-    va_start(args, format);
 
     if (!_debug_port)
         return;
 
+    va_start(args, format);
+    _debug_log_timestamp();
     while (*format != '\0') {
         if (*format == '%') {
             format++;
@@ -164,17 +216,11 @@ void debug_log_fmt(const char *format, ...)
             switch (*format) {
             case 's': {
                 const char *str = va_arg(args, const char *);
-                if (_debug_port)
-                    write_string(_debug_port, str);
-                if (_fb_ctx != NULL)
-                    flanterm_write(_fb_ctx, str, strlen(str));
+                _debug_write_string(str);
             } break;
             case 'c': {
                 char c = va_arg(args, int);
-                if (_debug_port)
-                    write_serial(_debug_port, c);
-                if (_fb_ctx != NULL)
-                    flanterm_write(_fb_ctx, &c, 1);
+                _debug_write_char(c);
             } break;
             case 'd':
                 _debug_logd(va_arg(args, int));
@@ -183,18 +229,14 @@ void debug_log_fmt(const char *format, ...)
                 _debug_logx(va_arg(args, uint64_t));
                 break;
             case '%': {
-                if (_debug_port)
-                    write_serial(_debug_port, '%');
-                if (_fb_ctx != NULL)
-                    flanterm_write(_fb_ctx, "%", 1);
+                _debug_write_char('%');
             } break;
             }
         } else {
-            if (_debug_port)
-                write_serial(_debug_port, *format);
-            if (_fb_ctx != NULL)
-                flanterm_write(_fb_ctx, format, 1);
+            _debug_write_char(*format);
         }
         format++;
     }
+
+    va_end(args);
 }

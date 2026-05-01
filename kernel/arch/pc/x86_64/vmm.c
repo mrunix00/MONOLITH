@@ -68,7 +68,7 @@ static void _set_pat(void)
     uint32_t eax, ebx, ecx, edx;
     _asm_cpuid(1, &eax, &ebx, &ecx, &edx);
     if (!(edx & (1 << 16))) {
-        debug_log("[-] PAT not supported. WC mappings may not work.\n");
+        debug_log("PAT not supported. WC mappings may not work.\n");
         return;
     }
 
@@ -99,12 +99,12 @@ static inline void *_get_next_level(page_table_t *pt, uint64_t index)
 
 void vmm_init(struct limine_memmap_response *memmap_response)
 {
-    debug_log("[*] Initializing VMM...\n");
-    debug_log("[*] Using Level-4 paging\n");
+    debug_log("Initializing VMM...\n");
+    debug_log("Using Level-4 paging\n");
 
     _pt_top_level = pmm_alloc(1);
     if (_pt_top_level == NULL) {
-        debug_log_fmt("[-] Failed to initialize the VMM");
+        debug_log_fmt("Failed to initialize the VMM");
         while (1)
             __asm__("hlt");
     }
@@ -158,8 +158,8 @@ void vmm_init(struct limine_memmap_response *memmap_response)
     _set_pat();
     asm_write_cr3(kernel_cr3);
 
-    debug_log_fmt("[*] The page table is located at 0x%x\n", _pt_top_level);
-    debug_log("[+] Initialized VMM\n");
+    debug_log_fmt("The page table is located at 0x%x\n", _pt_top_level);
+    debug_log("Initialized VMM\n");
 }
 
 void vmm_map(uintptr_t cr3, uintptr_t virt, uintptr_t phys, size_t flags, bool flush)
@@ -187,7 +187,7 @@ void vmm_map(uintptr_t cr3, uintptr_t virt, uintptr_t phys, size_t flags, bool f
 
     pt->entries[pt_index].raw = (uintptr_t) phys | flags;
     if (flush) {
-        debug_log_fmt("[*] Mapped phys 0x%x to virt 0x%x\n", phys, virt);
+        debug_log_fmt("Mapped phys 0x%x to virt 0x%x\n", phys, virt);
         if (asm_read_cr3() == cr3) {
             asm_invlpg((void *) virt);
         }
@@ -196,7 +196,7 @@ void vmm_map(uintptr_t cr3, uintptr_t virt, uintptr_t phys, size_t flags, bool f
 
 failure:
     debug_log_fmt(
-        "[-] Failed to map virtual address 0x%x to physical address 0x%x in address space 0x%x\n",
+        "Failed to map virtual address 0x%x to physical address 0x%x in address space 0x%x\n",
         virt,
         phys,
         cr3);
@@ -206,7 +206,7 @@ void vmm_map_range(
     uintptr_t cr3, uintptr_t virt_addr, uintptr_t phys_addr, size_t size, size_t flags, bool flush)
 {
     debug_log_fmt(
-        "[*] Mapping 0x%x - 0x%x to 0x%x - 0x%x in address space 0x%x\n",
+        "Mapping 0x%x - 0x%x to 0x%x - 0x%x in address space 0x%x\n",
         phys_addr,
         phys_addr + size,
         virt_addr,
@@ -250,7 +250,7 @@ void vmm_unmap(uintptr_t cr3, uintptr_t virt, bool flush)
 void vmm_unmap_range(uintptr_t cr3, uintptr_t virt_addr, size_t size, bool flush)
 {
     debug_log_fmt(
-        "[*] Unmapping 0x%x - 0x%x from address space 0x%x\n", virt_addr, virt_addr + size, cr3);
+        "Unmapping 0x%x - 0x%x from address space 0x%x\n", virt_addr, virt_addr + size, cr3);
     size_t num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE; /* Round up */
     for (size_t i = 0; i < num_pages; i++) {
         vmm_unmap(cr3, virt_addr + i * PAGE_SIZE, false);
@@ -264,7 +264,7 @@ uintptr_t vmm_create_address_space(void)
     /* Allocate a new PML4 */
     void *new_pml4_phys = pmm_alloc(1);
     if (new_pml4_phys == NULL) {
-        debug_log("[-] Failed to allocate PML4 for new address space\n");
+        debug_log("Failed to allocate PML4 for new address space\n");
         return 0;
     }
 
@@ -275,7 +275,7 @@ uintptr_t vmm_create_address_space(void)
     for (int i = 256; i < 512; i++)
         new_pml4->entries[i] = _pt_top_level->entries[i];
 
-    debug_log_fmt("[*] Created new address space at 0x%x\n", new_pml4_phys);
+    debug_log_fmt("Created new address space at 0x%x\n", new_pml4_phys);
     return (uintptr_t) new_pml4_phys;
 }
 
@@ -317,5 +317,5 @@ void vmm_destroy_address_space(uintptr_t cr3)
 
     /* Free the PML4 itself */
     pmm_free((void *) cr3, 1);
-    debug_log_fmt("[*] Destroyed address space at 0x%x\n", cr3);
+    debug_log_fmt(" Destroyed address space at 0x%x\n", cr3);
 }

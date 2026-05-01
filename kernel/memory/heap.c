@@ -3,12 +3,11 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include <kernel/debug.h>
 #include <kernel/klibc/memory.h>
 #include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
-#include <kernel/debug.h>
-#include <stdint.h>
 
 typedef struct block_header
 {
@@ -53,7 +52,7 @@ bool heap_init(size_t pages)
 {
     void *heap_memory = pmm_alloc(pages);
     if (heap_memory == NULL) {
-        debug_log("[-] Failed to initialize the heap!\n");
+        debug_log("Failed to initialize the heap!\n");
         return false;
     }
 
@@ -186,7 +185,7 @@ void kfree(void *pointer)
 
 heap_stats_t heap_get_stats()
 {
-    return (heap_stats_t) {
+    return (heap_stats_t){
         .free_blocks = _free_blocks,
         .used_blocks = _used_blocks,
         .used_memory = _used_memory,

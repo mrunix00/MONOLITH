@@ -52,10 +52,10 @@ static void _timer_irq()
 
 void timer_init()
 {
-    debug_log("[*] Initializing the timer\n");
+    debug_log("Initializing the timer\n");
     pit_set_frequency(1000);
     irq_register_handler(0, _timer_irq);
-    debug_log("[+] Initialized the timer\n");
+    debug_log("Initialized the timer\n");
 }
 
 void sleep(uint64_t ms)
