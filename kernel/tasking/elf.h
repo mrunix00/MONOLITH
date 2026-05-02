@@ -137,9 +137,9 @@ typedef enum : uint32_t {
  * https://wiki.osdev.org/ELF#Program_header
  */
 typedef enum : uint32_t {
-    SECTION_FLAG_READ = 1 << 0,
+    SECTION_FLAG_EXEC = 1 << 0,
     SECTION_FLAG_WRITE = 1 << 1,
-    SECTION_FLAG_EXEC = 1 << 2,
+    SECTION_FLAG_READ = 1 << 2,
 } elf_phs_flags_t;
 
 /*

@@ -317,5 +317,5 @@ void vmm_destroy_address_space(uintptr_t cr3)
 
     /* Free the PML4 itself */
     pmm_free((void *) cr3, 1);
-    debug_log_fmt(" Destroyed address space at 0x%x\n", cr3);
+    debug_log_fmt("Destroyed address space at 0x%x\n", cr3);
 }

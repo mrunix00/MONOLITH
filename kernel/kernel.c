@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include <kernel/arch/pc/apic.h>
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/gdt.h>
 #include <kernel/arch/pc/idt.h>
@@ -40,6 +41,9 @@ __attribute__((used, section(".limine_requests"))) volatile struct limine_memmap
 __attribute__((used, section(".limine_requests"))) volatile struct limine_module_request
     limine_module_request = {.id = LIMINE_MODULE_REQUEST_ID, .revision = 0};
 
+__attribute__((used, section(".limine_requests"))) volatile struct limine_rsdp_request
+    limine_rsdp_request = {.id = LIMINE_RSDP_REQUEST_ID, .revision = 0};
+
 __attribute__((used, section(".limine_requests_end"))) static volatile uint64_t
     limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
 
@@ -56,11 +60,13 @@ void kmain()
     start_debug_serial(SERIAL_COM1);
     start_debug_console(framebuffer_request.response);
 
-    timer_init();
     gdt_init();
     idt_init();
     pmm_init(limine_mmap_request.response);
     vmm_init(limine_mmap_request.response);
+    apic_init(limine_rsdp_request.response->address);
+    timer_init();
+    asm_sti();
     heap_init(10);
     syscalls_init();
     task_switching_init();
@@ -84,10 +90,11 @@ void kmain()
     input_events_init();
     ps2_init_keyboard();
     ps2_mouse_init();
+    asm_sti();
 
     debug_log("Launching desktop...\n");
     task_t *task = load_elf("system:/desktop");
-    if (task < 0) {
+    if (task == NULL) {
         debug_log("Failed to load desktop ELF\n");
         while (1)
             asm_hlt();

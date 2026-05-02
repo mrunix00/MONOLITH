@@ -47,7 +47,6 @@ uint8_t ps2_read_config()
     asm_cli();
     ps2_write_command(PS2_CMD_READ_CCB);
     uint8_t ccb = ps2_read();
-    asm_sti();
     return ccb;
 }
 
@@ -56,5 +55,4 @@ void ps2_write_config(uint8_t ccb)
     asm_cli();
     ps2_write_command(PS2_CMD_WRITE_CCB);
     ps2_write(ccb);
-    asm_sti();
 }

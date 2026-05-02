@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include <kernel/arch/pc/apic.h>
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/idt.h>
 #include <kernel/debug.h>
@@ -102,18 +103,6 @@ void idt_init()
     _idtr.base = (uint64_t) &_idt_entries;
     memset(&_idt_entries, 0, sizeof(_idt_entries));
 
-    // Remap the PIC
-    asm_outb(0x11, 0x20);
-    asm_outb(0x11, 0xA0);
-    asm_outb(0x20, 0x21);
-    asm_outb(0x28, 0xA1);
-    asm_outb(0x04, 0x21);
-    asm_outb(0x02, 0xA1);
-    asm_outb(0x01, 0x21);
-    asm_outb(0x01, 0xA1);
-    asm_outb(0x00, 0x21);
-    asm_outb(0x00, 0xA1);
-
     idt_set_gate(0, (void *) _isr0, IDT_TYPE_INTERRUPT);
     idt_set_gate(1, (void *) _isr1, IDT_TYPE_INTERRUPT);
     idt_set_gate(2, (void *) _isr2, IDT_TYPE_INTERRUPT);
@@ -184,7 +173,6 @@ void idt_set_gate(uint8_t num, void *handler, uint8_t flags)
 void idt_flush()
 {
     __asm__ volatile("lidtq %0" : : "m"(_idtr));
-    __asm__ volatile("sti");
 }
 
 static const char *error_messages[] = {
@@ -276,19 +264,18 @@ void isr_handler(struct interrupt_registers *regs)
 void irq_register_handler(const uint8_t irq, void *handler)
 {
     _irq_routines[irq] = handler;
+    apic_set_irq_mask(irq, false);
 }
 
 void irq_unregister_handler(const uint8_t irq)
 {
     _irq_routines[irq] = NULL;
+    apic_set_irq_mask(irq, true);
 }
 
 void irq_handler(struct interrupt_registers *reg)
 {
-    if (reg->isr_number >= 40)
-        asm_outb(0x20, 0xA0);
-    asm_outb(0x20, 0x20);
-
+    apic_eoi();
     void (*handler)(struct interrupt_registers *) = _irq_routines[reg->isr_number - 32];
     if (handler)
         handler(reg);

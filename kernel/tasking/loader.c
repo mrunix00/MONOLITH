@@ -68,7 +68,11 @@ task_t *load_elf(const char *path)
             return NULL;
         }
 
-        uint64_t flags = PTFLAG_US | PTFLAG_P | PTFLAG_RW | PTFLAG_XD;
+        uint64_t flags = PTFLAG_US | PTFLAG_P;
+        if (psh.flags & SECTION_FLAG_WRITE)
+            flags |= PTFLAG_RW;
+        if (!(psh.flags & SECTION_FLAG_EXEC))
+            flags |= PTFLAG_XD;
         task_map(task, vaddr_start, (uintptr_t) phys_mem, npages, flags, true);
 
         void *hddm_addr = vmm_get_hhdm_addr(phys_mem);
