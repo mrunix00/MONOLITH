@@ -24,8 +24,8 @@ echo "[*] Installing toolchain to: $PREFIX"
 CACHE_DIR=$(pwd)/.cache
 BUILD_DIR=$(pwd)/.cache/toolchain-build-$TARGET
 JOBS=$(nproc)
-BINUTILS_VERSION="2.44"  # Updated to 2.44
-GCC_VERSION="14.2.0"     # Updated to 14.2.0
+BINUTILS_VERSION="2.46.0"  # Updated to 2.46.0
+GCC_VERSION="16.1.0"     # Updated to 16.1.0
 
 echo "[*] Configuration:"
 echo "    - Target architecture: $TARGET"
