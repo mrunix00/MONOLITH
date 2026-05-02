@@ -47,7 +47,7 @@
 
 - [x] SIMD (SSE, AVX, ...).
 - [x] PIT Timer.
-- [ ] APIC.
+- [x] APIC.
 - [ ] APIC timer.
 - [ ] HPET.
 - [ ] SMP.
@@ -81,7 +81,7 @@
 - [x] Graphics library.
 - [x] Font rendering.
 - [x] Window manager.
-- [ ] Display protocol.
+- [x] Display protocol.
 - [ ] UI library.
 
 ## Networking
