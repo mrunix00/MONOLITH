@@ -11,7 +11,7 @@ sudo dnf install gcc gcc-c++ make bison flex gmp-devel libmpc-devel mpfr-devel t
 ### Arch / Manjaro
 
 ```console
-sudo pacman -S base-devel qemu-desktop flex texinfo grub nasm libmpc gmp mpfr libisl flex
+sudo pacman -S base-devel qemu-desktop flex texinfo grub nasm libmpc gmp mpfr libisl flex xorriso
 ```
 
 ### Ubuntu / Debian
