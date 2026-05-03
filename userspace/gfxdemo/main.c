@@ -5,7 +5,6 @@
 
 #include <libdesktop.h>
 #include <libgfx.h>
-#include <stdlib.h>
 #include <unistd.h>
 
 typedef struct
@@ -197,7 +196,7 @@ int main(void)
     gfx_context_t framebuffer = {0};
 
     if (desktop_connect() != 0)
-        exit();
+        return 1;
 
     while (1) {
         if (!created && !create_pending) {
@@ -267,5 +266,5 @@ int main(void)
         }
     }
 
-    exit();
+    return 0;
 }

@@ -302,13 +302,16 @@ void qsort(void *base, size_t n, size_t size, int (*compar)(const void *, const 
 }
 
 #ifndef TEST_ENV
-[[noreturn]] void exit(void)
+[[noreturn]] void exit(int status)
 {
+    (void) status;
     syscall0(SYSCALL_EXIT);
+    for (;;) {}
 }
 
 [[noreturn]] void abort(void)
 {
     syscall0(SYSCALL_EXIT);
+    for (;;) {}
 }
 #endif /* TEST_ENV */

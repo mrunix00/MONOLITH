@@ -231,8 +231,7 @@ static void doom_gettime_override(int *sec, int *usec)
 
 static void doom_exit_override(int code)
 {
-    (void) code;
-    exit();
+    exit(code);
 }
 
 static char *doom_getenv_override(const char *var)
@@ -494,7 +493,7 @@ int main(void)
     gfx_context_t framebuffer = {0};
 
     if (desktop_connect() != 0)
-        exit();
+        return 1;
 
     while (1) {
         if (!created && !create_pending) {
@@ -563,5 +562,5 @@ int main(void)
         }
     }
 
-    exit();
+    return 0;
 }

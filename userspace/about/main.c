@@ -7,7 +7,6 @@
 
 #include <libdesktop.h>
 #include <libgfx.h>
-#include <stdlib.h>
 #include <unistd.h>
 
 static gfx_font_t _about_font;
@@ -92,7 +91,7 @@ int main(void)
     uint32_t window_id = 0;
 
     if (desktop_connect() != 0)
-        exit();
+        return 1;
 
     while (1) {
         if (!created) {
@@ -160,5 +159,5 @@ int main(void)
             break;
     }
 
-    exit();
+    return 0;
 }

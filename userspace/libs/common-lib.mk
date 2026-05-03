@@ -42,4 +42,4 @@ $(OBJ_DIR):
 
 clean:
 	@rm -rf $(OBJ_DIR)
-	@rm -f $(LIB_TARGET)
+	@rm -f $(LIB_TARGET) $(EXTRA_CLEAN)

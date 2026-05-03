@@ -17,7 +17,7 @@ APP_INCLUDE_DIRS := $(addprefix ../libs/,$(addsuffix /include,$(APP_LIB_DEPS))) 
 
 CC := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc
 CFLAGS += $(APP_OPTFLAGS) $(addprefix -I,$(APP_INCLUDE_DIRS)) -Wall -Wextra
-LDFLAGS := -nostdlib -nodefaultlibs -Wl,-e,main
+LDFLAGS := -B$(BUILD_DIR)/libs -nodefaultlibs
 LIBS ?= $(APP_LIB_TARGETS)
 
 .PHONY: all clean

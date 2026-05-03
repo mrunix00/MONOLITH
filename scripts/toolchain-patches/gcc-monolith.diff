@@ -30,7 +30,7 @@
  
  case ${target} in
 +x86_64-*-monolith*)
-+	tm_file="${tm_file} i386/unix.h i386/att.h elfos.h glibc-stdint.h i386/i386elf.h i386/x86-64.h monolith.h gnu-user.h"
++	tm_file="${tm_file} i386/unix.h i386/att.h elfos.h glibc-stdint.h i386/i386elf.h i386/x86-64.h gnu-user.h monolith.h"
 +	;;
  aarch64*-*-elf | aarch64*-*-fuchsia* | aarch64*-*-rtems*)
  	tm_file="${tm_file} elfos.h newlib-stdint.h"
