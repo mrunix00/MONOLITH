@@ -55,6 +55,9 @@ task_t *load_elf(const char *path)
         if (parse_elf_program_header(&file, &psh, header.pht_entry_size) < 0)
             return NULL;
 
+        if (psh.type != SECTION_TYPE_LOAD)
+            continue;
+
         uintptr_t vaddr = psh.section_vaddr;
         uintptr_t vaddr_end = vaddr + psh.section_memory_size;
         uintptr_t vaddr_start = vaddr & ~(PAGE_SIZE - 1);

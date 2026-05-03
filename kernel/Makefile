@@ -1,8 +1,5 @@
 OBJ_DIR := $(BUILD_DIR)/obj
 
-# Note: CPU_ARCH and CROSS_PREFIX are now imported from parent Makefile
-# No need to recompute them here
-
 # Use the imported TOOLCHAIN_BIN
 CC := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc
 AS := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)as
@@ -12,8 +9,8 @@ ASM_SRC := $(shell find . -path "./arch" -prune -o -name "*.asm" -print 2>/dev/n
 C_SRC := $(shell find . -path "./arch" -prune -o -name "*.c" -print 2>/dev/null)
 
 # Find architecture-specific source files
-ARCH_ASM_SRC := $(shell find ./arch/pc/$(CPU_ARCH) -name "*.asm" 2>/dev/null)
-ARCH_C_SRC := $(shell find ./arch/pc/$(CPU_ARCH) -name "*.c" 2>/dev/null)
+ARCH_ASM_SRC := $(shell find ./arch/pc/x86_64 -name "*.asm" 2>/dev/null)
+ARCH_C_SRC := $(shell find ./arch/pc/x86_64 -name "*.c" 2>/dev/null)
 ARCH_PC_ASM_SRC := $(shell find ./arch/pc -maxdepth 1 -name "*.asm" 2>/dev/null)
 ARCH_PC_C_SRC := $(shell find ./arch/pc -maxdepth 1 -name "*.c" 2>/dev/null)
 
@@ -27,15 +24,12 @@ ARCH_PC_C_OBJ := $(patsubst %.c,$(OBJ_DIR)/kernel/%.c.o,$(ARCH_PC_C_SRC))
 KERNEL_OBJ := $(ASM_OBJ) $(C_OBJ) $(ARCH_ASM_OBJ) $(ARCH_C_OBJ) $(ARCH_PC_ASM_OBJ) $(ARCH_PC_C_OBJ) $(PANIC_IMG_OBJ)
 
 # Compiler flags
-CFLAGS := -ffreestanding -g -Wall -Wextra -I../ -std=c99 -fno-stack-protector -fno-stack-check -fno-PIC
-ifeq ($(CPU_ARCH),x86_64)
-    CFLAGS += -mno-red-zone -mcmodel=kernel
-endif
+CFLAGS := -ffreestanding -g -Wall -Wextra -I../ -std=c99 -fno-stack-protector -fno-stack-check -fno-PIC -mno-red-zone -mcmodel=kernel
 
 .PHONY: all clean show-info
 
 all: $(KERNEL_OBJ)
-	@echo "Kernel files for $(CPU_ARCH) built successfully"
+	@echo "Kernel files for x86_64 built successfully"
 
 # Create object output directories
 define create_dir
@@ -57,8 +51,7 @@ clean:
 
 # Display toolchain info
 show-info:
-	@echo "Architecture: $(ARCH)"
-	@echo "CPU Architecture: $(CPU_ARCH)"
+	@echo "Architecture: x86_64"
 	@echo "CROSS_PREFIX: $(CROSS_PREFIX)"
 	@echo "TOOLCHAIN_BIN: $(TOOLCHAIN_BIN)"
 	@echo "CC: $(CC)"

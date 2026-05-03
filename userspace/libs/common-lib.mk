@@ -3,6 +3,7 @@ $(error LIB_NAME must be set before including common-lib.mk)
 endif
 
 SRC_DIR ?= src
+SHARED_INCLUDE_DIR ?= $(abspath ../../../shared/include/monolith)
 INCLUDE_DIR ?= include
 LIB_OBJ_ROOT ?= $(BUILD_DIR)/shared_libs/obj
 LIBS_OUTPUT_DIR ?= $(BUILD_DIR)/libs
@@ -11,6 +12,7 @@ OBJ_DIR := $(LIB_OBJ_ROOT)/$(LIB_NAME)
 LIB_TARGET := $(LIB_OUTPUT_DIR)/$(LIB_NAME).a
 
 LIB_INCLUDE_DIRS ?= $(INCLUDE_DIR)
+LIB_INCLUDE_DIRS += $(SHARED_INCLUDE_DIR)
 LIB_OPTFLAGS ?= -O2
 LIB_EXTRA_CFLAGS ?=
 ARFLAGS ?= rcs

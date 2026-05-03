@@ -9,17 +9,18 @@ AS="as"
 LD="ld"
 RANLIB="ranlib"
 
-echo "[*] Starting cross-compiler build process"
-echo "[*] ARCH environment variable: ${ARCH:-not set}"
-
-# Set target for x86_64 architecture
-TARGET=x86_64-elf
-ARCH_DIR=x86_64
-echo "[*] Building for x86_64 architecture (ARCH=${ARCH:-pc/x86_64})"
-
 # Configuration variables
-PREFIX=$(pwd)/toolchain/$ARCH_DIR
+TARGET=x86_64-monolith
+PROJECT_ROOT=$(pwd)
+PREFIX=$PROJECT_ROOT/toolchain/$TARGET
+SYSROOT=$PROJECT_ROOT/shared
+NATIVE_SYSTEM_HEADER_DIR=/include/monolith
+
+echo "[*] Starting x86_64 cross-compiler build process"
+echo "[*] Building for target $TARGET"
+
 echo "[*] Installing toolchain to: $PREFIX"
+echo "[*] Using sysroot: $SYSROOT"
 
 CACHE_DIR=$(pwd)/.cache
 BUILD_DIR=$(pwd)/.cache/toolchain-build-$TARGET
@@ -28,17 +29,36 @@ BINUTILS_VERSION="2.46.0"  # Updated to 2.46.0
 GCC_VERSION="16.1.0"     # Updated to 16.1.0
 
 echo "[*] Configuration:"
-echo "    - Target architecture: $TARGET"
+echo "    - Target: $TARGET"
 echo "    - Installation directory: $PREFIX"
+echo "    - Sysroot: $SYSROOT"
+echo "    - Native system header dir: $NATIVE_SYSTEM_HEADER_DIR"
 echo "    - Download cache: $CACHE_DIR"
 echo "    - Build directory: $BUILD_DIR"
 echo "    - Parallel jobs: $JOBS"
 echo "    - Binutils version: $BINUTILS_VERSION"
 echo "    - GCC version: $GCC_VERSION"
 
+apply_source_patch() {
+    local source_dir="$1"
+    local patch_file="$2"
+    local label="$3"
+
+    echo "[*] Applying $label patch: $patch_file"
+    if patch --dry-run -d "$source_dir" -p1 < "$patch_file" >/dev/null; then
+        patch -d "$source_dir" -p1 < "$patch_file"
+        echo "[+] Applied $label patch"
+    elif patch --reverse --dry-run -d "$source_dir" -p1 < "$patch_file" >/dev/null; then
+        echo "[+] $label patch already applied"
+    else
+        echo "[-] Failed to apply $label patch"
+        exit 1
+    fi
+}
+
 # Create directories
 echo "[*] Creating necessary directories"
-mkdir -p $PREFIX $BUILD_DIR $CACHE_DIR
+mkdir -p "$PREFIX" "$BUILD_DIR" "$CACHE_DIR"
 echo "[+] Directories created successfully"
 
 # Download sources
@@ -150,10 +170,14 @@ else
     echo "[+] Binutils already extracted, using existing directory"
 fi
 
+apply_source_patch \
+    "$BUILD_DIR/binutils-$BINUTILS_VERSION" \
+    "$PROJECT_ROOT/scripts/toolchain-patches/binutils-monolith.diff" \
+    "Binutils MONOLITH OS target"
+
 echo "[*] Creating binutils build directory"
-# Clean existing build directory if it contains files from a previous build for a different architecture
 if [ -d "build-binutils" ] && [ -f "build-binutils/config.status" ]; then
-    echo "[*] Cleaning existing binutils build directory to avoid architecture conflicts"
+    echo "[*] Cleaning existing binutils build directory"
     rm -rf "build-binutils"
 fi
 mkdir -p build-binutils
@@ -161,7 +185,7 @@ cd build-binutils
 echo "[+] Now in binutils build directory: $(pwd)"
 
 echo "[*] Configuring binutils with target=$TARGET"
-../binutils-$BINUTILS_VERSION/configure --target=$TARGET --prefix=$PREFIX --with-sysroot --disable-nls --disable-werror || { echo "[-] Binutils configuration failed"; exit 1; }
+../binutils-$BINUTILS_VERSION/configure --target=$TARGET --prefix=$PREFIX --with-sysroot="$SYSROOT" --disable-nls --disable-werror || { echo "[-] Binutils configuration failed"; exit 1; }
 echo "[+] Binutils configured successfully"
 
 echo "[*] Building binutils (this may take a while)"
@@ -186,15 +210,19 @@ else
     echo "[+] GCC already extracted, using existing directory"
 fi
 
+apply_source_patch \
+    "$BUILD_DIR/gcc-$GCC_VERSION" \
+    "$PROJECT_ROOT/scripts/toolchain-patches/gcc-monolith.diff" \
+    "GCC MONOLITH OS target"
+
 # GCC requires the target bin directory to be in PATH
 echo "[*] Adding toolchain bin directory to PATH"
 export PATH="$PREFIX/bin:$PATH"
 echo "[+] PATH updated: $PATH"
 
 echo "[*] Creating GCC build directory"
-# Clean existing build directory if it contains files from a previous build for a different architecture
 if [ -d "build-gcc" ] && [ -f "build-gcc/config.status" ]; then
-    echo "[*] Cleaning existing GCC build directory to avoid architecture conflicts"
+    echo "[*] Cleaning existing GCC build directory"
     rm -rf "build-gcc"
 fi
 mkdir -p build-gcc
@@ -202,7 +230,7 @@ cd build-gcc
 echo "[+] Now in GCC build directory: $(pwd)"
 
 echo "[*] Configuring GCC with target=$TARGET"
-../gcc-$GCC_VERSION/configure --target=$TARGET --prefix=$PREFIX --disable-nls --enable-languages=c,c++ --without-headers || { echo "[-] GCC configuration failed"; exit 1; }
+../gcc-$GCC_VERSION/configure --target=$TARGET --prefix=$PREFIX --disable-nls --with-sysroot="$SYSROOT" --with-native-system-header-dir="$NATIVE_SYSTEM_HEADER_DIR" --enable-languages=c,c++ || { echo "[-] GCC configuration failed"; exit 1; }
 echo "[+] GCC configured successfully"
 
 echo "[*] Building GCC compiler (this may take a long time)"
@@ -231,33 +259,3 @@ echo ""
 echo "[*] You can now compile your kernel with:"
 echo "    $TARGET-gcc -c kernel.c -o kernel.o -ffreestanding -g -Wall -Wextra"
 echo "    $TARGET-ld -o kernel.bin kernel.o -T linker.ld"
-
-function build_binutils {
-    echo "[*] Building binutils"
-    echo "[DEBUG] Using target: $TARGET for binutils"
-    cd "${BUILD_DIR}/binutils-${BINUTILS_VERSION}"
-    mkdir -p build && cd build
-    ../configure --target=$TARGET \
-                 --prefix=$PREFIX \
-                 --with-sysroot \
-                 --disable-nls \
-                 --disable-werror
-    make -j$JOBS
-    make install
-}
-
-function build_gcc {
-    echo "[*] Building GCC"
-    echo "[DEBUG] Using target: $TARGET for GCC"
-    cd "${BUILD_DIR}/gcc-${GCC_VERSION}"
-    mkdir -p build && cd build
-    ../configure --target=$TARGET \
-                 --prefix=$PREFIX \
-                 --disable-nls \
-                 --enable-languages=c,c++ \
-                 --without-headers
-    make -j$JOBS all-gcc
-    make -j$JOBS all-target-libgcc
-    make install-gcc
-    make install-target-libgcc
-}

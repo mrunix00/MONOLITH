@@ -45,7 +45,7 @@ USERSPACE_TEST_SOURCES := \
 	$(ROOT_DIR)/userspace/libs/libc/src/ipc.c
 
 KERNEL_TEST_CFLAGS := $(CFLAGS) -I$(ROOT_DIR) -I$(CURDIR) -DUNITY_INCLUDE_CONFIG_H
-USERSPACE_TEST_CFLAGS := $(CFLAGS) -I$(ROOT_DIR) -I$(ROOT_DIR)/userspace/libs/libc/include -I$(CURDIR) -DTEST_ENV -DUNITY_INCLUDE_CONFIG_H -DUNITY_EXCLUDE_MATH_H -fno-builtin
+USERSPACE_TEST_CFLAGS := $(CFLAGS) -I$(ROOT_DIR) -I$(ROOT_DIR)/userspace/libs/libc/include -I$(ROOT_DIR)/shared/include/monolith -I$(CURDIR) -DTEST_ENV -DUNITY_INCLUDE_CONFIG_H -DUNITY_EXCLUDE_MATH_H -fno-builtin
 
 .PHONY: all kernel userspace run run-kernel run-userspace clean coverage-report
 

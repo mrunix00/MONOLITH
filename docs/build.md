@@ -46,19 +46,6 @@ If you want to launch the OS without a graphical interface:
 make run-headless
 ```
 
-## Cross-compilation
-
-To build the operating system for a different architecture:
-
-```console
-ARCH="pc/x86_64" make
-```
-
-Supported architectures:
-
-- `pc/i386`
-- `pc/x86_64`
-
 ## Debugging
 
 To run the OS in debug mode:

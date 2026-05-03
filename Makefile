@@ -1,11 +1,9 @@
-# Toolchain
+TOOLCHAIN_TARGET := x86_64-monolith
 TOOLCHAIN_BASE_DIR := $(CURDIR)/toolchain
-CPU_ARCH := $(patsubst pc/%,%,$(ARCH))
-TOOLCHAIN_DIR := $(TOOLCHAIN_BASE_DIR)/$(CPU_ARCH)
+TOOLCHAIN_DIR := $(TOOLCHAIN_BASE_DIR)/$(TOOLCHAIN_TARGET)
 TOOLCHAIN_BIN := $(TOOLCHAIN_DIR)/bin
-# Architecture settings
-ARCH ?= pc/x86_64
-CROSS_PREFIX := x86_64-elf-
+CROSS_PREFIX := $(TOOLCHAIN_TARGET)-
+SHARED_INCLUDE_DIR := $(CURDIR)/shared/include/monolith
 CC := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc
 LD := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)ld
 AS := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)as
@@ -23,34 +21,17 @@ OBJ_DIR := $(BUILD_DIR)/obj
 INITRD_DIR := $(BUILD_DIR)/initrd
 INITRD_ASSETS_DIR := $(INITRD_DIR)/assets
 
-# Arch detection and tracking
-ARCH_FILE := $(BUILD_DIR)/.arch
-# Function to check if architecture has changed and clean if needed
-define check_arch_changed
-	@mkdir -p $(BUILD_DIR)
-	@if [ ! -f $(ARCH_FILE) ] || [ "$$(cat $(ARCH_FILE))" != "$(ARCH)" ]; then \
-		echo "Architecture changed from $$(cat $(ARCH_FILE) 2>/dev/null || echo 'none') to $(ARCH). Cleaning build directory..."; \
-		rm -rf $(BUILD_DIR)/obj; \
-		mkdir -p $(BUILD_DIR); \
-		echo "$(ARCH)" > $(ARCH_FILE); \
-	fi
-endef
-
 # Output files
 KERNEL_BIN := $(BUILD_DIR)/kernel.bin
 INITRD_TAR := $(BUILD_DIR)/initrd.tar
 ISO_FILE := $(BUILD_DIR)/monolith.iso
 
 # Export variables for submakes
-export BUILD_DIR TOOLCHAIN_BIN TOOLCHAIN_DIR TOOLCHAIN_BASE_DIR ARCH CROSS_PREFIX CPU_ARCH INITRD_DIR
+export BUILD_DIR TOOLCHAIN_BIN TOOLCHAIN_DIR TOOLCHAIN_BASE_DIR TOOLCHAIN_TARGET CROSS_PREFIX INITRD_DIR SHARED_INCLUDE_DIR
 
 # Compiler and linker flags
-CFLAGS := -g -ffreestanding -Wall -Wextra -I./ -std=c99 -fno-stack-protector -fno-stack-check -fno-PIC
-CPU_ARCH := $(patsubst pc/%,%,$(ARCH))
-ifeq ($(CPU_ARCH),x86_64)
-	CFLAGS += -mno-red-zone -mcmodel=kernel
-endif
-LDFLAGS += -T boot/pc/$(CPU_ARCH)/linker.ld -nostdlib -z max-page-size=0x1000 -static --build-id=none
+CFLAGS := -g -ffreestanding -Wall -Wextra -I./ -std=c99 -fno-stack-protector -fno-stack-check -fno-PIC -mno-red-zone -mcmodel=kernel
+LDFLAGS += -T boot/pc/x86_64/linker.ld -nostdlib -z max-page-size=0x1000 -static --build-id=none
 
 FLANTERM_SOURCES := libs/flanterm/src/flanterm.c libs/flanterm/src/flanterm_backends/fb.c
 FLANTERM_OBJECTS := $(patsubst %.c,$(OBJ_DIR)/%.o,$(FLANTERM_SOURCES))
@@ -59,9 +40,7 @@ FLANTERM_OBJECTS := $(patsubst %.c,$(OBJ_DIR)/%.o,$(FLANTERM_SOURCES))
 
 # Default target
 all: | $(BUILD_DIR)
-	$(call check_arch_changed)
 	$(MAKE) kernel
-	$(MAKE) boot
 	$(MAKE) flanterm
 	$(MAKE) userspace
 	$(MAKE) initrd
@@ -71,8 +50,8 @@ all: | $(BUILD_DIR)
 # Ensure toolchain is built
 toolchain:
 	@if [ ! -f "$(CC)" ] || [ ! -f "$(LD)" ]; then \
-		echo "Building toolchain for $(ARCH) in $(TOOLCHAIN_DIR)..."; \
-		ARCH="$(ARCH)" bash ./scripts/build-toolchain.sh; \
+		echo "Building x86_64 toolchain in $(TOOLCHAIN_DIR)..."; \
+		bash ./scripts/build-toolchain.sh; \
 	else \
 		echo "Toolchain already exists at $(TOOLCHAIN_DIR)"; \
 	fi
@@ -118,9 +97,7 @@ userspace: | $(BUILD_DIR) $(INITRD_DIR)
 		echo "Toolchain not found. Building it first..."; \
 		$(MAKE) toolchain; \
 	fi
-	$(MAKE) -C userspace BUILD_DIR=$(BUILD_DIR) TOOLCHAIN_BIN=$(TOOLCHAIN_BASE_DIR)/$(CPU_ARCH)/bin \
-		TOOLCHAIN_DIR=$(TOOLCHAIN_BASE_DIR)/$(CPU_ARCH) CPU_ARCH=$(CPU_ARCH) \
-		CROSS_PREFIX=$(CROSS_PREFIX) INITRD_DIR=$(INITRD_DIR)
+	$(MAKE) -C userspace
 
 # Create initrd directory
 $(INITRD_DIR): | $(BUILD_DIR)
@@ -143,7 +120,6 @@ $(ISO_FILE): $(KERNEL_BIN) $(INITRD_TAR)
 	    libs/limine/limine-uefi-cd.bin build/iso/boot/limine
 	mkdir -p build/iso/EFI/BOOT
 	cp -v libs/limine/BOOTX64.EFI build/iso/EFI/BOOT
-	cp -v libs/limine/BOOTIA32.EFI build/iso/EFI/BOOT
 	xorriso -as mkisofs -b boot/limine/limine-bios-cd.bin \
 	    -no-emul-boot -boot-load-size 4 -boot-info-table \
 		--efi-boot boot/limine/limine-uefi-cd.bin \
@@ -174,17 +150,19 @@ clean:
 distclean: clean
 	rm -rf $(TOOLCHAIN_BASE_DIR) .cache
 
-# Force rebuild of toolchain for current architecture
+# Force rebuild of the toolchain
 rebuild-toolchain:
-	@echo "Removing toolchain directory for $(CPU_ARCH) to ensure clean rebuild..."
+	@echo "Removing toolchain directory at $(TOOLCHAIN_DIR)..."
 	rm -rf $(TOOLCHAIN_DIR)
-	@echo "Building toolchain for $(ARCH) in $(TOOLCHAIN_DIR)..."
-	ARCH=$(ARCH) ./scripts/build-toolchain.sh
+	@echo "Building x86_64 toolchain in $(TOOLCHAIN_DIR)..."
+	./scripts/build-toolchain.sh
 
 # Debugging target
 debug-toolchain:
-	@echo "Architecture (ARCH): $(ARCH)"
-	@echo "CPU Architecture (CPU_ARCH): $(CPU_ARCH)"
+	@echo "Architecture: x86_64"
+	@echo "Toolchain target: $(TOOLCHAIN_TARGET)"
+	@echo "Cross prefix: $(CROSS_PREFIX)"
+	@echo "Shared include dir: $(SHARED_INCLUDE_DIR)"
 	@echo "Expected compiler: $(CC)"
 	@echo "Expected linker: $(LD)"
 	@echo "Expected assembler: $(AS)"

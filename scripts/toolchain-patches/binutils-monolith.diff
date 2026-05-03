@@ -1,0 +1,71 @@
+--- a/config.sub
++++ b/config.sub
+@@ -2114,6 +2114,7 @@
+ 	| solaris* \
+ 	| solidbsd* \
+ 	| sortix* \
++	| monolith* \
+ 	| storm-chaos* \
+ 	| sunos \
+ 	| sunos[34]* \
+--- a/bfd/config.bfd
++++ b/bfd/config.bfd
+@@ -243,6 +243,10 @@
+ case "${targ}" in
+ # START OF targmatch.h
+ #ifdef BFD64
++  x86_64-*-monolith*)
++    targ_defvec=x86_64_elf64_vec
++    want64=true
++    ;;
+   aarch64-*-darwin*)
+     targ_defvec=aarch64_mach_o_vec
+     targ_selvecs="arm_mach_o_vec mach_o_le_vec mach_o_be_vec mach_o_fat_vec"
+--- a/gas/configure.tgt
++++ b/gas/configure.tgt
+@@ -124,6 +124,9 @@
+ 
+ # Assign object format.  Set fmt, em, and bfd_gas.
+ generic_target=${cpu_type}-$vendor-$os
++case ${cpu}-${vendor}-${os} in
++  x86_64-*-monolith*)			fmt=elf em=gnu ;;
++esac
+ # Note: This table is alpha-sorted, please try to keep it that way.
+ case ${generic_target} in
+   aarch64*-*-elf*)			fmt=elf;;
+--- a/ld/configure.tgt
++++ b/ld/configure.tgt
+@@ -82,6 +82,9 @@
+ # Please try to keep this table more or less in alphabetic order - it
+ # makes it much easier to lookup a specific archictecture.
+ case "${targ}" in
++x86_64-*-monolith*)
++			targ_emul=elf_x86_64_monolith
++			;;
+ aarch64_be-*-elf)	targ_emul=aarch64elfb
+ 			targ_extra_emuls="aarch64elf aarch64elf32 aarch64elf32b armelfb armelf"
+ 			;;
+--- /dev/null
++++ b/ld/emulparams/elf_x86_64_monolith.sh
+@@ -0,0 +1 @@
++. ${srcdir}/emulparams/elf_x86_64.sh
+--- a/ld/Makefile.am
++++ b/ld/Makefile.am
+@@ -454,6 +454,7 @@
+ 	eelf64tilegx.c \
+ 	eelf64tilegx_be.c \
+ 	eelf_mipsel_haiku.c \
++	eelf_x86_64_monolith.c \
+ 	eelf_x86_64.c \
+ 	eelf_x86_64_fbsd.c \
+ 	eelf_x86_64_haiku.c \
+--- a/ld/Makefile.in
++++ b/ld/Makefile.in
+@@ -968,6 +968,7 @@
+ 	eelf64tilegx.c \
+ 	eelf64tilegx_be.c \
+ 	eelf_mipsel_haiku.c \
++	eelf_x86_64_monolith.c \
+ 	eelf_x86_64.c \
+ 	eelf_x86_64_fbsd.c \
+ 	eelf_x86_64_haiku.c \
