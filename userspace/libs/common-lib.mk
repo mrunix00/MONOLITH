@@ -13,7 +13,7 @@ LIB_TARGET := $(LIB_OUTPUT_DIR)/$(LIB_NAME).a
 
 LIB_INCLUDE_DIRS ?= $(INCLUDE_DIR)
 LIB_INCLUDE_DIRS += $(SHARED_INCLUDE_DIR)
-LIB_OPTFLAGS ?= -O2
+LIB_OPTFLAGS ?=
 LIB_EXTRA_CFLAGS ?=
 ARFLAGS ?= rcs
 
@@ -22,8 +22,7 @@ OBJECTS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SOURCES))
 
 CC := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc
 AR := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)ar
-LIB_CFLAGS := -ffreestanding -nostdlib -nostdinc -nodefaultlibs -Wall -Wextra \
-	$(addprefix -I,$(LIB_INCLUDE_DIRS)) $(LIB_OPTFLAGS) $(LIB_EXTRA_CFLAGS)
+LIB_CFLAGS := -ffreestanding -Wall -Wextra $(addprefix -I,$(LIB_INCLUDE_DIRS)) $(LIB_OPTFLAGS) $(LIB_EXTRA_CFLAGS)
 
 .PHONY: all clean
 

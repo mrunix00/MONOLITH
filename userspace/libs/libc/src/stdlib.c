@@ -144,6 +144,14 @@ void *realloc(void *ptr, size_t size)
     return new_ptr;
 }
 
+void *calloc(size_t num, size_t size)
+{
+    void *ptr = malloc(num * size);
+    if (ptr != NULL)
+        memset(ptr, 0, num * size);
+    return ptr;
+}
+
 void free(void *ptr)
 {
     if (ptr == NULL)

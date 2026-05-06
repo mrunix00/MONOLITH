@@ -12,5 +12,6 @@ void qsort(void *base, size_t n, size_t size, int (*compar)(const void *, const 
 [[noreturn]] void abort(void);
 int abs(int value);
 void *malloc(size_t size);
+void *calloc(size_t num, size_t size);
 void *realloc(void *ptr, size_t size);
 void free(void *ptr);

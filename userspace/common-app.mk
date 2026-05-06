@@ -2,7 +2,7 @@ ifndef TARGET
 $(error TARGET must be set before including common-app.mk)
 endif
 
-APP_OPTFLAGS ?= -O2 -g
+APP_OPTFLAGS ?= -O2
 APP_LIB_DEPS ?= libc
 EXTRA_INCLUDE_DIRS ?=
 POST_INSTALL_CMD ?= @:

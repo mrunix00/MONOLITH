@@ -30,7 +30,7 @@ ISO_FILE := $(BUILD_DIR)/monolith.iso
 export BUILD_DIR TOOLCHAIN_BIN TOOLCHAIN_DIR TOOLCHAIN_BASE_DIR TOOLCHAIN_TARGET CROSS_PREFIX INITRD_DIR SHARED_INCLUDE_DIR
 
 # Compiler and linker flags
-CFLAGS := -g -ffreestanding -Wall -Wextra -I./ -std=c99 -fno-stack-protector -fno-stack-check -fno-PIC -mno-red-zone -mcmodel=kernel
+CFLAGS := -ffreestanding -Wall -Wextra -I./ -std=c99 -fno-stack-protector -fno-stack-check -fno-PIC -mno-red-zone -mcmodel=kernel
 LDFLAGS += -T boot/pc/x86_64/linker.ld -nostdlib -z max-page-size=0x1000 -static --build-id=none
 
 FLANTERM_SOURCES := libs/flanterm/src/flanterm.c libs/flanterm/src/flanterm_backends/fb.c
