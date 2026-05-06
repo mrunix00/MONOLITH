@@ -22,3 +22,4 @@
 [submodule "libs/PureDOOM"]
 	path = libs/PureDOOM
 	url = https://github.com/Daivuk/PureDOOM
+	shallow = true
