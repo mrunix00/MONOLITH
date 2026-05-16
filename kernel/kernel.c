@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include <kernel/kargs.h>
 #include <kernel/arch/pc/apic.h>
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/gdt.h>
@@ -44,6 +45,9 @@ __attribute__((used, section(".limine_requests"))) volatile struct limine_module
 __attribute__((used, section(".limine_requests"))) volatile struct limine_rsdp_request
     limine_rsdp_request = {.id = LIMINE_RSDP_REQUEST_ID, .revision = 0};
 
+__attribute__((used, section(".limine_requests"))) volatile struct limine_executable_cmdline_request
+    limine_cmdline_request = {.id = LIMINE_EXECUTABLE_CMDLINE_REQUEST_ID, .revision = 0};
+
 __attribute__((used, section(".limine_requests_end"))) static volatile uint64_t
     limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
 
@@ -68,6 +72,7 @@ void kmain()
     timer_init();
     asm_sti();
     heap_init(10);
+    cmdline_arg_t *cmdline_args = load_kernel_args(limine_cmdline_request.response);
     syscalls_init();
     task_switching_init();
 
@@ -92,10 +97,17 @@ void kmain()
     ps2_mouse_init();
     asm_sti();
 
-    debug_log("Launching desktop...\n");
-    task_t *task = load_elf("system:/desktop");
+    const char *init_path = get_kernel_arg(cmdline_args, "init");
+    if (init_path == NULL || init_path[0] == '\0') {
+        debug_log("Missing or invalid init= boot argument\n");
+        while (1)
+            asm_hlt();
+    }
+
+    debug_log_fmt("Launching init process: %s\n", init_path);
+    task_t *task = load_elf(init_path);
     if (task == NULL) {
-        debug_log("Failed to load desktop ELF\n");
+        debug_log_fmt("Failed to load init ELF: %s\n", init_path);
         while (1)
             asm_hlt();
     }
