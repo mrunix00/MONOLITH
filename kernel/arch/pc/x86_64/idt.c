@@ -244,8 +244,8 @@ void isr_handler(struct interrupt_registers *regs)
             debug_log_fmt("%s\n", error_message);
             debug_log_fmt("RIP = 0x%x\n", regs->rip);
 
-            task_t *next = task_next(current);
             task_mark_exiting(current);
+            task_t *next = task_next(current);
             if (!next || next == current)
                 next = task_next(NULL);
             if (!next || next == current)

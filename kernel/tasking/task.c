@@ -7,6 +7,7 @@
 #include <kernel/arch/pc/gdt.h>
 #include <kernel/arch/pc/idt.h>
 #include <kernel/arch/pc/sse.h>
+#include <kernel/debug.h>
 #include <kernel/klibc/memory.h>
 #include <kernel/klibc/string.h>
 #include <kernel/memory/heap.h>
@@ -15,9 +16,6 @@
 #include <kernel/tasking/ipc.h>
 #include <kernel/tasking/scheduler.h>
 #include <kernel/tasking/syscall.h>
-#include <kernel/tasking/task.h>
-#include <kernel/timer.h>
-#include <stdint.h>
 
 #define KERNEL_CODE_SELECTOR 0x08
 #define KERNEL_DATA_SELECTOR 0x10
@@ -37,15 +35,94 @@ static uint64_t _next_task_id = 1;
 
 extern void _task_switch_gate_stub();
 
-static void _task_state_save(task_t *task, interrupt_registers_t *regs);
-static void _task_state_load(task_t *task, interrupt_registers_t *regs);
-static void _task_unlink(task_t *task);
-static void _task_destroy(task_t *task);
+static void _task_remove_children(task_t *task)
+{
+    if (!task)
+        return debug_log("Failed to remove task: Invalid task\n");
+    while (task->first_child)
+        task_remove(task->first_child);
+}
+
+static void _task_unlink(task_t *task)
+{
+    if (!task)
+        return debug_log("Failed to unlink task: Invalid task\n");
+    if (task == &_task_list_head)
+        return debug_log("Failed to unlink task: task == _task_list_head\n");
+
+    task_t *prev = &_task_list_head;
+    while (prev->next && prev->next != &_task_list_head) {
+        if (prev->next == task)
+            break;
+        prev = prev->next;
+    }
+
+    if (prev->next != task)
+        return;
+
+    prev->next = task->next ? task->next : &_task_list_head;
+    if (_task_list_tail == task)
+        _task_list_tail = prev;
+}
+
+static void _task_unlink_child(task_t *task)
+{
+    if (!task)
+        return debug_log("Failed to unlink child: Invalid task\n");
+    if (!task->parent)
+        return debug_log_fmt("Failed to unlink child: %d has no parent\n", task->id);
+
+    if (task->prev_sibling)
+        task->prev_sibling->next_sibling = task->next_sibling;
+    else
+        task->parent->first_child = task->next_sibling;
+
+    if (task->next_sibling)
+        task->next_sibling->prev_sibling = task->prev_sibling;
+
+    task->parent = NULL;
+    task->next_sibling = NULL;
+    task->prev_sibling = NULL;
+}
+
+static void _task_destroy(task_t *task)
+{
+    if (!task)
+        return debug_log("Failed to destroy task: Invalid task\n");
+
+    _task_remove_children(task);
+    _task_unlink_child(task);
+
+    syscalls_task_cleanup(task);
+    ipc_task_cleanup(task);
+
+    if (task->memory.memblocks) {
+        for (size_t i = 0; i < task->memory.memblocks_count; i++) {
+            task_memblock_t *memblock = &task->memory.memblocks[i];
+            if (!memblock->release_on_exit)
+                continue;
+            if (memblock->phys_addr)
+                pmm_free((void *) memblock->phys_addr, memblock->page_count);
+        }
+        kfree(task->memory.memblocks);
+        task->memory.memblocks = NULL;
+    }
+
+    if (task->user_mode && task->state.cr3 != 0) {
+        vmm_destroy_address_space(task->state.cr3);
+        task->state.cr3 = 0;
+    }
+
+    kfree(task->state.fx_state);
+    kfree((void *) task->stack_bottom);
+    kfree(task->name);
+    kfree(task);
+}
 
 static void _task_defer_destroy(task_t *task)
 {
     if (task == &_task_list_head)
-        return;
+        return debug_log("Failed to defer destroy: task == _task_list_head\n");
     task->next = _deferred_destroy_list;
     _deferred_destroy_list = task;
 }
@@ -60,10 +137,89 @@ static void _task_destroy_deferred(void)
     }
 }
 
+static void _task_state_save(task_t *task, interrupt_registers_t *regs)
+{
+    if (!task)
+        return debug_log("Failed to save task state: Invalid task\n");
+    if (!regs)
+        return debug_log("Failed to save task state: Invalid regs\n");
+
+    task->state.rax = regs->rax;
+    task->state.rbx = regs->rbx;
+    task->state.rcx = regs->rcx;
+    task->state.rdx = regs->rdx;
+    task->state.rsi = regs->rsi;
+    task->state.rdi = regs->rdi;
+    task->state.rbp = regs->rbp;
+    task->state.r8 = regs->r8;
+    task->state.r9 = regs->r9;
+    task->state.r10 = regs->r10;
+    task->state.r11 = regs->r11;
+    task->state.r12 = regs->r12;
+    task->state.r13 = regs->r13;
+    task->state.r14 = regs->r14;
+    task->state.r15 = regs->r15;
+    task->state.rip = regs->rip;
+    task->state.rsp = regs->rsp;
+    task->state.rflags = regs->rflags ? regs->rflags : DEFAULT_RFLAGS;
+    task->state.cr3 = asm_read_cr3();
+
+    uint16_t cs = (uint16_t) regs->cs;
+    uint16_t ss = (uint16_t) regs->ss;
+    task->state.cs = cs ? cs : (task->user_mode ? USER_CODE_SELECTOR : KERNEL_CODE_SELECTOR);
+    task->state.ss = ss ? ss : (task->user_mode ? USER_DATA_SELECTOR : KERNEL_DATA_SELECTOR);
+
+    if (task->state.fx_state_aligned)
+        sse_save(task->state.fx_state_aligned);
+}
+
+static void _task_state_load(task_t *task, interrupt_registers_t *regs)
+{
+    if (!task)
+        return debug_log("Failed to load task state: Invalid task\n");
+    if (!regs)
+        return debug_log("Failed to load task state: Invalid regs\n");
+
+    regs->rax = task->state.rax;
+    regs->rbx = task->state.rbx;
+    regs->rcx = task->state.rcx;
+    regs->rdx = task->state.rdx;
+    regs->rsi = task->state.rsi;
+    regs->rdi = task->state.rdi;
+    regs->rbp = task->state.rbp;
+    regs->r8 = task->state.r8;
+    regs->r9 = task->state.r9;
+    regs->r10 = task->state.r10;
+    regs->r11 = task->state.r11;
+    regs->r12 = task->state.r12;
+    regs->r13 = task->state.r13;
+    regs->r14 = task->state.r14;
+    regs->r15 = task->state.r15;
+    regs->rip = task->state.rip;
+    regs->rsp = task->state.rsp;
+    regs->rflags = task->state.rflags ? task->state.rflags : DEFAULT_RFLAGS;
+
+    uint16_t cs = task->state.cs ? task->state.cs
+                                 : (task->user_mode ? USER_CODE_SELECTOR : KERNEL_CODE_SELECTOR);
+    uint16_t ss = task->state.ss ? task->state.ss
+                                 : (task->user_mode ? USER_DATA_SELECTOR : KERNEL_DATA_SELECTOR);
+
+    /* Ensure SS.RPL matches the CPL from CS */
+    if ((ss & 0x03) != (cs & 0x03))
+        ss = (cs & 0x03) == 0 ? KERNEL_DATA_SELECTOR : USER_DATA_SELECTOR;
+
+    regs->cs = cs;
+    regs->ss = ss;
+
+    if (task->state.fx_state_aligned)
+        sse_restore(task->state.fx_state_aligned);
+}
+
 task_t *task_create(void *entry_point, const char *name, task_mode_t mode)
 {
     task_t *task = (task_t *) kmalloc(sizeof(task_t));
     if (!task) {
+        debug_log("Failed to create task: kmalloc failed\n");
         return NULL;
     }
 
@@ -80,6 +236,7 @@ task_t *task_create(void *entry_point, const char *name, task_mode_t mode)
 
     task->state.fx_state = kmalloc(512 + 16);
     if (!task->state.fx_state) {
+        debug_log("Failed to create task: kmalloc failed\n");
         kfree(task);
         return NULL;
     }
@@ -94,6 +251,7 @@ task_t *task_create(void *entry_point, const char *name, task_mode_t mode)
 
     task->stack_bottom = (uintptr_t) kmalloc(KERNEL_STACK_SIZE);
     if (!task->stack_bottom) {
+        debug_log("Failed to create task: kmalloc failed\n");
         kfree(task->state.fx_state);
         kfree(task);
         return NULL;
@@ -103,6 +261,7 @@ task_t *task_create(void *entry_point, const char *name, task_mode_t mode)
     if (task->user_mode) {
         task->state.cr3 = vmm_create_address_space();
         if (task->state.cr3 == 0) {
+            debug_log("Failed to create task: vmm_create_address_space failed\n");
             kfree((void *) task->stack_bottom);
             kfree(task);
             return NULL;
@@ -120,6 +279,29 @@ task_t *task_create(void *entry_point, const char *name, task_mode_t mode)
     return task;
 }
 
+void task_set_parent(task_t *child, task_t *parent)
+{
+    if (!child)
+        return debug_log("Failed to set parent: Invalid child task\n");
+    if (child == parent)
+        return debug_log("Failed to set parent: task == parent\n");
+    if (child == &_task_list_head)
+        return debug_log("Failed to set parent: task == _task_list_head\n");
+
+    if (child->parent) /* Unlink child from its current parent if it has one */
+        _task_unlink_child(child);
+
+    if (!parent || parent->exiting)
+        return;
+
+    child->parent = parent;
+    child->prev_sibling = NULL;
+    child->next_sibling = parent->first_child;
+    if (parent->first_child)
+        parent->first_child->prev_sibling = child;
+    parent->first_child = child;
+}
+
 int task_map(
     task_t *task,
     uintptr_t virt_addr,
@@ -134,6 +316,7 @@ int task_map(
         task->memory.memblocks = (task_memblock_t *) kmalloc(
             sizeof(task_memblock_t) * task->memory.memblocks_size);
         if (!task->memory.memblocks) {
+            debug_log("Failed to map: kmalloc failed\n");
             return -1;
         }
     }
@@ -141,8 +324,10 @@ int task_map(
     if (task->memory.memblocks_count == task->memory.memblocks_size) {
         task_memblock_t *new_memblocks = (task_memblock_t *) krealloc(
             task->memory.memblocks, sizeof(task_memblock_t) * task->memory.memblocks_size * 2);
-        if (!new_memblocks)
+        if (!new_memblocks) {
+            debug_log("Failed to map: krealloc failed\n");
             return -1;
+        }
         task->memory.memblocks = new_memblocks;
         task->memory.memblocks_size *= 2;
     }
@@ -167,26 +352,24 @@ task_t *task_get_current()
 
 uintptr_t task_find_free_vaddr(task_t *task, size_t num_pages)
 {
-    if (!task || num_pages == 0)
+    if (!task) {
+        debug_log("Failed to find free vaddr: Invalid task\n");
         return 0;
-
-    size_t required_size = num_pages * PAGE_SIZE;
-    uintptr_t candidate = USER_SPACE_START;
-
-    if (task->memory.memblocks == NULL || task->memory.memblocks_count == 0) {
-        if (candidate < USER_SPACE_START || candidate + required_size > USER_SPACE_END)
-            return 0;
-        return candidate;
+    }
+    if (num_pages == 0) {
+        debug_log("Failed to find free vaddr: num_pages == 0\n");
+        return 0;
     }
 
+    uintptr_t candidate = USER_SPACE_START;
+    size_t required = num_pages * PAGE_SIZE;
     bool adjusted;
     do {
         adjusted = false;
         for (size_t i = 0; i < task->memory.memblocks_count; i++) {
-            task_memblock_t *block = &task->memory.memblocks[i];
-            uintptr_t block_end = block->virt_addr + block->page_count * PAGE_SIZE;
-
-            if (candidate < block_end && candidate + required_size > block->virt_addr) {
+            task_memblock_t *b = &task->memory.memblocks[i];
+            uintptr_t block_end = b->virt_addr + b->page_count * PAGE_SIZE;
+            if (candidate < block_end && candidate + required > b->virt_addr) {
                 candidate = block_end;
                 adjusted = true;
                 break;
@@ -194,9 +377,8 @@ uintptr_t task_find_free_vaddr(task_t *task, size_t num_pages)
         }
     } while (adjusted);
 
-    if (candidate < USER_SPACE_START || candidate + required_size > USER_SPACE_END)
+    if (candidate < USER_SPACE_START || candidate + required > USER_SPACE_END)
         return 0;
-
     return candidate;
 }
 
@@ -204,21 +386,23 @@ task_t *task_find_by_id(uint64_t id)
 {
     if (id == 0)
         return NULL;
-
-    task_t *cursor = _task_list_head.next ? _task_list_head.next : &_task_list_head;
-    while (cursor && cursor != &_task_list_head) {
-        if (cursor->id == id)
-            return cursor;
-        cursor = cursor->next ? cursor->next : &_task_list_head;
+    for (task_t *t = _task_list_head.next; t && t != &_task_list_head; t = t->next) {
+        if (t->id == id)
+            return t;
     }
-
     return NULL;
 }
 
 int task_unmap(task_t *task, uintptr_t virt_addr, size_t page_count, bool release_on_exit)
 {
-    if (!task || page_count == 0)
+    if (!task) {
+        debug_log("Failed to unmap: Invalid task\n");
         return -1;
+    }
+    if (page_count == 0) {
+        debug_log("Failed to unmap: page_count == 0\n");
+        return -1;
+    }
 
     vmm_unmap_range(task->state.cr3, virt_addr, page_count * PAGE_SIZE, true);
 
@@ -227,15 +411,16 @@ int task_unmap(task_t *task, uintptr_t virt_addr, size_t page_count, bool releas
 
     for (size_t i = 0; i < task->memory.memblocks_count; i++) {
         task_memblock_t *memblock = &task->memory.memblocks[i];
-        if (memblock->virt_addr == virt_addr && memblock->page_count == page_count) {
-            if (release_on_exit && memblock->phys_addr)
-                pmm_free((void *) memblock->phys_addr, memblock->page_count);
+        if (memblock->virt_addr != virt_addr || memblock->page_count != page_count)
+            continue;
+        if (release_on_exit && memblock->phys_addr)
+            pmm_free((void *) memblock->phys_addr, memblock->page_count);
 
-            for (size_t j = i + 1; j < task->memory.memblocks_count; j++)
-                task->memory.memblocks[j - 1] = task->memory.memblocks[j];
-            task->memory.memblocks_count--;
-            break;
-        }
+        /* Shift remaining entries down */
+        for (size_t j = i + 1; j < task->memory.memblocks_count; j++)
+            task->memory.memblocks[j - 1] = task->memory.memblocks[j];
+        task->memory.memblocks_count--;
+        break;
     }
 
     return 0;
@@ -243,19 +428,22 @@ int task_unmap(task_t *task, uintptr_t virt_addr, size_t page_count, bool releas
 
 void task_remove(task_t *task)
 {
-    if (!task || task == &_task_list_head)
-        return;
+    if (!task)
+        return debug_log("Failed to remove task: Invalid task\n");
+    if (task == &_task_list_head)
+        return debug_log("Failed to remove task: task == _task_list_head\n");
+
+    _task_remove_children(task);
 
     bool removing_current = (_current_task == task);
     if (removing_current)
         _current_task = task->next ? task->next : &_task_list_head;
 
     _task_unlink(task);
-    if (removing_current) {
+    if (removing_current)
         _task_defer_destroy(task);
-        return;
-    }
-    _task_destroy(task);
+    else
+        _task_destroy(task);
 }
 
 void _task_switch_gate(interrupt_registers_t *regs)
@@ -265,30 +453,25 @@ void _task_switch_gate(interrupt_registers_t *regs)
 
     _task_destroy_deferred();
 
-    if (!target) {
+    if (!target || target->exiting)
         target = task_next(current);
-    }
 
-    if (!target || target == current)
-        target = task_idle();
-
-    if (current) {
+    if (current)
         _task_state_save(current, regs);
-    }
 
     if (current && current->exiting) {
-        task_t *exiting_task = current;
-        _task_unlink(exiting_task);
-        if (target == exiting_task || !target)
+        _task_remove_children(current);
+        _task_unlink(current);
+        if (!target || target == current)
             target = task_next(NULL);
-        _task_defer_destroy(exiting_task);
+        _task_defer_destroy(current);
     }
 
     if (!target) {
         target = &_task_list_head;
     }
 
-    _current_task = target;
+    _current_task = target ? target : &_task_list_head;
     _next_task = NULL;
 
     gdt_tss_set_rsp0(_current_task->state.rsp0);
@@ -332,7 +515,7 @@ void task_switching_init()
 void task_switch(task_t *task)
 {
     if (!_current_task)
-        return;
+        return debug_log_fmt("Failed to switch task: %d\n", task->id);
 
     if (!task)
         task = _current_task->next ? _current_task->next : &_task_list_head;
@@ -351,9 +534,6 @@ task_t *task_next(task_t *task)
 
     do {
         cursor = cursor->next ? cursor->next : &_task_list_head;
-        if (!cursor)
-            return &_task_list_head;
-
         if (cursor != &_task_list_head && cursor != start && !cursor->exiting)
             return cursor;
     } while (cursor != start);
@@ -363,165 +543,16 @@ task_t *task_next(task_t *task)
 
 void task_mark_exiting(task_t *task)
 {
-    if (!task || task == &_task_list_head)
-        return;
+    if (!task)
+        return debug_log("Failed to mark task exiting: Invalid task\n");
+    if (task == &_task_list_head)
+        return debug_log("Failed to mark task exiting: task == _task_list_head\n");
+
+    _task_remove_children(task);
     task->exiting = true;
 }
 
 task_t *task_idle()
 {
     return &_task_list_head;
-}
-
-static void _task_state_save(task_t *task, interrupt_registers_t *regs)
-{
-    if (!task || !regs)
-        return;
-
-    task->state.rax = regs->rax;
-    task->state.rbx = regs->rbx;
-    task->state.rcx = regs->rcx;
-    task->state.rdx = regs->rdx;
-    task->state.rsi = regs->rsi;
-    task->state.rdi = regs->rdi;
-    task->state.rbp = regs->rbp;
-    task->state.r8 = regs->r8;
-    task->state.r9 = regs->r9;
-    task->state.r10 = regs->r10;
-    task->state.r11 = regs->r11;
-    task->state.r12 = regs->r12;
-    task->state.r13 = regs->r13;
-    task->state.r14 = regs->r14;
-    task->state.r15 = regs->r15;
-    task->state.rip = regs->rip;
-    task->state.rsp = regs->rsp;
-    task->state.rflags = regs->rflags ? regs->rflags : DEFAULT_RFLAGS;
-    task->state.cr3 = asm_read_cr3();
-
-    uint16_t cs = (uint16_t) regs->cs;
-    uint16_t ss = (uint16_t) regs->ss;
-    if (!cs)
-        cs = task->user_mode ? USER_CODE_SELECTOR : KERNEL_CODE_SELECTOR;
-    if (!ss)
-        ss = task->user_mode ? USER_DATA_SELECTOR : KERNEL_DATA_SELECTOR;
-
-    task->state.cs = cs;
-    task->state.ss = ss;
-
-    if (task->state.fx_state_aligned)
-        sse_save(task->state.fx_state_aligned);
-}
-
-static void _task_state_load(task_t *task, interrupt_registers_t *regs)
-{
-    if (!task || !regs)
-        return;
-
-    regs->rax = task->state.rax;
-    regs->rbx = task->state.rbx;
-    regs->rcx = task->state.rcx;
-    regs->rdx = task->state.rdx;
-    regs->rsi = task->state.rsi;
-    regs->rdi = task->state.rdi;
-    regs->rbp = task->state.rbp;
-    regs->r8 = task->state.r8;
-    regs->r9 = task->state.r9;
-    regs->r10 = task->state.r10;
-    regs->r11 = task->state.r11;
-    regs->r12 = task->state.r12;
-    regs->r13 = task->state.r13;
-    regs->r14 = task->state.r14;
-    regs->r15 = task->state.r15;
-    regs->rip = task->state.rip;
-    regs->rsp = task->state.rsp;
-    regs->rflags = task->state.rflags ? task->state.rflags : DEFAULT_RFLAGS;
-
-    uint16_t cs = task->state.cs;
-    uint16_t ss = task->state.ss;
-    if (!cs)
-        cs = task->user_mode ? USER_CODE_SELECTOR : KERNEL_CODE_SELECTOR;
-    if (!ss)
-        ss = task->user_mode ? USER_DATA_SELECTOR : KERNEL_DATA_SELECTOR;
-
-    /* Ensure SS.RPL matches the CPL from CS */
-    uint8_t cs_cpl = cs & 0x03;
-    uint8_t ss_rpl = ss & 0x03;
-    if (cs_cpl != ss_rpl)
-        ss = cs_cpl == 0 ? KERNEL_DATA_SELECTOR : USER_DATA_SELECTOR;
-
-    regs->cs = cs;
-    regs->ss = ss;
-
-    if (task->state.fx_state_aligned)
-        sse_restore(task->state.fx_state_aligned);
-}
-
-static void _task_unlink(task_t *task)
-{
-    if (!task || task == &_task_list_head)
-        return;
-
-    task_t *prev = &_task_list_head;
-    while (prev->next && prev->next != &_task_list_head) {
-        if (prev->next == task)
-            break;
-        prev = prev->next;
-    }
-
-    if (prev->next != task)
-        return;
-
-    prev->next = task->next ? task->next : &_task_list_head;
-
-    if (_task_list_tail == task)
-        _task_list_tail = prev;
-}
-
-static void _task_destroy(task_t *task)
-{
-    if (!task || task == &_task_list_head)
-        return;
-
-    /* Check if already destroyed (idempotency protection) */
-    if (task->state.cr3 == 0xDEADBEEF)
-        return;
-
-    syscalls_task_cleanup(task);
-    ipc_task_cleanup(task);
-
-    if (task->memory.memblocks) {
-        for (size_t i = 0; i < task->memory.memblocks_count; i++) {
-            task_memblock_t *memblock = &task->memory.memblocks[i];
-            if (!memblock->release_on_exit)
-                continue;
-            if (memblock->phys_addr)
-                pmm_free((void *) memblock->phys_addr, memblock->page_count);
-        }
-        kfree(task->memory.memblocks);
-        task->memory.memblocks = NULL;
-    }
-
-    if (task->user_mode && task->state.cr3 != 0) {
-        vmm_destroy_address_space(task->state.cr3);
-        task->state.cr3 = 0;
-    }
-
-    if (task->state.fx_state) {
-        kfree(task->state.fx_state);
-        task->state.fx_state = NULL;
-    }
-
-    if (task->stack_bottom) {
-        kfree((void *) task->stack_bottom);
-        task->stack_bottom = 0;
-    }
-
-    if (task->name) {
-        kfree(task->name);
-        task->name = NULL;
-    }
-
-    /* Mark as destroyed to prevent double-free */
-    task->state.cr3 = 0xDEADBEEF;
-    kfree(task);
 }

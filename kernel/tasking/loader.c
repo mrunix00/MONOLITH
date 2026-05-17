@@ -16,6 +16,11 @@
 
 task_t *load_elf(const char *path)
 {
+    return load_elf_for_parent(path, NULL);
+}
+
+task_t *load_elf_for_parent(const char *path, task_t *parent)
+{
     file_t file = file_open(path);
     if (file.internal == NULL)
         return NULL;
@@ -107,6 +112,7 @@ task_t *load_elf(const char *path)
      */
     uintptr_t stack_top = 0x00007fffe0000000ULL + 10 * PAGE_SIZE;
     task->state.rsp = stack_top - 8;
+    task_set_parent(task, parent);
 
     __asm__("sti");
     return task;

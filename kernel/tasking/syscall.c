@@ -359,8 +359,8 @@ int sys_exit()
     if (!current)
         return -1;
 
-    task_t *next = task_next(current);
     task_mark_exiting(current);
+    task_t *next = task_next(current);
 
     if (!next || next == current)
         next = task_next(NULL);
@@ -422,7 +422,7 @@ void sys_spawn_task(const char *path)
 {
     if (!_user_ptr_range(path, 1))
         return;
-    if (load_elf(path) == NULL)
+    if (load_elf_for_parent(path, task_get_current()) == NULL)
         debug_log_fmt("Failed to load %s!", path);
 }
 

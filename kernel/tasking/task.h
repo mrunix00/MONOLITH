@@ -63,6 +63,10 @@ typedef struct task task_t;
 struct task
 {
     task_t *next;
+    task_t *parent;
+    task_t *first_child;
+    task_t *next_sibling;
+    task_t *prev_sibling;
     uint64_t id;
     char *name;
     task_state_t state;
@@ -80,6 +84,7 @@ struct task
 void task_switching_init();
 task_t *task_create(void *entry_point, const char *name, task_mode_t mode);
 task_t *task_get_current();
+void task_set_parent(task_t *task, task_t *parent);
 uintptr_t task_find_free_vaddr(task_t *task, size_t num_pages);
 task_t *task_find_by_id(uint64_t id);
 int task_map(
