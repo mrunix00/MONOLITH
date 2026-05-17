@@ -26,6 +26,7 @@ static task_t *_fb_owner;
 #define IA32_LSTAR 0xC0000082
 #define IA32_FMASK 0xC0000084
 #define IA32_EFER_SCE (1ULL << 0)
+#define RFLAGS_IF (1ULL << 9)
 #define KERNEL_CODE_SELECTOR 0x08
 #define USER_CODE_SELECTOR 0x1B
 
@@ -39,7 +40,7 @@ void syscalls_init()
         IA32_STAR,
         ((uint64_t) (USER_CODE_SELECTOR & ~0x3) << 48) | ((uint64_t) KERNEL_CODE_SELECTOR << 32));
     asm_write_msr(IA32_LSTAR, (uint64_t) _syscall_handler);
-    asm_write_msr(IA32_FMASK, 0);
+    asm_write_msr(IA32_FMASK, RFLAGS_IF);
 }
 
 #define USER_SPACE_START 0x0000000000001000ULL
