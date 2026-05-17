@@ -26,12 +26,24 @@ bool start_debug_console(struct limine_framebuffer_response *fb_response);
  */
 void stop_debug_console(void);
 
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+
 /*
  * Print a debug message.
  */
-void debug_log(const char *message);
+#define debug_log(message) _debug_log(__FILE__ ":" TOSTRING(__LINE__) ": " message)
 
 /*
  * Print a formatted debug message.
  */
-void debug_log_fmt(const char *format, ...);
+#define debug_log_fmt(format, ...) \
+    _debug_log_fmt(__FILE__ ":" TOSTRING(__LINE__) ": " format, ##__VA_ARGS__)
+
+#define debug_assert(expr) _debug_assert(expr, __FILE__ ":" TOSTRING(__LINE__), #expr)
+
+void _debug_log(const char *message);
+
+void _debug_log_fmt(const char *format, ...);
+
+bool _debug_assert(bool expr, const char *line, const char *expr_str);

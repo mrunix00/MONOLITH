@@ -37,18 +37,19 @@ extern void _task_switch_gate_stub();
 
 static void _task_remove_children(task_t *task)
 {
-    if (!task)
-        return debug_log("Failed to remove task: Invalid task\n");
+    if (!debug_assert(task))
+        return;
+
     while (task->first_child)
         task_remove(task->first_child);
 }
 
 static void _task_unlink(task_t *task)
 {
-    if (!task)
-        return debug_log("Failed to unlink task: Invalid task\n");
-    if (task == &_task_list_head)
-        return debug_log("Failed to unlink task: task == _task_list_head\n");
+    if (!debug_assert(task))
+        return;
+    if (!debug_assert(task != &_task_list_head))
+        return;
 
     task_t *prev = &_task_list_head;
     while (prev->next && prev->next != &_task_list_head) {
@@ -67,8 +68,9 @@ static void _task_unlink(task_t *task)
 
 static void _task_unlink_child(task_t *task)
 {
-    if (!task)
-        return debug_log("Failed to unlink child: Invalid task\n");
+    if (!debug_assert(task))
+        return;
+
     if (!task->parent)
         return debug_log_fmt("Failed to unlink child: %d has no parent\n", task->id);
 
@@ -87,8 +89,8 @@ static void _task_unlink_child(task_t *task)
 
 static void _task_destroy(task_t *task)
 {
-    if (!task)
-        return debug_log("Failed to destroy task: Invalid task\n");
+    if (!debug_assert(task))
+        return;
 
     _task_remove_children(task);
     _task_unlink_child(task);
@@ -121,8 +123,11 @@ static void _task_destroy(task_t *task)
 
 static void _task_defer_destroy(task_t *task)
 {
-    if (task == &_task_list_head)
-        return debug_log("Failed to defer destroy: task == _task_list_head\n");
+    if (!debug_assert(task))
+        return;
+    if (!debug_assert(task != &_task_list_head))
+        return;
+
     task->next = _deferred_destroy_list;
     _deferred_destroy_list = task;
 }
@@ -139,10 +144,10 @@ static void _task_destroy_deferred(void)
 
 static void _task_state_save(task_t *task, interrupt_registers_t *regs)
 {
-    if (!task)
-        return debug_log("Failed to save task state: Invalid task\n");
-    if (!regs)
-        return debug_log("Failed to save task state: Invalid regs\n");
+    if (!debug_assert(task))
+        return;
+    if (!debug_assert(regs))
+        return;
 
     task->state.rax = regs->rax;
     task->state.rbx = regs->rbx;
@@ -175,10 +180,10 @@ static void _task_state_save(task_t *task, interrupt_registers_t *regs)
 
 static void _task_state_load(task_t *task, interrupt_registers_t *regs)
 {
-    if (!task)
-        return debug_log("Failed to load task state: Invalid task\n");
-    if (!regs)
-        return debug_log("Failed to load task state: Invalid regs\n");
+    if (!debug_assert(task))
+        return;
+    if (!debug_assert(regs))
+        return;
 
     regs->rax = task->state.rax;
     regs->rbx = task->state.rbx;
@@ -281,12 +286,12 @@ task_t *task_create(void *entry_point, const char *name, task_mode_t mode)
 
 void task_set_parent(task_t *child, task_t *parent)
 {
-    if (!child)
-        return debug_log("Failed to set parent: Invalid child task\n");
-    if (child == parent)
-        return debug_log("Failed to set parent: task == parent\n");
-    if (child == &_task_list_head)
-        return debug_log("Failed to set parent: task == _task_list_head\n");
+    if (!debug_assert(child))
+        return;
+    if (!debug_assert(child != parent))
+        return;
+    if (!debug_assert(child != &_task_list_head))
+        return;
 
     if (child->parent) /* Unlink child from its current parent if it has one */
         _task_unlink_child(child);
@@ -310,6 +315,11 @@ int task_map(
     uintptr_t flags,
     bool release_on_exit)
 {
+    if (!debug_assert(task))
+        return -1;
+    if (!debug_assert(page_count != 0))
+        return -1;
+
     if (task->memory.memblocks == NULL) {
         task->memory.memblocks_count = 0;
         task->memory.memblocks_size = 16;
@@ -352,14 +362,10 @@ task_t *task_get_current()
 
 uintptr_t task_find_free_vaddr(task_t *task, size_t num_pages)
 {
-    if (!task) {
-        debug_log("Failed to find free vaddr: Invalid task\n");
+    if (!debug_assert(task))
         return 0;
-    }
-    if (num_pages == 0) {
-        debug_log("Failed to find free vaddr: num_pages == 0\n");
+    if (!debug_assert(num_pages != 0))
         return 0;
-    }
 
     uintptr_t candidate = USER_SPACE_START;
     size_t required = num_pages * PAGE_SIZE;
@@ -395,14 +401,10 @@ task_t *task_find_by_id(uint64_t id)
 
 int task_unmap(task_t *task, uintptr_t virt_addr, size_t page_count, bool release_on_exit)
 {
-    if (!task) {
-        debug_log("Failed to unmap: Invalid task\n");
+    if (!debug_assert(task))
         return -1;
-    }
-    if (page_count == 0) {
-        debug_log("Failed to unmap: page_count == 0\n");
+    if (!debug_assert(page_count != 0))
         return -1;
-    }
 
     vmm_unmap_range(task->state.cr3, virt_addr, page_count * PAGE_SIZE, true);
 
@@ -428,10 +430,10 @@ int task_unmap(task_t *task, uintptr_t virt_addr, size_t page_count, bool releas
 
 void task_remove(task_t *task)
 {
-    if (!task)
-        return debug_log("Failed to remove task: Invalid task\n");
-    if (task == &_task_list_head)
-        return debug_log("Failed to remove task: task == _task_list_head\n");
+    if (!debug_assert(task))
+        return;
+    if (!debug_assert(task != &_task_list_head))
+        return;
 
     _task_remove_children(task);
 
@@ -514,8 +516,8 @@ void task_switching_init()
 
 void task_switch(task_t *task)
 {
-    if (!_current_task)
-        return debug_log_fmt("Failed to switch task: %d\n", task->id);
+    if (!debug_assert(_current_task))
+        return;
 
     if (!task)
         task = _current_task->next ? _current_task->next : &_task_list_head;
@@ -543,10 +545,10 @@ task_t *task_next(task_t *task)
 
 void task_mark_exiting(task_t *task)
 {
-    if (!task)
-        return debug_log("Failed to mark task exiting: Invalid task\n");
-    if (task == &_task_list_head)
-        return debug_log("Failed to mark task exiting: task == _task_list_head\n");
+    if (!debug_assert(task))
+        return;
+    if (!debug_assert(task != &_task_list_head))
+        return;
 
     _task_remove_children(task);
     task->exiting = true;

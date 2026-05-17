@@ -130,7 +130,7 @@ void stop_debug_console(void)
     }
 }
 
-void debug_log(const char *message)
+void _debug_log(const char *message)
 {
     _debug_log_timestamp();
     _debug_write_string(message);
@@ -200,7 +200,7 @@ static inline void _debug_logx(uint64_t x)
     _debug_write_string(buffer);
 }
 
-void debug_log_fmt(const char *format, ...)
+void _debug_log_fmt(const char *format, ...)
 {
     va_list args;
 
@@ -239,4 +239,11 @@ void debug_log_fmt(const char *format, ...)
     }
 
     va_end(args);
+}
+
+bool _debug_assert(bool expr, const char *line, const char *expr_str)
+{
+    if (!expr)
+        _debug_log_fmt("%s: Assertion \"%s\" failed\n", line, expr_str);
+    return expr;
 }
