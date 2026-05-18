@@ -3,16 +3,11 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-#include "../desktop/font.h"
-
 #include <libdesktop.h>
 #include <libgfx.h>
 #include <unistd.h>
 
-static gfx_font_t _about_font;
-static bool _about_font_ready = false;
-
-static void _draw_about_view(uint16_t window_id, uint16_t width, uint16_t height, gfx_context_t *ctx)
+static void _draw_about_view(uint16_t width, uint16_t height, gfx_font_t *font, gfx_context_t *ctx)
 {
     static const char *title_text = "MONOLITH Project";
     static const char *subtitle_text = "A hobby operating system";
@@ -27,17 +22,6 @@ static void _draw_about_view(uint16_t window_id, uint16_t width, uint16_t height
     if (draw_width < 64 || draw_height < 64)
         return;
 
-    if (!_about_font_ready) {
-        _about_font = gfx_load_font(
-            font_atlas,
-            (gfx_font_size_t){FONT_ATLAS_WIDTH, FONT_ATLAS_HEIGHT},
-            font_glyphs,
-            FONT_FIRST_CHAR,
-            FONT_LAST_CHAR,
-            (gfx_font_size_t){13, FONT_LINE_HEIGHT});
-        _about_font_ready = true;
-    }
-
     gfx_begin_frame(ctx);
 
     gfx_draw_filled_rect(
@@ -47,10 +31,10 @@ static void _draw_about_view(uint16_t window_id, uint16_t width, uint16_t height
 
     gfx_set_clip(ctx, (gfx_area_t){0, 0, draw_width, draw_height});
 
-    uint32_t title_width = gfx_get_text_width(&_about_font, title_text);
-    uint32_t subtitle_width = gfx_get_text_width(&_about_font, subtitle_text);
+    uint32_t title_width = gfx_get_text_width(font, title_text);
+    uint32_t subtitle_width = gfx_get_text_width(font, subtitle_text);
     uint32_t block_width = title_width > subtitle_width ? title_width : subtitle_width;
-    uint32_t line_height = FONT_LINE_HEIGHT;
+    uint32_t line_height = gfx_get_text_height(font, title_text);
     uint32_t line_gap = line_height / 2;
     uint32_t block_height = line_height * 2 + line_gap;
 
@@ -65,19 +49,18 @@ static void _draw_about_view(uint16_t window_id, uint16_t width, uint16_t height
 
     gfx_draw_text(
         ctx,
-        &_about_font,
+        font,
         (gfx_pos_t){.x = title_x, .y = title_y},
         (gfx_color_t){0xFF, 0xDF, 0xE4, 0xED},
         title_text);
     gfx_draw_text(
         ctx,
-        &_about_font,
+        font,
         (gfx_pos_t){.x = subtitle_x, .y = subtitle_y},
         (gfx_color_t){0xFF, 0xB9, 0xC2, 0xCF},
         subtitle_text);
 
     gfx_end_frame(ctx);
-    desktop_present_window(window_id);
 }
 
 int main(void)
@@ -89,8 +72,10 @@ int main(void)
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t window_id = 0;
+    gfx_font_t _about_font
+        = gfx_load_font_from_file("system:/assets/IBMPlexSans_Condensed-Medium.ttf", 18);
 
-    if (desktop_connect() != 0)
+    if (_about_font.data == NULL || desktop_connect() != 0)
         return 1;
 
     while (1) {
@@ -137,7 +122,8 @@ int main(void)
         if (event.type == DESKTOP_EVENT_FRAMEBUFFER_READY
             && event.data.framebuffer_ready.id == window_id
             && desktop_handle_framebuffer_event(&event, &framebuffer) == 1) {
-            _draw_about_view((uint16_t) window_id, width, height, &framebuffer);
+            _draw_about_view(width, height, &_about_font, &framebuffer);
+            desktop_present_window(window_id);
             continue;
         }
 
@@ -145,8 +131,10 @@ int main(void)
             && event.data.resized.window_id == window_id) {
             width = event.data.resized.new_width;
             height = event.data.resized.new_height;
-            if (desktop_request_window_framebuffer(window_id, width, height) == 1)
-                _draw_about_view((uint16_t) window_id, width, height, &framebuffer);
+            if (desktop_request_window_framebuffer(window_id, width, height) == 1) {
+                _draw_about_view(width, height, &_about_font, &framebuffer);
+                desktop_present_window(window_id);
+            }
             continue;
         }
 

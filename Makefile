@@ -94,6 +94,7 @@ initrd: $(INITRD_DIR) | $(BUILD_DIR)
 	@echo "Creating initrd archive in ustar format..."
 	@mkdir -p $(INITRD_ASSETS_DIR)
 	@cp -f assets/wallpaper.jpg $(INITRD_ASSETS_DIR)/wallpaper.jpg
+	@cp -f assets/IBMPlexSans_Condensed-Medium.ttf $(INITRD_ASSETS_DIR)/IBMPlexSans_Condensed-Medium.ttf
 	tar --format=ustar -cf $(INITRD_TAR) -C $(INITRD_DIR) .
 
 # Create ISO

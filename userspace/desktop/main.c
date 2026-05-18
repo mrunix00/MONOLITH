@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-#include "./font.h"
 #include "./input.h"
 #include "./magic.h"
 #include "./protocol_server.h"
@@ -82,16 +81,10 @@ int main()
     gfx_context_t context = gfx_init_screen();
     if (FRAME_RATE > 0)
         gfx_set_target_fps(&context, FRAME_RATE);
-    default_font = gfx_load_font(
-        font_atlas,
-        (gfx_font_size_t){FONT_ATLAS_WIDTH, FONT_ATLAS_HEIGHT},
-        font_glyphs,
-        FONT_FIRST_CHAR,
-        FONT_LAST_CHAR,
-        (gfx_font_size_t){13, FONT_LINE_HEIGHT});
+    default_font = gfx_load_font_from_file("system:/assets/IBMPlexSans_Condensed-Medium.ttf", 18);
 
     gfx_colored_bitmap_t wallpaper
-        = _load_wallpaper("system://assets/wallpaper.jpg", context.width, context.height);
+        = _load_wallpaper("system:/assets/wallpaper.jpg", context.width, context.height);
 
     const menu_item_t system_menu_items[] = {
         {.label = "About MONOLITH", .type = MENU_ITEM_ACTION, .action = _menu_action_about},

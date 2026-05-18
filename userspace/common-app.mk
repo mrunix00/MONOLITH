@@ -7,13 +7,14 @@ APP_LIB_DEPS ?= libc
 EXTRA_INCLUDE_DIRS ?=
 POST_INSTALL_CMD ?= @:
 SHARED_INCLUDE_DIR ?= $(abspath ../../shared/include/monolith)
+STB_DIR ?= ../../libs/stb
 
 SRC := $(wildcard *.c)
 OBJ_DIR := $(BUILD_DIR)/obj/userspace/$(TARGET)
 OBJ := $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRC))
 
 APP_LIB_TARGETS := $(addprefix $(BUILD_DIR)/libs/,$(addsuffix .a,$(APP_LIB_DEPS)))
-APP_INCLUDE_DIRS := $(addprefix ../libs/,$(addsuffix /include,$(APP_LIB_DEPS))) $(SHARED_INCLUDE_DIR) $(EXTRA_INCLUDE_DIRS)
+APP_INCLUDE_DIRS := $(addprefix ../libs/,$(addsuffix /include,$(APP_LIB_DEPS))) $(SHARED_INCLUDE_DIR) $(STB_DIR) $(EXTRA_INCLUDE_DIRS)
 
 CC := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc
 CFLAGS += $(APP_OPTFLAGS) $(addprefix -I,$(APP_INCLUDE_DIRS)) -Wall -Wextra

@@ -6,51 +6,52 @@
 #pragma once
 
 #include <libgfx/types.h>
+#include <stddef.h>
 #include <stdint.h>
+#include <stb_truetype.h>
 
 typedef struct
 {
-    uint32_t width, height;
-} gfx_font_size_t;
-
-typedef struct
-{
-    uint32_t x;
-    uint32_t y;
-    uint32_t width;
-    uint32_t height;
-    int32_t x_offset;
-    int32_t y_offset;
-    uint32_t x_advance;
+    uint32_t codepoint;
+    int width;
+    int height;
+    int x_offset;
+    int y_offset;
+    int x_advance;
+    unsigned char *bitmap;
+    size_t next;
 } gfx_glyph_t;
 
 typedef struct
 {
-    gfx_font_size_t size;
-    uint8_t first_char;
-    uint8_t last_char;
-    const uint8_t *atlas;
-    gfx_font_size_t atlas_size;
-    const gfx_glyph_t *glyphs;
+    stbtt_fontinfo info;
+    unsigned char *arena;
+    size_t arena_size;
+    size_t arena_capacity;
+    unsigned char *data;
+    int font_offset;
+    float scale;
+    uint32_t pixel_size;
+    uint32_t line_height;
+    size_t first_glyph;
+    size_t last_glyph;
 } gfx_font_t;
 
-gfx_font_t gfx_load_font(
-    const uint8_t *atlas,
-    gfx_font_size_t atlas_size,
-    const gfx_glyph_t *glyphs,
-    uint8_t first_char,
-    uint8_t last_char,
-    gfx_font_size_t size);
+gfx_font_t gfx_load_font(const void *data, uint32_t font_size);
 
-void gfx_draw_char(gfx_context_t *, gfx_font_t *, gfx_pos_t, gfx_color_t, char);
+gfx_font_t gfx_load_font_from_file(const char *path, uint32_t font_size);
+
+void gfx_unload_font(gfx_font_t *font);
+
+void gfx_draw_char(gfx_context_t *, gfx_font_t *, gfx_pos_t, gfx_color_t, uint32_t codepoint);
 
 void gfx_draw_text(gfx_context_t *, gfx_font_t *, gfx_pos_t, gfx_color_t, const char *);
 
 void gfx_draw_text_centered(gfx_context_t *, gfx_font_t *, gfx_area_t, gfx_color_t, const char *);
 
-uint32_t gfx_get_char_width(gfx_font_t *font, char c);
+uint32_t gfx_get_char_width(gfx_font_t *font, uint32_t codepoint);
 
-uint32_t gfx_get_char_height(gfx_font_t *font, char c);
+uint32_t gfx_get_char_height(gfx_font_t *font, uint32_t codepoint);
 
 uint32_t gfx_get_text_width(gfx_font_t *font, const char *text);
 
