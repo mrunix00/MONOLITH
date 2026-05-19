@@ -5,19 +5,19 @@
 ### Fedora / RHEL
 
 ```console
-sudo dnf install gcc gcc-c++ make bison flex gmp-devel libmpc-devel mpfr-devel texinfo isl-devel qemu nasm make grub2-tools-extra xorriso
+sudo dnf install gcc gcc-c++ make bison flex gmp-devel libmpc-devel mpfr-devel texinfo isl-devel qemu nasm make grub2-tools-extra xorriso curl
 ```
 
 ### Arch / Manjaro
 
 ```console
-sudo pacman -S base-devel qemu-desktop flex texinfo grub nasm libmpc gmp mpfr libisl flex xorriso
+sudo pacman -S base-devel qemu-desktop flex texinfo grub nasm libmpc gmp mpfr libisl flex xorriso curl
 ```
 
 ### Ubuntu / Debian
 
 ```console
-sudo apt install build-essential bison flex libgmp3-dev libmpc-dev libmpfr-dev texinfo libisl-dev nasm qemu-system xorriso mtools grub-pc-bin grub-common
+sudo apt install build-essential bison flex libgmp3-dev libmpc-dev libmpfr-dev texinfo libisl-dev nasm qemu-system xorriso mtools grub-pc-bin grub-common curl
 ```
 
 ### NixOS
