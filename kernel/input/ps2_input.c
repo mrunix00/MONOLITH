@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include <kernel/arch/pc/interrupts.h>
 #include <kernel/arch/pc/asm.h>
 #include <kernel/input/ps2_input.h>
 
@@ -44,15 +45,17 @@ uint8_t ps2_read()
 
 uint8_t ps2_read_config()
 {
-    asm_cli();
+    interrupts_disable();
     ps2_write_command(PS2_CMD_READ_CCB);
     uint8_t ccb = ps2_read();
+    interrupts_enable();
     return ccb;
 }
 
 void ps2_write_config(uint8_t ccb)
 {
-    asm_cli();
+    interrupts_disable();
     ps2_write_command(PS2_CMD_WRITE_CCB);
     ps2_write(ccb);
+    interrupts_enable();
 }

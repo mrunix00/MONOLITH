@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-#include <kernel/arch/pc/apic.h>
+#include "kernel/arch/pc/interrupts.h"
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/idt.h>
 #include <kernel/debug.h>
@@ -264,18 +264,18 @@ void isr_handler(struct interrupt_registers *regs)
 void irq_register_handler(const uint8_t irq, void *handler)
 {
     _irq_routines[irq] = handler;
-    apic_set_irq_mask(irq, false);
+    interrupts_set_irq_mask(irq, false);
 }
 
 void irq_unregister_handler(const uint8_t irq)
 {
     _irq_routines[irq] = NULL;
-    apic_set_irq_mask(irq, true);
+    interrupts_set_irq_mask(irq, true);
 }
 
 void irq_handler(struct interrupt_registers *reg)
 {
-    apic_eoi();
+    interrupts_eoi(reg->isr_number);
     void (*handler)(struct interrupt_registers *) = _irq_routines[reg->isr_number - 32];
     if (handler)
         handler(reg);

@@ -5,6 +5,7 @@
 
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/idt.h>
+#include <kernel/arch/pc/interrupts.h>
 #include <kernel/arch/pc/pit.h>
 #include <kernel/debug.h>
 #include <kernel/tasking/scheduler.h>
@@ -56,6 +57,7 @@ void timer_init()
     pit_set_frequency(1000);
     irq_register_handler(0, _timer_irq);
     debug_log("Initialized the timer\n");
+    interrupts_enable();
 }
 
 void sleep(uint64_t ms)
@@ -64,7 +66,7 @@ void sleep(uint64_t ms)
     block.countdown = ms;
 
     /* Mark task as sleeping */
-    __asm__ volatile("cli");
+    interrupts_disable();
 
     task_t *current = task_get_current();
     if (current) {
@@ -75,7 +77,7 @@ void sleep(uint64_t ms)
     block.next = _base;
     _base = &block;
 
-    __asm__ volatile("sti");
+    interrupts_enable();
 
     /* Wait until wake time */
     while (block.countdown > 0)

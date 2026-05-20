@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-#include <kernel/kargs.h>
 #include <kernel/arch/pc/apic.h>
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/gdt.h>
 #include <kernel/arch/pc/idt.h>
+#include <kernel/arch/pc/pic.h>
 #include <kernel/arch/pc/sse.h>
 #include <kernel/debug.h>
 #include <kernel/fs/tmpfs.h>
@@ -16,6 +16,7 @@
 #include <kernel/input/input_events.h>
 #include <kernel/input/ps2_keyboard.h>
 #include <kernel/input/ps2_mouse.h>
+#include <kernel/kargs.h>
 #include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
@@ -64,13 +65,13 @@ void kmain()
     start_debug_serial(SERIAL_COM1);
     start_debug_console(framebuffer_request.response);
 
+    pic_init();
     gdt_init();
     idt_init();
+    timer_init();
     pmm_init(limine_mmap_request.response);
     vmm_init(limine_mmap_request.response);
     apic_init(limine_rsdp_request.response->address);
-    timer_init();
-    asm_sti();
     heap_init(10);
     cmdline_arg_t *cmdline_args = load_kernel_args(limine_cmdline_request.response);
     syscalls_init();
@@ -95,7 +96,6 @@ void kmain()
     input_events_init();
     ps2_init_keyboard();
     ps2_mouse_init();
-    asm_sti();
 
     const char *init_path = get_kernel_arg(cmdline_args, "init");
     if (init_path == NULL || init_path[0] == '\0') {

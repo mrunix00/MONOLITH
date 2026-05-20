@@ -8,8 +8,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define APIC_IRQ_BASE 32
-
 void apic_init(void *rsdp);
 void apic_eoi();
 void apic_set_irq_mask(uint8_t irq, bool masked);
+bool apic_is_initialized();

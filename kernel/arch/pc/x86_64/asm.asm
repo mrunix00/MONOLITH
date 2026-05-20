@@ -77,3 +77,20 @@ asm_write_msr:
     shr rdx, 32
     wrmsr
     ret
+
+global asm_cpuid
+asm_cpuid:
+    push rbx
+    mov r10, rdi
+    mov r11, rsi
+    mov r8, rdx
+    mov r9, rcx
+    xor ecx, ecx
+    mov eax, 1
+    cpuid
+    mov [r10], eax
+    mov [r11], ebx
+    mov [r8], ecx
+    mov [r9], edx
+    pop rbx
+    ret

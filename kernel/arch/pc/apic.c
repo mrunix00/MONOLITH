@@ -37,6 +37,7 @@
 #define PIC_EOI 0x20
 
 #define ACPI_MADT_SIGNATURE 0x43495041
+#define APIC_IRQ_BASE 32
 
 typedef struct
 {
@@ -49,7 +50,7 @@ typedef struct
     uint64_t xsdt_address;
     uint8_t extended_checksum;
     uint8_t reserved[3];
-} __attribute__((packed)) rsdp_t;
+} __attribute__((packed)) _rsdp_t;
 
 typedef struct
 {
@@ -62,57 +63,57 @@ typedef struct
     uint32_t oem_revision;
     uint32_t creator_id;
     uint32_t creator_revision;
-} __attribute__((packed)) acpi_sdt_header_t;
+} __attribute__((packed)) _acpi_sdt_header_t;
 
 typedef struct
 {
-    acpi_sdt_header_t header;
+    _acpi_sdt_header_t header;
     uint32_t lapic_addr;
     uint32_t flags;
-} __attribute__((packed)) madt_t;
+} __attribute__((packed)) _madt_t;
 
 typedef struct
 {
     uint8_t type;
     uint8_t length;
-} __attribute__((packed)) madt_entry_t;
+} __attribute__((packed)) _madt_entry_t;
 
 typedef struct
 {
-    madt_entry_t header;
+    _madt_entry_t header;
     uint8_t ioapic_id;
     uint8_t reserved;
     uint32_t ioapic_addr;
     uint32_t gsi_base;
-} __attribute__((packed)) madt_ioapic_t;
+} __attribute__((packed)) _madt_ioapic_t;
 
 typedef struct
 {
-    madt_entry_t header;
+    _madt_entry_t header;
     uint8_t bus_source;
     uint8_t irq_source;
     uint32_t gsi;
     uint16_t flags;
-} __attribute__((packed)) madt_iso_t;
+} __attribute__((packed)) _madt_iso_t;
 
 typedef struct
 {
     volatile uint32_t *base;
     uint32_t gsi_base;
     uint32_t redirection_count;
-} ioapic_t;
+} _ioapic_t;
 
 typedef struct
 {
     uint32_t gsi;
     uint16_t flags;
     bool overridden;
-} irq_override_t;
+} _irq_override_t;
 
 static volatile uint32_t *_lapic = NULL;
-static ioapic_t _ioapics[8];
+static _ioapic_t _ioapics[8];
 static size_t _ioapic_count = 0;
-static irq_override_t _irq_overrides[16];
+static _irq_override_t _irq_overrides[16];
 
 static uint8_t _checksum(const void *base, size_t length)
 {
@@ -147,26 +148,26 @@ static void _lapic_write(uint32_t reg, uint32_t value)
     (void) _lapic_read(LAPIC_REG_ID);
 }
 
-static uint32_t _ioapic_read(ioapic_t *ioapic, uint8_t reg)
+static uint32_t _ioapic_read(_ioapic_t *ioapic, uint8_t reg)
 {
     ioapic->base[0] = reg;
     return ioapic->base[4];
 }
 
-static void _ioapic_write(ioapic_t *ioapic, uint8_t reg, uint32_t value)
+static void _ioapic_write(_ioapic_t *ioapic, uint8_t reg, uint32_t value)
 {
     ioapic->base[0] = reg;
     ioapic->base[4] = value;
 }
 
-static void _ioapic_write_redirection(ioapic_t *ioapic, uint32_t index, uint64_t value)
+static void _ioapic_write_redirection(_ioapic_t *ioapic, uint32_t index, uint64_t value)
 {
     uint8_t reg = IOAPIC_REG_REDTBL_BASE + index * 2;
     _ioapic_write(ioapic, reg, (uint32_t) value);
     _ioapic_write(ioapic, reg + 1, (uint32_t) (value >> 32));
 }
 
-static ioapic_t *_ioapic_for_gsi(uint32_t gsi)
+static _ioapic_t *_ioapic_for_gsi(uint32_t gsi)
 {
     for (size_t i = 0; i < _ioapic_count; i++) {
         uint32_t first = _ioapics[i].gsi_base;
@@ -189,7 +190,7 @@ void apic_set_irq_mask(uint8_t irq, bool masked)
         flags = _irq_overrides[irq].flags;
     }
 
-    ioapic_t *ioapic = _ioapic_for_gsi(gsi);
+    _ioapic_t *ioapic = _ioapic_for_gsi(gsi);
     if (ioapic == NULL)
         return;
 
@@ -206,9 +207,9 @@ void apic_set_irq_mask(uint8_t irq, bool masked)
     _ioapic_write_redirection(ioapic, gsi - ioapic->gsi_base, entry);
 }
 
-static acpi_sdt_header_t *_find_madt(rsdp_t *rsdp)
+static _acpi_sdt_header_t *_find_madt(_rsdp_t *rsdp)
 {
-    acpi_sdt_header_t *root;
+    _acpi_sdt_header_t *root;
     bool xsdt = rsdp->revision >= 2 && rsdp->xsdt_address != 0;
 
     if (xsdt) {
@@ -217,9 +218,9 @@ static acpi_sdt_header_t *_find_madt(rsdp_t *rsdp)
             return NULL;
 
         uint64_t *entries = (uint64_t *) (root + 1);
-        size_t count = (root->length - sizeof(acpi_sdt_header_t)) / sizeof(uint64_t);
+        size_t count = (root->length - sizeof(_acpi_sdt_header_t)) / sizeof(uint64_t);
         for (size_t i = 0; i < count; i++) {
-            acpi_sdt_header_t *table = _phys_to_hhdm(entries[i]);
+            _acpi_sdt_header_t *table = _phys_to_hhdm(entries[i]);
             if (_checksum(table, table->length) == 0 && table->signature == ACPI_MADT_SIGNATURE)
                 return table;
         }
@@ -229,9 +230,9 @@ static acpi_sdt_header_t *_find_madt(rsdp_t *rsdp)
             return NULL;
 
         uint32_t *entries = (uint32_t *) (root + 1);
-        size_t count = (root->length - sizeof(acpi_sdt_header_t)) / sizeof(uint32_t);
+        size_t count = (root->length - sizeof(_acpi_sdt_header_t)) / sizeof(uint32_t);
         for (size_t i = 0; i < count; i++) {
-            acpi_sdt_header_t *table = _phys_to_hhdm(entries[i]);
+            _acpi_sdt_header_t *table = _phys_to_hhdm(entries[i]);
             if (_checksum(table, table->length) == 0 && table->signature == ACPI_MADT_SIGNATURE)
                 return table;
         }
@@ -240,14 +241,14 @@ static acpi_sdt_header_t *_find_madt(rsdp_t *rsdp)
     return NULL;
 }
 
-static void _parse_madt(madt_t *madt, uint64_t *lapic_phys)
+static void _parse_madt(_madt_t *madt, uint64_t *lapic_phys)
 {
     *lapic_phys = madt->lapic_addr;
 
     uint8_t *entry = (uint8_t *) (madt + 1);
     uint8_t *end = (uint8_t *) madt + madt->header.length;
     while (entry < end) {
-        madt_entry_t *header = (madt_entry_t *) entry;
+        _madt_entry_t *header = (_madt_entry_t *) entry;
         if (header->length == 0)
             break;
 
@@ -255,14 +256,14 @@ static void _parse_madt(madt_t *madt, uint64_t *lapic_phys)
         case 1: { /* I/O APIC */
             if (_ioapic_count >= sizeof(_ioapics) / sizeof(_ioapics[0]))
                 break;
-            madt_ioapic_t *madt_ioapic = (madt_ioapic_t *) entry;
-            ioapic_t *ioapic = &_ioapics[_ioapic_count++];
+            _madt_ioapic_t *madt_ioapic = (_madt_ioapic_t *) entry;
+            _ioapic_t *ioapic = &_ioapics[_ioapic_count++];
             ioapic->base = _phys_to_hhdm(madt_ioapic->ioapic_addr);
             ioapic->gsi_base = madt_ioapic->gsi_base;
             ioapic->redirection_count = ((_ioapic_read(ioapic, IOAPIC_REG_VER) >> 16) & 0xFF);
         } break;
         case 2: { /* Interrupt Source Override */
-            madt_iso_t *iso = (madt_iso_t *) entry;
+            _madt_iso_t *iso = (_madt_iso_t *) entry;
             if (iso->bus_source == 0 && iso->irq_source < 16) {
                 _irq_overrides[iso->irq_source].gsi = iso->gsi;
                 _irq_overrides[iso->irq_source].flags = iso->flags;
@@ -270,7 +271,7 @@ static void _parse_madt(madt_t *madt, uint64_t *lapic_phys)
             }
         } break;
         case 5: { /* Local APIC Address Override */
-            uint64_t *addr = (uint64_t *) (entry + sizeof(madt_entry_t) + sizeof(uint16_t));
+            uint64_t *addr = (uint64_t *) (entry + sizeof(_madt_entry_t) + sizeof(uint16_t));
             *lapic_phys = *addr;
         } break;
         default:
@@ -281,33 +282,36 @@ static void _parse_madt(madt_t *madt, uint64_t *lapic_phys)
     }
 }
 
+bool _is_apic_supported()
+{
+    uint32_t eax, ebx, ecx, edx;
+    asm_cpuid(&eax, &ebx, &ecx, &edx);
+    return (edx & (1 << 9)) != 0;
+}
+
 void apic_init(void *rsdp_addr)
 {
     debug_log("Initializing the APIC...\n");
 
-    if (rsdp_addr == NULL) {
-        debug_log("No ACPI RSDP provided; APIC unavailable\n");
-        return;
-    }
+    if (rsdp_addr == NULL)
+        return debug_log("No ACPI RSDP provided; APIC unavailable\n");
 
-    rsdp_t *rsdp = rsdp_addr;
-    if (_checksum(rsdp, 20) != 0) {
-        debug_log("Invalid RSDP checksum; APIC unavailable\n");
-        return;
-    }
-    if (rsdp->revision >= 2 && _checksum(rsdp, rsdp->length) != 0) {
-        debug_log("Invalid extended RSDP checksum; APIC unavailable\n");
-        return;
-    }
+    if (!_is_apic_supported())
+        return debug_log("APIC is not supported on this CPU\n");
 
-    acpi_sdt_header_t *madt_header = _find_madt(rsdp);
-    if (madt_header == NULL) {
-        debug_log("MADT not found; APIC unavailable\n");
-        return;
-    }
+    _rsdp_t *rsdp = rsdp_addr;
+    if (_checksum(rsdp, 20) != 0)
+        return debug_log("Invalid RSDP checksum; APIC unavailable\n");
+
+    if (rsdp->revision >= 2 && _checksum(rsdp, rsdp->length) != 0)
+        return debug_log("Invalid extended RSDP checksum; APIC unavailable\n");
+
+    _acpi_sdt_header_t *madt_header = _find_madt(rsdp);
+    if (madt_header == NULL)
+        return debug_log("MADT not found; APIC unavailable\n");
 
     uint64_t lapic_phys = APIC_BASE_DEFAULT;
-    _parse_madt((madt_t *) madt_header, &lapic_phys);
+    _parse_madt((_madt_t *) madt_header, &lapic_phys);
 
     uint64_t apic_base_msr = asm_read_msr(IA32_APIC_BASE_MSR);
     uint64_t apic_base = apic_base_msr & 0xFFFFF000;
@@ -334,4 +338,9 @@ void apic_eoi()
 {
     if (_lapic != NULL)
         _lapic_write(LAPIC_REG_EOI, 0);
+}
+
+bool apic_is_initialized()
+{
+    return _lapic != NULL;
 }

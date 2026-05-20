@@ -20,3 +20,4 @@ void asm_cli();
 void asm_sti();
 uint64_t asm_read_msr(uint32_t msr);
 void asm_write_msr(uint32_t msr, uint64_t value);
+void asm_cpuid(uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx);
