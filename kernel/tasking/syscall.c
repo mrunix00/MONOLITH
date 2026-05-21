@@ -182,22 +182,25 @@ int sys_request_fb(_fb_info_t *fb_info)
     task_t *current = task_get_current();
     if (!_user_ptr_range(fb_info, sizeof(_fb_info_t)))
         return -1;
-    if (!current || (_fb_owner && _fb_owner != current)
-        || framebuffer_request.response->framebuffer_count < 1)
+    if (!current || _fb_owner != NULL || framebuffer_request.response->framebuffer_count < 1)
         return -1;
     struct limine_framebuffer *fb = framebuffer_request.response->framebuffers[0];
 
-    /* Map framebuffer into the current task's address space */
-    vmm_map_range(
-        current->state.cr3,
-        (uintptr_t) fb->address,
+    size_t page_count = fb->pitch * fb->height / PAGE_SIZE;
+    uintptr_t virt_addr = task_find_free_vaddr(current, page_count);
+    if (virt_addr == 0)
+        return -1;
+
+    task_map(
+        current,
+        virt_addr,
         (uintptr_t) vmm_get_lhdm_addr(fb->address),
-        fb->pitch * fb->height,
+        page_count,
         PTFLAG_P | PTFLAG_RW | PTFLAG_US | PTFLAG_PAT,
         true);
 
     *fb_info = (_fb_info_t){
-        .address = fb->address,
+        .address = (void *) virt_addr,
         .width = fb->width,
         .height = fb->height,
         .pitch = fb->pitch,
