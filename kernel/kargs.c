@@ -4,99 +4,66 @@
  */
 
 #include <kernel/kargs.h>
-#include <kernel/klibc/memory.h>
 #include <kernel/klibc/string.h>
-#include <kernel/memory/heap.h>
 
-static bool _cmdline_is_separator(char c)
+static const char *_kernel_cmdline = NULL;
+
+static bool _is_arg_separator(char c)
 {
-    return c == ' ' || c == '\t';
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
 }
 
-static char *_cmdline_copy_slice(const char *start, size_t len)
+void load_kernel_args(const char *cmdline)
 {
-    char *copy = kmalloc(len + 1);
-    if (copy == NULL)
-        return NULL;
-
-    memcpy(copy, start, len);
-    copy[len] = '\0';
-    return copy;
+    _kernel_cmdline = cmdline;
 }
 
-static cmdline_arg_t *_cmdline_new_arg(
-    const char *key, size_t key_len, const char *value, size_t value_len)
+bool get_kernel_arg(const char *key, char *out_value, size_t out_value_len)
 {
-    if (key_len == 0)
-        return NULL;
+    if (out_value == NULL || out_value_len == 0)
+        return false;
 
-    cmdline_arg_t *arg = kmalloc(sizeof(cmdline_arg_t));
-    if (arg == NULL)
-        return NULL;
+    out_value[0] = '\0';
 
-    arg->key = _cmdline_copy_slice(key, key_len);
-    arg->value = _cmdline_copy_slice(value, value_len);
-    arg->next = NULL;
+    if (_kernel_cmdline == NULL || key == NULL || key[0] == '\0')
+        return false;
 
-    if (arg->key == NULL || arg->value == NULL) {
-        kfree(arg->key);
-        kfree(arg->value);
-        kfree(arg);
-        return NULL;
-    }
+    size_t key_len = strlen(key);
+    const char *arg = _kernel_cmdline;
 
-    return arg;
-}
+    while (*arg != '\0') {
+        while (_is_arg_separator(*arg))
+            arg++;
 
-cmdline_arg_t *load_kernel_args(struct limine_executable_cmdline_response *response)
-{
-    if (response == NULL || response->cmdline == NULL)
-        return NULL;
-
-    cmdline_arg_t *head = NULL;
-    cmdline_arg_t *tail = NULL;
-    const char *cmdline = response->cmdline;
-
-    while (*cmdline != '\0') {
-        while (_cmdline_is_separator(*cmdline))
-            cmdline++;
-
-        if (*cmdline == '\0')
+        if (*arg == '\0')
             break;
 
-        const char *key = cmdline;
-        while (*cmdline != '\0' && !_cmdline_is_separator(*cmdline) && *cmdline != '=')
-            cmdline++;
-        size_t key_len = cmdline - key;
+        const char *arg_end = arg;
+        while (*arg_end != '\0' && !_is_arg_separator(*arg_end))
+            arg_end++;
 
-        const char *value = "";
-        size_t value_len = 0;
-        if (*cmdline == '=') {
-            cmdline++;
-            value = cmdline;
-            while (*cmdline != '\0' && !_cmdline_is_separator(*cmdline))
-                cmdline++;
-            value_len = cmdline - value;
+        const char *equals = arg;
+        while (equals < arg_end && *equals != '=')
+            equals++;
+
+        if (equals < arg_end && (size_t) (equals - arg) == key_len
+            && strncmp(arg, key, key_len) == 0) {
+            const char *value = equals + 1;
+            size_t value_len = (size_t) (arg_end - value);
+            size_t copy_len = value_len;
+
+            if (copy_len >= out_value_len)
+                copy_len = out_value_len - 1;
+
+            for (size_t i = 0; i < copy_len; i++)
+                out_value[i] = value[i];
+            out_value[copy_len] = '\0';
+
+            return true;
         }
 
-        cmdline_arg_t *arg = _cmdline_new_arg(key, key_len, value, value_len);
-        if (arg == NULL)
-            continue;
-
-        if (tail != NULL)
-            tail->next = arg;
-        else
-            head = arg;
-        tail = arg;
+        arg = arg_end;
     }
 
-    return head;
-}
-
-char *get_kernel_arg(cmdline_arg_t *args, const char *key)
-{
-    for (cmdline_arg_t *arg = args; arg != NULL; arg = arg->next)
-        if (strcmp(arg->key, key) == 0)
-            return arg->value;
-    return NULL;
+    return false;
 }

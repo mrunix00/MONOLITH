@@ -4,7 +4,7 @@
  */
 
 #include <kernel/arch/pc/asm.h>
-#include <kernel/arch/pc/idt.h>
+#include <kernel/arch/pc/interrupts.h>
 #include <kernel/input/input_events.h>
 #include <kernel/input/ps2_input.h>
 #include <kernel/input/ps2_mouse.h>
@@ -79,6 +79,8 @@ static void _mouse_write(uint8_t cmd)
 
 void ps2_mouse_init()
 {
+    interrupts_disable();
+
     /* Mouse initialization sequence */
     ps2_wait_obf_clear();
     ps2_write_command(PS2_CMD_ENABLE_AUX);
@@ -99,6 +101,8 @@ void ps2_mouse_init()
     _mouse_left_button = false;
     _mouse_right_button = false;
     _mouse_middle_button = false;
+    _mouse_cycle = 0;
 
     irq_register_handler(12, _mouse_irq);
+    interrupts_enable();
 }

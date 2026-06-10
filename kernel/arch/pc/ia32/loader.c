@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Ibrahim KAIKAA <ibrahimkaikaa@gmail.com>
+ * Copyright (c) 2026, Ibrahim KAIKAA <ibrahimkaikaa@gmail.com>
  * SPDX-License-Identifier: GPL-3.0
  */
 
@@ -27,7 +27,12 @@ task_t *load_elf_for_parent(const char *path, task_t *parent)
 
     interrupts_disable();
     debug_log("Loading ELF file...\n");
-    elf64_header_t header;
+
+    union {
+        elf_header_t common;
+        elf32_header_t elf32;
+    } header;
+
     if (parse_elf_header(&file, &header) < 0) {
         debug_log("ELF parsing error\n");
         interrupts_enable();
@@ -35,31 +40,39 @@ task_t *load_elf_for_parent(const char *path, task_t *parent)
     }
     debug_log("Loaded ELF file\n");
 
-    if (header.header.format != ELF_FORMAT_64BIT) {
-        debug_log("ELF is not 64-bit\n");
+    if (header.common.format != ELF_FORMAT_32BIT) {
+        debug_log("ELF is not 32-bit\n");
         interrupts_enable();
         return NULL;
-    } else if (header.header.isa != ELF_ISA_X86_64) {
-        debug_log_fmt("ELF is not compatible with x86_64! header.isa = 0x%x\n", header.header.isa);
+    } else if (header.common.isa != ELF_ISA_X86) {
+        debug_log_fmt(
+            "ELF is not compatible with i386! header.isa = 0x%x\n", (uintptr_t) header.common.isa);
         interrupts_enable();
         return NULL;
-    } else if (header.header.type != ELF_TYPE_EXEC) {
+    }
+    uintptr_t entry_offset = header.elf32.entry_offset;
+    uintptr_t pht_offset = header.elf32.pht_offset;
+    uint16_t pht_entry_size = header.elf32.pht_entry_size;
+    uint16_t pht_entry_count = header.elf32.pht_entry_count;
+
+    if (header.common.type != ELF_TYPE_EXEC) {
         debug_log("ELF is not an executable\n");
         interrupts_enable();
         return NULL;
     }
-    debug_log_fmt("Found %d program headers\n", header.pht_entry_count);
 
-    elf64_psh_t psh;
-    task_t *task = task_create((void *) header.entry_offset, path, TASK_MODE_USER);
+    debug_log_fmt("Found %d program headers\n", pht_entry_count);
 
-    for (int i = 0; i < header.pht_entry_count; i++) {
-        if (file_seek(&file, header.pht_offset + i * header.pht_entry_size, SEEK_SET) < 0) {
+    task_t *task = task_create((void *) entry_offset, path, TASK_MODE_USER);
+
+    for (int i = 0; i < pht_entry_count; i++) {
+        if (file_seek(&file, pht_offset + i * pht_entry_size, SEEK_SET) < 0) {
             interrupts_enable();
             return NULL;
         }
 
-        if (parse_elf_program_header(&file, &psh, header.pht_entry_size) < 0) {
+        elf32_psh_t psh;
+        if (parse_elf_program_header(&file, &psh, pht_entry_size) < 0) {
             interrupts_enable();
             return NULL;
         }
@@ -107,15 +120,11 @@ task_t *load_elf_for_parent(const char *path, task_t *parent)
     }
 
     void *stack = pmm_alloc(10);
-    task_map(
-        task, 0x00007fffe0000000ULL, (uintptr_t) stack, 10, PTFLAG_US | PTFLAG_RW | PTFLAG_P, true);
+    uintptr_t stack_base = 0xBFF00000UL - 10 * PAGE_SIZE;
+    uintptr_t stack_top = 0xBFF00000UL;
+    task_map(task, stack_base, (uintptr_t) stack, 10, PTFLAG_US | PTFLAG_RW | PTFLAG_P, true);
 
-    /*
-     * According to System V AMD64 ABI: RSP must be 16-byte aligned before CALL,
-     * which means RSP % 16 == 8 at function entry (after return address is pushed).
-     */
-    uintptr_t stack_top = 0x00007fffe0000000ULL + 10 * PAGE_SIZE;
-    task->state.rsp = stack_top - 8;
+    task->state.rsp = stack_top;
     task_set_parent(task, parent);
 
     interrupts_enable();

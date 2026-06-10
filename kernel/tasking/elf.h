@@ -163,12 +163,12 @@ typedef struct __attribute__((packed))
 typedef struct __attribute__((packed))
 {
     elf_phs_type_t type;          /* Type of section */
-    elf_phs_flags_t flags;        /* Section flags */
     uint32_t section_offset;      /* Offset of the section in the file */
     uint32_t section_vaddr;       /* Virtual address of the section */
     uint32_t section_paddr;       /* Physical address of the section */
     uint32_t section_file_size;   /* Size of the section in the file */
     uint32_t section_memory_size; /* Size of the section in memory */
+    elf_phs_flags_t flags;        /* Section flags */
     uint32_t section_align;       /* Required alignment for the section */
 } elf32_psh_t;
 

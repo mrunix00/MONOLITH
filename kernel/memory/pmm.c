@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include <kernel/mmap.h>
 #include <kernel/debug.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
@@ -14,6 +15,13 @@ static size_t _bitmap_size;
 static size_t _bitmap_page_count;
 static size_t _physical_memory_size = 0;
 static size_t _allocated_pages = 0;
+
+extern char _data_end[];
+
+static uintptr_t _align_up(uintptr_t value, uintptr_t alignment)
+{
+    return (value + alignment - 1) & ~(alignment - 1);
+}
 
 pmm_stats_t pmm_get_stats()
 {
@@ -81,72 +89,74 @@ static inline void *_process_byte(
     return NULL;
 }
 
-static const char *_get_mmap_type(int t)
+static const char *_get_mmap_type(uint32_t t)
 {
     switch (t) {
-    case LIMINE_MEMMAP_USABLE:
+    case MMAP_USABLE:
         return "Usable";
-    case LIMINE_MEMMAP_RESERVED:
+    case MMAP_RESERVED:
         return "Reserved";
-    case LIMINE_MEMMAP_ACPI_RECLAIMABLE:
+    case MMAP_ACPI_RECLAIMABLE:
         return "ACPI Reclaimable";
-    case LIMINE_MEMMAP_ACPI_NVS:
+    case MMAP_ACPI_NVS:
         return "ACPI NVS";
-    case LIMINE_MEMMAP_BAD_MEMORY:
+    case MMAP_BAD_MEMORY:
         return "Bad Memory";
-    case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
+    case MMAP_BOOTLOADER_RECLAIMABLE:
         return "Bootloader Reclaimable";
-    case LIMINE_MEMMAP_EXECUTABLE_AND_MODULES:
+    case MMAP_EXECUTABLE_AND_MODULES:
         return "Kernel and Modules";
-    case LIMINE_MEMMAP_FRAMEBUFFER:
+    case MMAP_FRAMEBUFFER:
         return "Framebuffer";
     default:
         return "Unknown";
     }
 }
 
-void pmm_init(struct limine_memmap_response *mmap_response)
+void pmm_init(void)
 {
     debug_log("Initializing PMM\n");
 
-    debug_log_fmt("Number of memory map entries: %d\n", mmap_response->entry_count);
+    debug_log_fmt("Number of memory map entries: %d\n", mmap_entry_count);
 
-    /* Calculate the address of the end of kernel and physical memory start address and size */
-    size_t kernel_end_addr = 0;
-    struct limine_memmap_entry *biggest = NULL;
-    for (size_t i = 0; i < mmap_response->entry_count; i++) {
-        struct limine_memmap_entry *entry = mmap_response->entries[i];
+    /* Calculate reserved boot/kernel end and usable physical memory size. */
+    uintptr_t kernel_end_addr = _align_up((uintptr_t) _data_end, PAGE_SIZE);
+    const mmap_entry_t *biggest = NULL;
+    for (size_t i = 0; i < mmap_entry_count; i++) {
+        const mmap_entry_t *entry = &mmap_entries[i];
         debug_log_fmt(
             "\tMmap Entry %d (type: %s, base: 0x%x, length: %d bytes)\n",
             i,
             _get_mmap_type(entry->type),
-            entry->base,
-            entry->length);
-        if (entry->type == LIMINE_MEMMAP_USABLE
-            || entry->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE
-            || entry->type == LIMINE_MEMMAP_EXECUTABLE_AND_MODULES) {
-            if (entry->base + entry->length > kernel_end_addr)
-                kernel_end_addr = entry->base + entry->length;
+            (uint32_t) entry->base,
+            (uint32_t) entry->length);
+        if (entry->type == MMAP_EXECUTABLE_AND_MODULES) {
+            uintptr_t entry_end = (uintptr_t) (entry->base + entry->length);
+            if (entry_end > kernel_end_addr)
+                kernel_end_addr = _align_up(entry_end, PAGE_SIZE);
         }
-        if (entry->type == LIMINE_MEMMAP_USABLE) {
-            if (biggest == NULL || entry->length > biggest->length) {
+        if (entry->type == MMAP_USABLE) {
+            if (biggest == NULL || entry->length > biggest->length)
                 biggest = entry;
-            }
             _physical_memory_size += entry->length;
         }
     }
     debug_log_fmt("Found %d MB of physical memory\n", _physical_memory_size / 1048576);
 
-    _bitmap = vmm_get_hhdm_addr((void *) biggest->base);
+    uintptr_t bitmap_phys = (uintptr_t) biggest->base;
+    uintptr_t biggest_end = (uintptr_t) (biggest->base + biggest->length);
+    if (bitmap_phys < kernel_end_addr && kernel_end_addr < biggest_end)
+        bitmap_phys = kernel_end_addr;
+
+    _bitmap = vmm_get_hhdm_addr((void *) bitmap_phys);
     _bitmap_page_count = _physical_memory_size / PAGE_SIZE;
     _bitmap_size = (_bitmap_page_count + 7) / 8; // Round up division
     _bitmap_end = _bitmap + _bitmap_size;
-    _phys_memory_start = (void *) (((uintptr_t) vmm_get_lhdm_addr(_bitmap_end) + PAGE_SIZE - 1)
-                                   & ~(PAGE_SIZE - 1));
+    _phys_memory_start = (void *) _align_up((uintptr_t) vmm_get_lhdm_addr(_bitmap_end), PAGE_SIZE);
 
-    debug_log_fmt("Physical memory start: 0x%x\n", _phys_memory_start);
+    debug_log_fmt("Physical memory start: 0x%x\n", (uintptr_t) _phys_memory_start);
     debug_log_fmt("End of kernel address: 0x%x\n", kernel_end_addr);
-    debug_log_fmt("Bitmap address range: 0x%x-0x%x\n", _bitmap, _bitmap_end);
+    debug_log_fmt("Bitmap address range: 0x%x-0x%x\n", (uintptr_t) _bitmap, (uintptr_t) _bitmap_end);
     debug_log_fmt("Bitmap page count: %d pages\n", _bitmap_page_count);
     debug_log_fmt("Bitmap size: %d bytes\n", _bitmap_size);
 
@@ -187,12 +197,12 @@ void pmm_free(void *ptr, size_t pages)
 
     uintptr_t base_addr = (uint64_t) ptr;
     if (base_addr % PAGE_SIZE != 0) {
-        debug_log_fmt("[!] pmm_free: Pointer 0x%x is not page-aligned\n", base_addr);
+        debug_log_fmt("[!] pmm_free: Pointer 0x%x is not page-aligned\n", (uintptr_t) ptr);
         return;
     }
     size_t start_page = (base_addr - (uintptr_t) _phys_memory_start) / PAGE_SIZE;
     if (start_page + pages > _bitmap_page_count) {
-        debug_log_fmt("[!] pmm_free: Freeing %d pages at 0x%x exceeds bitmap\n", pages, base_addr);
+        debug_log_fmt("[!] pmm_free: Freeing %d pages at 0x%x exceeds bitmap\n", pages, (uintptr_t) ptr);
         return;
     }
 

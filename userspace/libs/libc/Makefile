@@ -15,10 +15,10 @@ $(LIBS_OUTPUT_DIR)/crt0.o $(LIBS_OUTPUT_DIR)/crt1.o: $(CRT_SRC_DIR)/crt0.c | $(L
 	$(CC) $(LIB_CFLAGS) -c $< -o $@
 
 $(LIBS_OUTPUT_DIR)/crti.o: $(CRT_SRC_DIR)/crti.asm | $(LIBS_OUTPUT_DIR)
-	nasm -f elf64 $< -o $@
+	nasm -f $(NASM_FORMAT) $< -o $@
 
 $(LIBS_OUTPUT_DIR)/crtn.o: $(CRT_SRC_DIR)/crtn.asm | $(LIBS_OUTPUT_DIR)
-	nasm -f elf64 $< -o $@
+	nasm -f $(NASM_FORMAT) $< -o $@
 
 $(LIBS_OUTPUT_DIR):
 	@mkdir -p $(LIBS_OUTPUT_DIR)

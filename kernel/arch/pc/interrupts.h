@@ -12,3 +12,5 @@ void interrupts_eoi(uint8_t isr);
 void interrupts_set_irq_mask(uint8_t irq, bool mask);
 void interrupts_disable();
 void interrupts_enable();
+void irq_register_handler(uint8_t num, void *handler);
+void irq_unregister_handler(uint8_t num);

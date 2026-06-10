@@ -4,22 +4,20 @@
  */
 
 #include <kernel/arch/pc/asm.h>
-#include <kernel/arch/pc/paging.h>
+#include <kernel/mmap.h>
+#include <kernel/arch/pc/x64/paging.h>
 #include <kernel/debug.h>
 #include <kernel/klibc/memory.h>
 #include <kernel/klibc/string.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
-#include <kernel/video/panic.h>
 #include <libs/limine-protocol/include/limine.h>
 
 __attribute__((used, section(".limine_requests"))) volatile struct limine_hhdm_request
-    limine_hhdm_request
-    = {.id = LIMINE_HHDM_REQUEST_ID, .revision = 0};
+    limine_hhdm_request = {.id = LIMINE_HHDM_REQUEST_ID, .revision = 0};
 
 __attribute__((used, section(".limine_requests"))) volatile struct limine_executable_address_request
-    limine_kernel_address_request
-    = {.id = LIMINE_EXECUTABLE_ADDRESS_REQUEST_ID, .revision = 0};
+    limine_kernel_address_request = {.id = LIMINE_EXECUTABLE_ADDRESS_REQUEST_ID, .revision = 0};
 
 __attribute__((used, section(".limine_requests"))) volatile struct limine_paging_mode_request
     limine_paging_request
@@ -97,7 +95,7 @@ static inline void *_get_next_level(page_table_t *pt, uint64_t index)
     return vmm_get_hhdm_addr((void *) (entry->raw & ~0xFFF));
 }
 
-void vmm_init(struct limine_memmap_response *memmap_response)
+void vmm_init(void)
 {
     debug_log("Initializing VMM...\n");
     debug_log("Using Level-4 paging\n");
@@ -113,14 +111,14 @@ void vmm_init(struct limine_memmap_response *memmap_response)
 
     uintptr_t kernel_cr3 = vmm_get_kernel_cr3();
 
-    for (uint64_t i = 0; i < memmap_response->entry_count; i++) {
-        uint64_t type = memmap_response->entries[i]->type;
-        if (type != LIMINE_MEMMAP_BAD_MEMORY) {
+    for (size_t i = 0; i < mmap_entry_count; i++) {
+        const mmap_entry_t entry = mmap_entries[i];
+        if (entry.type != MMAP_BAD_MEMORY) {
             vmm_map_range(
                 kernel_cr3,
-                (uintptr_t) vmm_get_hhdm_addr((void *) memmap_response->entries[i]->base),
-                memmap_response->entries[i]->base,
-                memmap_response->entries[i]->length,
+                (uintptr_t) vmm_get_hhdm_addr((void *) entry.base),
+                entry.base,
+                entry.length,
                 0x0000000000000003,
                 false);
         }
@@ -158,7 +156,7 @@ void vmm_init(struct limine_memmap_response *memmap_response)
     _set_pat();
     asm_write_cr3(kernel_cr3);
 
-    debug_log_fmt("The page table is located at 0x%x\n", _pt_top_level);
+    debug_log_fmt("The page table is located at 0x%x\n", (uintptr_t) _pt_top_level);
     debug_log("Initialized VMM\n");
 }
 
@@ -249,8 +247,7 @@ void vmm_unmap(uintptr_t cr3, uintptr_t virt, bool flush)
 
 void vmm_unmap_range(uintptr_t cr3, uintptr_t virt_addr, size_t size, bool flush)
 {
-    debug_log_fmt(
-        "Unmapping 0x%x - 0x%x from address space 0x%x\n", virt_addr, virt_addr + size, cr3);
+    debug_log_fmt("Unmapping 0x%x - 0x%x from address space 0x%x\n", virt_addr, virt_addr + size, cr3);
     size_t num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE; /* Round up */
     for (size_t i = 0; i < num_pages; i++) {
         vmm_unmap(cr3, virt_addr + i * PAGE_SIZE, false);
@@ -275,7 +272,7 @@ uintptr_t vmm_create_address_space(void)
     for (int i = 256; i < 512; i++)
         new_pml4->entries[i] = _pt_top_level->entries[i];
 
-    debug_log_fmt("Created new address space at 0x%x\n", new_pml4_phys);
+    debug_log_fmt("Created new address space at 0x%x\n", (uintptr_t) new_pml4_phys);
     return (uintptr_t) new_pml4_phys;
 }
 

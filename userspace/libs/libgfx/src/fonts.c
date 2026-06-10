@@ -70,11 +70,20 @@ static inline uint8_t _mul_u8(uint8_t a, uint8_t b)
 
 static uint32_t _font_line_height(gfx_font_t *font)
 {
+    if (!font)
+        return 0;
     return font->line_height > 0 ? font->line_height : font->pixel_size;
+}
+
+static bool _font_valid(gfx_font_t *font)
+{
+    return font && font->data;
 }
 
 static uint32_t _font_codepoint(gfx_font_t *font, uint32_t codepoint)
 {
+    if (!_font_valid(font))
+        return 0;
     if (codepoint == 0 || stbtt_FindGlyphIndex(&font->info, (int) codepoint) != 0)
         return codepoint;
     if (codepoint != '?' && stbtt_FindGlyphIndex(&font->info, '?') != 0)
@@ -124,6 +133,8 @@ static bool _decode_utf8(const char **text, uint32_t *codepoint)
 
 static gfx_glyph_t *_find_cached_glyph(gfx_font_t *font, uint32_t codepoint)
 {
+    if (!_font_valid(font))
+        return NULL;
     for (size_t index = font->first_glyph; index != SIZE_MAX;) {
         gfx_glyph_t *glyph = _glyph_at(font, index);
         if (glyph->codepoint == codepoint)
@@ -155,6 +166,9 @@ static gfx_glyph_t *_append_cached_glyph(gfx_font_t *font, size_t *glyph_index)
 
 static gfx_glyph_t *_get_glyph(gfx_font_t *font, uint32_t codepoint)
 {
+    if (!_font_valid(font))
+        return NULL;
+
     uint32_t resolved = _font_codepoint(font, codepoint);
     gfx_glyph_t *glyph = _find_cached_glyph(font, resolved);
     if (glyph)
@@ -309,7 +323,8 @@ void gfx_draw_char(
 
 uint32_t gfx_get_char_width(gfx_font_t *font, uint32_t codepoint)
 {
-    return _get_glyph(font, codepoint)->x_advance;
+    gfx_glyph_t *glyph = _get_glyph(font, codepoint);
+    return glyph ? glyph->x_advance : 0;
 }
 
 uint32_t gfx_get_char_height(gfx_font_t *font, uint32_t codepoint)
@@ -409,8 +424,10 @@ gfx_area_t gfx_get_text_area(gfx_font_t *font, const char *text)
             }
         }
 
-        pen_x += (int32_t) glyph->x_advance;
-        line_width += glyph->x_advance;
+        if (glyph) {
+            pen_x += (int32_t) glyph->x_advance;
+            line_width += glyph->x_advance;
+        }
     }
 
     max_width = line_width > max_width ? line_width : max_width;

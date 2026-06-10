@@ -5,8 +5,8 @@
 
 #pragma once
 
+#include <kernel/framebuffer.h>
 #include <kernel/serial.h>
-#include <libs/limine-protocol/include/limine.h>
 #include <stdbool.h>
 
 /*
@@ -19,7 +19,7 @@ bool start_debug_serial(serial_port_t port);
  * Start the console for debugging.
  * Returns true if console debugging was started successfully, false otherwise.
  */
-bool start_debug_console(struct limine_framebuffer_response *fb_response);
+bool start_debug_console(framebuffer_t *fb);
 
 /*
  * Stop the console for debugging.

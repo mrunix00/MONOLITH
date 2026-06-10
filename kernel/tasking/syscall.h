@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <stdbool.h>
+#include <stddef.h>
 #include <kernel/tasking/task.h>
 
 /*
@@ -15,3 +17,4 @@
 
 void syscalls_init();
 void syscalls_task_cleanup(task_t *task);
+bool syscall_user_ptr_range(const void *ptr, size_t size);

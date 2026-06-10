@@ -4,7 +4,6 @@
  */
 
 #include <kernel/arch/pc/asm.h>
-#include <kernel/arch/pc/idt.h>
 #include <kernel/arch/pc/interrupts.h>
 #include <kernel/arch/pc/pit.h>
 #include <kernel/debug.h>

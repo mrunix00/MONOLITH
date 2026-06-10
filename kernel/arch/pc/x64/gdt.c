@@ -4,57 +4,12 @@
  */
 
 #include <kernel/arch/pc/gdt.h>
-#include <kernel/arch/pc/x86_64/tss.h>
 #include <kernel/debug.h>
 
-/*
- * Global Descriptor Table Entry Descriptor.
- * https://wiki.osdev.org/Global_Descriptor_Table#Long_Mode_System_Segment_Descriptor
- */
-typedef struct
-{
-    uint16_t limit_low;
-    uint16_t base_low;
-    uint8_t base_middle;
-    uint8_t access;
-    uint8_t granularity;
-    uint8_t base_high;
-} __attribute__((packed)) gdt_entry_t;
-
-typedef struct
-{
-    uint16_t limit_low;
-    uint16_t base_low;
-    uint8_t base_middle;
-    uint8_t access;
-    uint8_t granularity;
-    uint8_t base_high;
-    uint32_t base_upper32;
-    uint32_t reserved;
-} __attribute__((packed)) gdt_tss_entry_t;
-
-/*
- * Global Descriptor Table.
- * https://wiki.osdev.org/Global_Descriptor_Table#Table
- */
-struct
-{
-    gdt_entry_t entries[5];
-    gdt_tss_entry_t tss;
-} __attribute__((packed)) gdt;
-
-/*
- * GDTR structure.
- * https://wiki.osdev.org/Global_Descriptor_Table#GDTR
- */
-struct
-{
-    uint16_t limit;
-    uint64_t base;
-} __attribute__((packed)) gdtr = {0};
+gdt_t gdt = {0};
+gdtr_t gdtr = {0};
 
 static tss_entry_t _tss = {0};
-
 extern uintptr_t syscall_kernel_stack_top;
 
 void gdt_init()
@@ -95,10 +50,8 @@ void gdt_set_gate(int index, uint32_t base, uint32_t limit, uint8_t access, uint
     gdt.entries[index].base_low = (base & 0xFFFF);
     gdt.entries[index].base_middle = (base >> 16) & 0xFF;
     gdt.entries[index].base_high = (base >> 24) & 0xFF;
-
     gdt.entries[index].limit_low = (limit & 0xFFFF);
     gdt.entries[index].granularity = (limit >> 16) & 0x0F;
-
     gdt.entries[index].granularity |= gran & 0xF0;
     gdt.entries[index].access = access;
 }

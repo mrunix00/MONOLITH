@@ -24,14 +24,17 @@ jobs:
 
       - name: Build
         run: |
-          make
+          make ARCH=pc/x64 iso
+          make ARCH=pc/ia32 iso
+
           mkdir -p dist/release
-          cp build/monolith.iso dist/release/monolith-$(date +'%Y%m%d%H%M')-x86_64.iso
+          cp build/pc_x64/monolith-x64.iso dist/release/monolith-x64.iso
+          cp build/pc_ia32/monolith-ia32.iso dist/release/monolith-ia32.iso
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
-          name: iso
+          name: monolith-isos
           path: dist/release/*
 
   release:
@@ -42,7 +45,7 @@ jobs:
       - name: Download built ISO
         uses: actions/download-artifact@v3
         with:
-          name: iso
+          name: monolith-isos
           path: dist/release
 
       - name: Forgejo Release
@@ -53,6 +56,5 @@ jobs:
           tag: nightly-${{ forgejo.run_number }}
           name: Nightly Build ${{ forgejo.run_number }}
           prerelease: true
-          upload: monolith-*.iso
-          upload_dir: .
-          overwrite: true
+          release-dir: dist/release
+          override: true

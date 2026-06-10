@@ -73,8 +73,8 @@ typedef struct
     uint32_t *framebuffer;
     size_t width;
     size_t height;
-    uint64_t pitch;
-    uint16_t bpp;
+    size_t pitch;
+    size_t bpp;
     uint8_t memory_model;
     uint8_t red_mask_size;
     uint8_t red_mask_shift;

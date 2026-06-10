@@ -5,16 +5,8 @@
 
 #pragma once
 
-#include <libs/limine-protocol/include/limine.h>
 #include <stdbool.h>
+#include <stddef.h>
 
-typedef struct _cmdline_arg
-{
-    char *key;
-    char *value;
-    struct _cmdline_arg *next;
-} cmdline_arg_t;
-
-cmdline_arg_t *load_kernel_args(struct limine_executable_cmdline_response *);
-
-char *get_kernel_arg(cmdline_arg_t *, const char *);
+void load_kernel_args(const char *cmdline);
+bool get_kernel_arg(const char *key, char *out_value, size_t out_value_len);

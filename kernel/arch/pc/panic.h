@@ -5,4 +5,6 @@
 
 #pragma once
 
+#include <kernel/arch/pc/idt.h>
+
 void panic(const char *message, struct interrupt_registers *regs);

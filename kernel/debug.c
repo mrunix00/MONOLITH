@@ -89,9 +89,8 @@ bool start_debug_serial(serial_port_t port)
     return false;
 }
 
-bool start_debug_console(struct limine_framebuffer_response *fb_response)
+bool start_debug_console(framebuffer_t *fb)
 {
-    struct limine_framebuffer *fb = fb_response->framebuffers[0];
     _fb_ctx = flanterm_fb_init(
         NULL,
         NULL,
@@ -170,7 +169,7 @@ static inline void _debug_logd(int d)
     _debug_write_string(buffer);
 }
 
-static inline void _debug_logx(uint64_t x)
+static inline void _debug_logx(uintptr_t x)
 {
     char buffer[16];
     int i = 0;
@@ -226,7 +225,7 @@ void _debug_log_fmt(const char *format, ...)
                 _debug_logd(va_arg(args, int));
                 break;
             case 'x':
-                _debug_logx(va_arg(args, uint64_t));
+                _debug_logx(va_arg(args, uintptr_t));
                 break;
             case '%': {
                 _debug_write_char('%');

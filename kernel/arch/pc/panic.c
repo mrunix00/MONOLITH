@@ -4,9 +4,9 @@
  */
 
 #include <kernel/arch/pc/idt.h>
+#include <kernel/arch/pc/panic.h>
 #include <kernel/klibc/string.h>
 #include <kernel/memory/heap.h>
-#include <kernel/video/panic.h>
 #include <libs/flanterm/src/flanterm.h>
 
 extern struct flanterm_context *_fb_ctx;

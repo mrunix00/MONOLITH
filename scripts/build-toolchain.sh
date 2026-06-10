@@ -10,13 +10,17 @@ LD="ld"
 RANLIB="ranlib"
 
 # Configuration variables
-TARGET=x86_64-monolith
-PROJECT_ROOT=$(pwd)
+if [ -z "${TOOLCHAIN_TARGET:-}" ]; then
+    echo "[-] TOOLCHAIN_TARGET must be set (e.g. x86_64-monolith, i386-monolith)"
+    exit 1
+fi
+TARGET=$TOOLCHAIN_TARGET
+PROJECT_ROOT=${PROJECT_ROOT:-$(pwd)}
 PREFIX=$PROJECT_ROOT/toolchain/$TARGET
 SYSROOT=$PROJECT_ROOT/shared
 NATIVE_SYSTEM_HEADER_DIR=/include/monolith
 
-echo "[*] Starting x86_64 cross-compiler build process"
+echo "[*] Starting $TARGET cross-compiler build process"
 echo "[*] Building for target $TARGET"
 
 echo "[*] Installing toolchain to: $PREFIX"

@@ -23,6 +23,11 @@ gfx_colored_bitmap_t gfx_load_image(void *data, size_t size)
 {
     int width, height, channels;
     unsigned char *pixels = stbi_load_from_memory(data, size, &width, &height, &channels, 4);
+    if (!pixels || width <= 0 || height <= 0) {
+        if (pixels)
+            free(pixels);
+        return (gfx_colored_bitmap_t){0};
+    }
 
     /* Convert RGBA (stb) to ARGB expected by the framebuffer format. */
     size_t pixel_count = (size_t) width * (size_t) height;

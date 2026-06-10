@@ -5,7 +5,6 @@
 
 #pragma once
 
-#include <libs/limine-protocol/include/limine.h>
 #include <stddef.h>
 
 #define PAGE_SIZE 4096
@@ -39,7 +38,7 @@ pmm_stats_t pmm_get_stats();
 /*
  * Initialize the Physical Memory Manager.
  */
-void pmm_init(struct limine_memmap_response *);
+void pmm_init();
 
 /*
  * Allocate free pages from physical memory.

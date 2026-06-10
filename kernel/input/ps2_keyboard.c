@@ -4,7 +4,7 @@
  */
 
 #include <kernel/arch/pc/asm.h>
-#include <kernel/arch/pc/idt.h>
+#include <kernel/arch/pc/interrupts.h>
 #include <kernel/input/input_events.h>
 #include <kernel/input/ps2_input.h>
 #include <kernel/input/ps2_keyboard.h>
@@ -17,7 +17,9 @@ static keyboard_action_t _key_state[256];
 
 static void _ps2_irq()
 {
-    uint8_t status = asm_inb(PS2_STATUS_PORT) & PS2_STATUS_OBF;
+    uint8_t status = asm_inb(PS2_STATUS_PORT);
+    if (!(status & PS2_STATUS_OBF))
+        return;
     if (status & PS2_STATUS_AUX)
         return;
 

@@ -20,15 +20,16 @@ CC := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc
 CFLAGS += $(APP_OPTFLAGS) $(addprefix -I,$(APP_INCLUDE_DIRS)) -Wall -Wextra
 LDFLAGS := -B$(BUILD_DIR)/libs -nodefaultlibs
 LIBS ?= $(APP_LIB_TARGETS)
+LIBGCC := $(shell $(CC) -print-libgcc-file-name)
 
 .PHONY: all clean
 
 all: $(TARGET)
 
 $(TARGET): $(OBJ) $(APP_LIB_TARGETS)
-	@echo "Linking $(TARGET) for x86_64"
+	@echo "Linking $(TARGET) for $(ARCH_CPU)"
 	@mkdir -p $(INITRD_DIR)
-	$(CC) $(LDFLAGS) -o $(OBJ_DIR)/$(TARGET) $(OBJ) $(LIBS)
+	$(CC) $(LDFLAGS) -o $(OBJ_DIR)/$(TARGET) $(OBJ) $(LIBS) $(LIBGCC)
 	@cp $(OBJ_DIR)/$(TARGET) $(INITRD_DIR)/$(TARGET)
 	$(POST_INSTALL_CMD)
 	@echo "Installed $(TARGET) to $(INITRD_DIR)"

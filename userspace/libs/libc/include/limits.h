@@ -19,12 +19,20 @@
 #define INT_MIN (-2147483647 - 1)
 #define UINT_MAX 0xffffffffU
 
+#if defined(MONOLITH_ARCH_IA32) || defined(__i386__)
+#define LONG_MAX 2147483647L
+#define LONG_MIN (-2147483647L - 1)
+#define ULONG_MAX 0xffffffffUL
+#else
 #define LONG_MAX 9223372036854775807L
 #define LONG_MIN (-9223372036854775807L - 1)
 #define ULONG_MAX 0xffffffffffffffffUL
+#endif
 
 #define LLONG_MAX 9223372036854775807LL
 #define LLONG_MIN (-9223372036854775807LL - 1)
 #define ULLONG_MAX 0xffffffffffffffffULL
 
-#define SIZE_MAX 0xffffffffffffffffUL
+#ifndef SIZE_MAX
+#define SIZE_MAX ULONG_MAX
+#endif
