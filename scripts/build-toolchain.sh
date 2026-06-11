@@ -9,6 +9,20 @@ AS="as"
 LD="ld"
 RANLIB="ranlib"
 
+HOST_CFLAGS=${HOST_CFLAGS:-"-O2 -g"}
+HOST_CXXFLAGS=${HOST_CXXFLAGS:-"-O2 -g"}
+HOST_CPPFLAGS=${HOST_CPPFLAGS:-"-D_GNU_SOURCE"}
+HOST_LDFLAGS=${HOST_LDFLAGS:-}
+
+export CFLAGS="$HOST_CFLAGS"
+export CXXFLAGS="$HOST_CXXFLAGS"
+export CPPFLAGS="$HOST_CPPFLAGS"
+export LDFLAGS="$HOST_LDFLAGS"
+export CFLAGS_FOR_BUILD="$HOST_CFLAGS"
+export CXXFLAGS_FOR_BUILD="$HOST_CXXFLAGS"
+export CPPFLAGS_FOR_BUILD="$HOST_CPPFLAGS"
+export LDFLAGS_FOR_BUILD="$HOST_LDFLAGS"
+
 # Configuration variables
 if [ -z "${TOOLCHAIN_TARGET:-}" ]; then
     echo "[-] TOOLCHAIN_TARGET must be set (e.g. x86_64-monolith, i386-monolith)"
@@ -28,9 +42,12 @@ echo "[*] Using sysroot: $SYSROOT"
 
 CACHE_DIR=$(pwd)/.cache
 BUILD_DIR=$(pwd)/.cache/toolchain-build-$TARGET
+CCACHE_DIR=${CCACHE_DIR:-"$BUILD_DIR/ccache"}
 JOBS=$(nproc)
 BINUTILS_VERSION="2.46.0"  # Updated to 2.46.0
 GCC_VERSION="16.1.0"     # Updated to 16.1.0
+
+export CCACHE_DIR
 
 echo "[*] Configuration:"
 echo "    - Target: $TARGET"
