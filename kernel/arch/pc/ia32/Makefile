@@ -8,7 +8,6 @@ ARCH_DIR := $(PROJECT_ROOT)/kernel/arch/pc/ia32
 PC_DIR := $(PROJECT_ROOT)/kernel/arch/pc
 
 CC := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc
-KERNEL_LIBGCC := $(shell $(CC) $(ARCH_CFLAGS) -print-libgcc-file-name)
 
 # Sources
 PER_ARCH_ASM := $(shell find $(ARCH_DIR) -maxdepth 1 -name "*.asm" 2>/dev/null)

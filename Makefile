@@ -14,7 +14,7 @@ CROSS_PREFIX := $(TOOLCHAIN_TARGET)-
 SHARED_INCLUDE_DIR := $(PROJECT_ROOT)/shared/include/monolith
 CC := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc
 LD := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)ld
-KERNEL_LIBGCC := $(shell $(CC) $(ARCH_CFLAGS) -print-libgcc-file-name)
+KERNEL_LIBGCC = $$($(CC) $(ARCH_CFLAGS) -print-libgcc-file-name)
 
 BUILD_ROOT := $(abspath build)
 BUILD_DIR := $(BUILD_ROOT)/$(subst /,_,$(ARCH))
