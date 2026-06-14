@@ -121,7 +121,7 @@ $(INITRD_DIR): | $(BUILD_DIR)
 
 initrd: $(INITRD_TAR)
 
-$(INITRD_TAR): FORCE $(INITRD_DIR) | $(BUILD_DIR)
+$(INITRD_TAR): FORCE userspace $(INITRD_DIR) | $(BUILD_DIR)
 	@echo "Creating initrd archive in ustar format..."
 	@mkdir -p $(INITRD_DIR)/assets
 	@cp -f assets/wallpaper.jpg $(INITRD_DIR)/assets/wallpaper.jpg
