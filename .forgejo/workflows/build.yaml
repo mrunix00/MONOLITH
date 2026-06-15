@@ -3,6 +3,14 @@ name: Build & Release ISO
 on:
   push:
     branches: [main]
+    paths:
+      - "boot/**"
+      - "kernel/**"
+      - "userspace/**"
+      - "libs/**"
+      - "scripts/**"
+      - "shared/**"
+      - "Makefile"
 
 jobs:
   build:
