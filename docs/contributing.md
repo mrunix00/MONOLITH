@@ -1,4 +1,4 @@
-# Contributing to MONOLITH (Draft)
+# Contributing to MONOLITH
 
 ## Communication
 

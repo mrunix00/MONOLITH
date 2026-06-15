@@ -8,7 +8,7 @@
 sudo dnf install gcc gcc-c++ make bison flex gmp-devel libmpc-devel mpfr-devel texinfo isl-devel qemu nasm xorriso curl
 ```
 
-### Arch / Manjaro
+### Arch / CachyOS / Manjaro
 
 ```console
 sudo pacman -S base-devel qemu-desktop flex texinfo nasm libmpc gmp mpfr libisl flex xorriso curl
@@ -39,6 +39,8 @@ To run the OS in QEMU:
 ```console
 make run
 ```
+
+This will target the `x86_64` architecture, to specify a different target, use `make TARGET=<target>`, currently supported targets are: `pc/x64`, `pc/ia32`.
 
 If you want to launch the OS without a graphical interface:
 
