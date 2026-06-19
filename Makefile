@@ -24,7 +24,7 @@ INITRD_DIR := $(BUILD_DIR)/initrd
 CACHE_DIR := $(PROJECT_ROOT)/.cache
 
 # Limine bootloader release
-LIMINE_VERSION := v12.3.1
+LIMINE_VERSION := v12.3.3
 LIMINE_URL := https://github.com/Limine-Bootloader/Limine/releases/download/$(LIMINE_VERSION)/limine-binary.tar.gz
 LIMINE_CACHE_DIR := $(CACHE_DIR)/limine-$(LIMINE_VERSION)
 LIMINE_TARBALL := $(CACHE_DIR)/limine-binary-$(LIMINE_VERSION).tar.gz
