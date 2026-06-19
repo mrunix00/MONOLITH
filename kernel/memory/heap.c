@@ -15,10 +15,6 @@ typedef struct block_header
     struct block_header *next;
 } block_header_t;
 
-static size_t _free_blocks = 0;
-static size_t _used_blocks = 0;
-static size_t _used_memory = 0;
-
 static struct
 {
     void *start;
@@ -44,8 +40,6 @@ static void _add_free_block(void *memory, size_t size)
     } else {
         previous->next = new_block;
     }
-
-    _free_blocks++;
 }
 
 bool heap_init(size_t pages)
@@ -90,8 +84,6 @@ start:
             } else {
                 _heap.free_list = new_block;
             }
-            _used_blocks++;
-            _used_memory += size;
             return (void *) ((void *) current + sizeof(block_header_t));
         } else if (current->size >= size) {
             /* Use entire block */
@@ -100,9 +92,6 @@ start:
             } else {
                 _heap.free_list = current->next;
             }
-            _free_blocks--;
-            _used_blocks++;
-            _used_memory += current->size;
             return (void *) ((void *) current + sizeof(block_header_t));
         } else {
             previous = current;
@@ -144,8 +133,6 @@ void kfree(void *pointer)
         return;
 
     block_header_t *block = (block_header_t *) ((void *) pointer - sizeof(block_header_t));
-    size_t freed_size = block->size;
-
     block_header_t *current = _heap.free_list;
     block_header_t *previous = NULL;
     while (current != NULL && current < block) {
@@ -161,17 +148,12 @@ void kfree(void *pointer)
         previous->next = block;
     }
 
-    _free_blocks++;
-    _used_blocks--;
-    _used_memory -= freed_size;
-
     /* Merge with the previous block if adjacent */
     if (previous != NULL
         && (void *) previous + sizeof(block_header_t) + previous->size == (void *) block) {
         previous->size += sizeof(block_header_t) + block->size;
         previous->next = block->next;
         block = previous; /* Update block to point to the merged block */
-        _free_blocks--;
     }
 
     /* Merge with the next block if adjacent */
@@ -179,15 +161,5 @@ void kfree(void *pointer)
         && (void *) block + sizeof(block_header_t) + block->size == (void *) block->next) {
         block->size += sizeof(block_header_t) + block->next->size;
         block->next = block->next->next;
-        _free_blocks--;
     }
-}
-
-heap_stats_t heap_get_stats()
-{
-    return (heap_stats_t){
-        .free_blocks = _free_blocks,
-        .used_blocks = _used_blocks,
-        .used_memory = _used_memory,
-    };
 }

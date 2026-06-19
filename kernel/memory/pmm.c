@@ -3,34 +3,22 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-#include <kernel/mmap.h>
 #include <kernel/debug.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
+#include <kernel/mmap.h>
 
 static uint8_t *_bitmap;
 static uint8_t *_bitmap_end;
 static void *_phys_memory_start;
 static size_t _bitmap_size;
 static size_t _bitmap_page_count;
-static size_t _physical_memory_size = 0;
-static size_t _allocated_pages = 0;
 
 extern char _data_end[];
 
 static uintptr_t _align_up(uintptr_t value, uintptr_t alignment)
 {
     return (value + alignment - 1) & ~(alignment - 1);
-}
-
-pmm_stats_t pmm_get_stats()
-{
-    return (pmm_stats_t){
-        .total_memory = _physical_memory_size,
-        .total_pages = _bitmap_page_count,
-        .used_pages = _allocated_pages,
-        .free_pages = _bitmap_page_count - _allocated_pages,
-    };
 }
 
 static void _mark_pages_used(size_t start_page, size_t number_of_pages)
@@ -46,7 +34,6 @@ static void *_allocate_pages(size_t start_page, size_t number_of_pages)
 {
     void *base_addr = _phys_memory_start + start_page * PAGE_SIZE;
     _mark_pages_used(start_page, number_of_pages);
-    _allocated_pages += number_of_pages;
     return (void *) base_addr;
 }
 
@@ -122,6 +109,7 @@ void pmm_init(void)
     /* Calculate reserved boot/kernel end and usable physical memory size. */
     uintptr_t kernel_end_addr = _align_up((uintptr_t) _data_end, PAGE_SIZE);
     const mmap_entry_t *biggest = NULL;
+    size_t physical_memory_size = 0;
     for (size_t i = 0; i < mmap_entry_count; i++) {
         const mmap_entry_t *entry = &mmap_entries[i];
         debug_log_fmt(
@@ -138,10 +126,10 @@ void pmm_init(void)
         if (entry->type == MMAP_USABLE) {
             if (biggest == NULL || entry->length > biggest->length)
                 biggest = entry;
-            _physical_memory_size += entry->length;
+            physical_memory_size += entry->length;
         }
     }
-    debug_log_fmt("Found %d MB of physical memory\n", _physical_memory_size / 1048576);
+    debug_log_fmt("Found %d MB of physical memory\n", physical_memory_size / 1048576);
 
     uintptr_t bitmap_phys = (uintptr_t) biggest->base;
     uintptr_t biggest_end = (uintptr_t) (biggest->base + biggest->length);
@@ -149,8 +137,8 @@ void pmm_init(void)
         bitmap_phys = kernel_end_addr;
 
     _bitmap = vmm_get_hhdm_addr((void *) bitmap_phys);
-    _bitmap_page_count = _physical_memory_size / PAGE_SIZE;
-    _bitmap_size = (_bitmap_page_count + 7) / 8; // Round up division
+    _bitmap_page_count = physical_memory_size / PAGE_SIZE;
+    _bitmap_size = (_bitmap_page_count + 7) / 8; /* Round up division */
     _bitmap_end = _bitmap + _bitmap_size;
     _phys_memory_start = (void *) _align_up((uintptr_t) vmm_get_lhdm_addr(_bitmap_end), PAGE_SIZE);
 
@@ -202,7 +190,8 @@ void pmm_free(void *ptr, size_t pages)
     }
     size_t start_page = (base_addr - (uintptr_t) _phys_memory_start) / PAGE_SIZE;
     if (start_page + pages > _bitmap_page_count) {
-        debug_log_fmt("[!] pmm_free: Freeing %d pages at 0x%x exceeds bitmap\n", pages, (uintptr_t) ptr);
+        debug_log_fmt(
+            "[!] pmm_free: Freeing %d pages at 0x%x exceeds bitmap\n", pages, (uintptr_t) ptr);
         return;
     }
 
@@ -212,6 +201,4 @@ void pmm_free(void *ptr, size_t pages)
         size_t bit_idx = i % 8;
         _bitmap[byte_idx] &= ~(1 << bit_idx);
     }
-
-    _allocated_pages -= pages;
 }

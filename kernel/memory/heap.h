@@ -9,16 +9,6 @@
 #include <stddef.h>
 
 /*
- * Heap statistics and information.
- */
-typedef struct
-{
-    size_t free_blocks;
-    size_t used_blocks;
-    size_t used_memory;
-} heap_stats_t;
-
-/*
  * Initialize the heap with the specified amount of pages.
  * Returns true if successful, false otherwise.
  */
@@ -41,8 +31,3 @@ void *krealloc(void *pointer, size_t size);
  * The pointer parameter must be a pointer previously returned by kmalloc.
  */
 void kfree(void *pointer);
-
-/*
- * Returns information about the heap.
- */
-heap_stats_t heap_get_stats(void);

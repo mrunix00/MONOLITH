@@ -20,22 +20,6 @@
 #define PAGE_DOWN(x) ((x) & ~(PAGE_SIZE - 1))
 
 /*
- * Physical memory statistics and information.
- */
-typedef struct
-{
-    size_t total_memory;
-    size_t total_pages;
-    size_t free_pages;
-    size_t used_pages;
-} pmm_stats_t;
-
-/*
- * Returns information about the physical memory.
- */
-pmm_stats_t pmm_get_stats();
-
-/*
  * Initialize the Physical Memory Manager.
  */
 void pmm_init();
