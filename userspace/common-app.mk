@@ -12,6 +12,7 @@ STB_DIR ?= ../../libs/stb
 SRC := $(wildcard *.c)
 OBJ_DIR := $(BUILD_DIR)/obj/userspace/$(TARGET)
 OBJ := $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRC))
+DEP := $(OBJ:.o=.d)
 
 APP_LIB_TARGETS := $(addprefix $(BUILD_DIR)/libs/,$(addsuffix .a,$(APP_LIB_DEPS)))
 APP_INCLUDE_DIRS := $(addprefix ../libs/,$(addsuffix /include,$(APP_LIB_DEPS))) $(SHARED_INCLUDE_DIR) $(STB_DIR) $(EXTRA_INCLUDE_DIRS)
@@ -23,6 +24,8 @@ LIBS ?= $(APP_LIB_TARGETS)
 LIBGCC := $(shell $(CC) -print-libgcc-file-name)
 
 .PHONY: all clean
+
+-include $(DEP)
 
 all: $(TARGET)
 
@@ -36,7 +39,7 @@ $(TARGET): $(OBJ) $(APP_LIB_TARGETS)
 
 $(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
 	@echo "Compiling $<"
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)

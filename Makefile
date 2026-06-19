@@ -21,7 +21,7 @@ BUILD_DIR := $(BUILD_ROOT)/$(subst /,_,$(ARCH))
 ISO_DIR := $(BUILD_DIR)/isodir
 OBJ_DIR := $(BUILD_DIR)/obj
 INITRD_DIR := $(BUILD_DIR)/initrd
-CACHE_DIR := $(BUILD_ROOT)/cache
+CACHE_DIR := $(PROJECT_ROOT)/.cache
 
 # Limine bootloader release
 LIMINE_VERSION := v12.3.1
@@ -41,6 +41,7 @@ LDFLAGS := $(LDFLAGS_ARCH) -nostdlib -static --build-id=none
 
 FLANTERM_SOURCES := libs/flanterm/src/flanterm.c libs/flanterm/src/flanterm_backends/fb.c
 FLANTERM_OBJECTS := $(patsubst %.c,$(OBJ_DIR)/%.o,$(FLANTERM_SOURCES))
+FLANTERM_DEPS := $(FLANTERM_OBJECTS:.o=.d)
 
 # Variables exported to the per-arch kernel Makefile
 KERN_MAKEFLAGS := \
@@ -69,7 +70,9 @@ USERSPACE_MAKEFLAGS := \
 
 export PROJECT_ROOT ARCH ARCH_CPU TOOLCHAIN_BIN TOOLCHAIN_DIR TOOLCHAIN_BASE_DIR TOOLCHAIN_TARGET CROSS_PREFIX SHARED_INCLUDE_DIR NASM_FORMAT ARCH_CFLAGS CFLAGS
 
-.PHONY: all clean toolchain iso run run-headless run-debug run-debug-headless kernel flanterm initrd userspace FORCE rebuild-toolchain debug-toolchain
+-include $(FLANTERM_DEPS)
+
+.PHONY: all clean toolchain limine iso run run-headless run-debug run-debug-headless kernel flanterm initrd userspace FORCE rebuild-toolchain debug-toolchain
 
 all: | $(BUILD_DIR)
 	$(MAKE) toolchain
@@ -92,16 +95,17 @@ toolchain:
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR) $(OBJ_DIR)
 
-$(CACHE_DIR): | $(BUILD_DIR)
+$(CACHE_DIR):
 	mkdir -p $(CACHE_DIR)
 
 kernel: toolchain | $(BUILD_DIR)
 	$(MAKE) -C kernel/arch/$(ARCH) $(KERN_MAKEFLAGS)
 
-flanterm: toolchain | $(BUILD_DIR)
-	@mkdir -p $(OBJ_DIR)/libs/flanterm/src/flanterm_backends
-	$(CC) $(CFLAGS) -c libs/flanterm/src/flanterm.c -o $(OBJ_DIR)/libs/flanterm/src/flanterm.o
-	$(CC) $(CFLAGS) -c libs/flanterm/src/flanterm_backends/fb.c -o $(OBJ_DIR)/libs/flanterm/src/flanterm_backends/fb.o
+flanterm: $(FLANTERM_OBJECTS)
+
+$(OBJ_DIR)/libs/flanterm/src/%.o: libs/flanterm/src/%.c | $(BUILD_DIR)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 $(KERNEL_BIN): kernel flanterm | toolchain
 	$(LD) $(LDFLAGS) -o $@ $(shell find $(OBJ_DIR)/arch $(OBJ_DIR)/kernel $(OBJ_DIR)/libs -type f -name "*.o" 2>/dev/null) $(KERNEL_LIBGCC)
@@ -142,6 +146,8 @@ $(LIMINE_READY): $(LIMINE_TARBALL)
 	mkdir -p $(LIMINE_CACHE_DIR)
 	tar -xzf $(LIMINE_TARBALL) --strip-components=1 -C $(LIMINE_CACHE_DIR)
 	touch $@
+
+limine: $(LIMINE_READY)
 
 $(ISO_FILE): $(KERNEL_BIN_GZ) $(INITRD_TAR_GZ) $(LIMINE_CONF) $(LIMINE_READY)
 	rm -rf $(ISO_DIR)

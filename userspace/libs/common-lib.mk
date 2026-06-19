@@ -19,12 +19,15 @@ ARFLAGS ?= rcs
 
 SOURCES ?= $(shell find $(SRC_DIR) -type f -name '*.c' | sort)
 OBJECTS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SOURCES))
+DEPS := $(OBJECTS:.o=.d)
 
 CC := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc
 AR := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)ar
 LIB_CFLAGS := -ffreestanding -Wall -Wextra $(addprefix -I,$(LIB_INCLUDE_DIRS)) $(LIB_OPTFLAGS) $(LIB_EXTRA_CFLAGS)
 
 .PHONY: all clean
+
+-include $(DEPS)
 
 all: $(LIB_TARGET)
 
@@ -34,7 +37,7 @@ $(LIB_TARGET): $(OBJECTS)
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 	@mkdir -p $(dir $@)
-	$(CC) $(LIB_CFLAGS) -c $< -o $@
+	$(CC) $(LIB_CFLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)
