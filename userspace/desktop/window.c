@@ -331,6 +331,9 @@ window_t *new_window(const char *title, uint32_t width, uint32_t height, window_
         .surface_size = 0,
         .notified_content_width = 0,
         .notified_content_height = 0,
+        .pending_width = 0,
+        .pending_height = 0,
+        .resize_in_flight = false,
     };
     size_t title_len = title ? strnlen(title, sizeof(window.title) - 1) : 0;
     memcpy((void *) window.title, title ? title : "", title_len);
@@ -674,8 +677,10 @@ bool update_windows_state(gfx_context_t *context)
             changed = true;
         }
     } else if (resizing_window != NULL) {
-        uint32_t prev_width = resizing_window->width;
-        uint32_t prev_height = resizing_window->height;
+        uint32_t prev_width
+            = resizing_window->pending_width ? resizing_window->pending_width : resizing_window->width;
+        uint32_t prev_height = resizing_window->pending_height ? resizing_window->pending_height
+                                                               : resizing_window->height;
         uint32_t max_width = (uint32_t) context->width > resizing_window->pos_x
                                  ? (uint32_t) context->width - resizing_window->pos_x
                                  : 0;
@@ -705,10 +710,10 @@ bool update_windows_state(gfx_context_t *context)
         if (new_height > max_height)
             new_height = max_height;
 
-        resizing_window->width = new_width;
-        resizing_window->height = new_height;
+        resizing_window->pending_width = new_width;
+        resizing_window->pending_height = new_height;
 
-        if (resizing_window->width != prev_width || resizing_window->height != prev_height)
+        if (new_width != prev_width || new_height != prev_height)
             changed = true;
     }
 
@@ -768,6 +773,55 @@ uint16_t window_get_content_height(const window_t *window)
     if (height <= total_vertical_chrome)
         return 0;
     return (uint16_t) (height - total_vertical_chrome);
+}
+
+bool window_get_resize_target(const window_t *window, uint16_t *width, uint16_t *height)
+{
+    if (!window || !width || !height)
+        return false;
+
+    if (window->pending_width == 0 || window->pending_height == 0) {
+        *width = window_get_content_width(window);
+        *height = window_get_content_height(window);
+        return true;
+    }
+
+    uint32_t horizontal_chrome = _window_has_decorations(window) ? WINDOW_BODY_MARGIN_X * 2 : 0;
+    uint32_t vertical_chrome = _window_has_decorations(window)
+                                   ? WINDOW_BODY_TOP_OFFSET + WINDOW_BODY_BOTTOM_MARGIN
+                                   : 0;
+    *width = (uint16_t) (window->pending_width - horizontal_chrome);
+    *height = (uint16_t) (window->pending_height - vertical_chrome);
+    return true;
+}
+
+bool window_commit_resize(window_t *window, uint16_t content_width, uint16_t content_height)
+{
+    if (!window || !window->resize_in_flight)
+        return false;
+    if (content_width != window->notified_content_width
+        || content_height != window->notified_content_height) {
+        return false;
+    }
+
+    if (_window_has_decorations(window)) {
+        window->width = (uint32_t) content_width + WINDOW_BODY_MARGIN_X * 2;
+        window->height
+            = (uint32_t) content_height + WINDOW_BODY_TOP_OFFSET + WINDOW_BODY_BOTTOM_MARGIN;
+    } else {
+        window->width = content_width;
+        window->height = content_height;
+    }
+
+    window->resize_in_flight = false;
+    uint16_t target_width;
+    uint16_t target_height;
+    if (window_get_resize_target(window, &target_width, &target_height)
+        && target_width == content_width && target_height == content_height) {
+        window->pending_width = 0;
+        window->pending_height = 0;
+    }
+    return true;
 }
 
 bool window_contains_content_point(const window_t *window, uint32_t x, uint32_t y)

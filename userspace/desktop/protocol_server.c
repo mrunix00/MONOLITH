@@ -167,6 +167,15 @@ static void _handle_present_window(uint64_t task_id, const desktop_request_t *re
     window_t *window = get_window_by_owner(task_id, request->data.present_window.id);
     if (!window)
         return protocol_send_error(task_id, request->sequence, 2, "unknown window");
+
+    uint16_t width = request->data.present_window.width;
+    uint16_t height = request->data.present_window.height;
+    if (width == 0 || height == 0 || width > window->surface_width
+        || height > window->surface_height) {
+        return;
+    }
+
+    window_commit_resize(window, width, height);
 }
 
 static void _handle_client_request(uint64_t task_id, const desktop_request_t *request)
@@ -256,9 +265,13 @@ static bool _pump_window_resize_events()
         window_t *window = window_get_at_index(i);
         if (!window || window->owner_task_id == 0)
             continue;
+        if (window->resize_in_flight)
+            continue;
 
-        uint16_t content_width = window_get_content_width(window);
-        uint16_t content_height = window_get_content_height(window);
+        uint16_t content_width;
+        uint16_t content_height;
+        if (!window_get_resize_target(window, &content_width, &content_height))
+            continue;
         if (content_width == 0 || content_height == 0)
             continue;
 
@@ -273,7 +286,7 @@ static bool _pump_window_resize_events()
             continue;
         }
 
-        protocol_send_event(
+        if (protocol_send_event(
             window->owner_task_id,
             (desktop_event_t){
                 .sequence = 0,
@@ -281,11 +294,15 @@ static bool _pump_window_resize_events()
                 .data.resized.window_id = (uint16_t) window->id,
                 .data.resized.new_width = content_width,
                 .data.resized.new_height = content_height,
-            });
+            })
+            != 0) {
+            continue;
+        }
         had_resize_event = true;
 
         window->notified_content_width = content_width;
         window->notified_content_height = content_height;
+        window->resize_in_flight = true;
     }
 
     return had_resize_event;

@@ -53,6 +53,8 @@ typedef struct
 typedef struct
 {
     uint16_t id;
+    uint16_t width;
+    uint16_t height;
 } present_window_req_t;
 
 typedef struct

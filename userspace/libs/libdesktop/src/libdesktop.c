@@ -202,10 +202,13 @@ int desktop_present_window(uint16_t window_id)
 {
     _last_error = DESKTOP_ERROR_NONE;
 
+    _desktop_framebuffer_state_t *state = _find_framebuffer_state(window_id);
     desktop_request_t request = {
         .sequence = _sequence++,
         .type = DESKTOP_REQUEST_PRESENT_WINDOW,
         .data.present_window.id = window_id,
+        .data.present_window.width = state ? state->view_width : 0,
+        .data.present_window.height = state ? state->view_height : 0,
     };
 
     return _protocol_send_request(&request);
@@ -247,6 +250,7 @@ int desktop_request_window_framebuffer(uint16_t window_id, uint16_t w, uint16_t 
         }
         if (state->bound_context)
             _populate_context(state, state->bound_context);
+        desktop_present_window(window_id);
         return 1;
     }
 
@@ -292,6 +296,7 @@ int desktop_handle_framebuffer_event(const desktop_event_t *event, gfx_context_t
 
     state->bound_context = out_context;
     _populate_context(state, out_context);
+    desktop_present_window(state->window_id);
 
     return 1;
 }

@@ -40,6 +40,9 @@ typedef struct
     size_t surface_size;
     uint16_t notified_content_width;
     uint16_t notified_content_height;
+    uint32_t pending_width;
+    uint32_t pending_height;
+    bool resize_in_flight;
 } window_t;
 
 window_t *new_window(const char *title, uint32_t width, uint32_t height, window_flags_t flags);
@@ -60,6 +63,10 @@ void window_set_remote_surface(
 uint16_t window_get_content_width(const window_t *window);
 
 uint16_t window_get_content_height(const window_t *window);
+
+bool window_get_resize_target(const window_t *window, uint16_t *width, uint16_t *height);
+
+bool window_commit_resize(window_t *window, uint16_t content_width, uint16_t content_height);
 
 bool window_contains_content_point(const window_t *window, uint32_t x, uint32_t y);
 
