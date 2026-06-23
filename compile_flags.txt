@@ -1,5 +1,5 @@
 -I./
--Ilibs/PureDOOM
+-I.cache/puredoom
 -Ilibs/stb
 -Iuserspace/libs/libdesktop/include
 -Iuserspace/libs/libc/include

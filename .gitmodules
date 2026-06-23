@@ -10,7 +10,3 @@
 	path = libs/stb
 	url = https://github.com/nothings/stb
 	shallow = true
-[submodule "libs/PureDOOM"]
-	path = libs/PureDOOM
-	url = https://github.com/Daivuk/PureDOOM
-	shallow = true
