@@ -7,15 +7,17 @@
 #include <kernel/arch/pc/gdt.h>
 #include <kernel/arch/pc/idt.h>
 #include <kernel/arch/pc/sse.h>
-#include <kernel/debug.h>
+#include <kernel/devices/debug.h>
 #include <kernel/klibc/memory.h>
 #include <kernel/klibc/string.h>
 #include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
+#include <kernel/rsmgr/rsmgr.h>
 #include <kernel/tasking/ipc.h>
 #include <kernel/tasking/scheduler.h>
 #include <kernel/tasking/syscall.h>
+#include <kernel/tasking/task_domain.h>
 
 #define KERNEL_CODE_SELECTOR 0x08
 #define KERNEL_DATA_SELECTOR 0x10
@@ -97,6 +99,7 @@ static void _task_destroy(task_t *task)
 
     syscalls_task_cleanup(task);
     ipc_task_cleanup(task);
+    task_domain_unregister(task);
 
     if (task->memory.memblocks) {
         for (size_t i = 0; i < task->memory.memblocks_count; i++) {
@@ -117,8 +120,16 @@ static void _task_destroy(task_t *task)
 
     kfree(task->state.fx_state);
     kfree((void *) task->stack_bottom);
-    kfree(task->name);
     kfree(task);
+}
+
+static const char *_task_basename(const char *path)
+{
+    if (path == NULL)
+        return "";
+
+    const char *name = strrchr(path, '/');
+    return name == NULL ? path : name + 1;
 }
 
 static void _task_defer_destroy(task_t *task)
@@ -220,7 +231,7 @@ static void _task_state_load(task_t *task, interrupt_registers_t *regs)
         sse_restore(task->state.fx_state_aligned);
 }
 
-task_t *task_create(void *entry_point, const char *name, task_mode_t mode)
+task_t *task_create(void *entry_point, const char *path, task_mode_t mode)
 {
     task_t *task = (task_t *) kmalloc(sizeof(task_t));
     if (!task) {
@@ -263,11 +274,21 @@ task_t *task_create(void *entry_point, const char *name, task_mode_t mode)
     }
     task->state.rsp0 = task->stack_bottom + KERNEL_STACK_SIZE;
 
+    if (rsmgr_handle_table_init(&task->handle_table) != RSRC_STATUS_OK) {
+        debug_log("Failed to create task: handle table init failed\n");
+        kfree((void *) task->stack_bottom);
+        kfree(task->state.fx_state);
+        kfree(task);
+        return NULL;
+    }
+
     if (task->user_mode) {
         task->state.cr3 = vmm_create_address_space();
         if (task->state.cr3 == 0) {
             debug_log("Failed to create task: vmm_create_address_space failed\n");
+            rsmgr_handle_table_destroy(&task->handle_table);
             kfree((void *) task->stack_bottom);
+            kfree(task->state.fx_state);
             kfree(task);
             return NULL;
         }
@@ -275,11 +296,20 @@ task_t *task_create(void *entry_point, const char *name, task_mode_t mode)
         task->state.cr3 = vmm_get_kernel_cr3();
     }
 
+    const char *task_path = path == NULL ? "" : path;
+    strncpy(task->path, task_path, sizeof(task->path) - 1);
+    task->path[sizeof(task->path) - 1] = '\0';
+    const char *task_name = _task_basename(task_path);
+    strncpy(task->name, task_name, sizeof(task->name) - 1);
+    task->name[sizeof(task->name) - 1] = '\0';
+
     task->next = &_task_list_head;
     _task_list_tail->next = task;
     _task_list_tail = task;
 
-    task->name = strdup(name);
+    task->resource_node = NULL;
+    if (task->user_mode)
+        task_domain_register(task);
 
     return task;
 }
@@ -293,7 +323,7 @@ void task_set_parent(task_t *child, task_t *parent)
     if (!debug_assert(child != &_task_list_head))
         return;
 
-    if (child->parent) /* Unlink child from its current parent if it has one */
+    if (child->parent)
         _task_unlink_child(child);
 
     if (!parent || parent->exiting)
@@ -305,6 +335,7 @@ void task_set_parent(task_t *child, task_t *parent)
     if (parent->first_child)
         parent->first_child->prev_sibling = child;
     parent->first_child = child;
+    task_domain_reparent(child);
 }
 
 int task_map(

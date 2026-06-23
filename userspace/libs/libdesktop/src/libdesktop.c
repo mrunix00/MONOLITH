@@ -5,9 +5,10 @@
 
 #include <ipc.h>
 #include <libdesktop.h>
-#include <stdint.h>
+#include <resource.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define DESKTOP_EVENT_RECV_BUFFER_SIZE 4096
 #define DESKTOP_MAX_FRAMEBUFFERS 64
@@ -22,6 +23,7 @@ typedef struct
     uint16_t view_height;
     uint16_t buffer_width;
     uint16_t buffer_height;
+    rsrc_handle_t framebuffer_handle;
     void *framebuffer;
     uint32_t *backbuffer;
     size_t backbuffer_size;
@@ -68,9 +70,18 @@ static _desktop_framebuffer_state_t *_find_framebuffer_state(uint16_t window_id)
 
 static void _clear_framebuffer_state(_desktop_framebuffer_state_t *state)
 {
-    ipc_release_shared_memory(_protocol_channel_id, state->framebuffer);
+    if (state->framebuffer) {
+        size_t framebuffer_size = (size_t) state->buffer_width * (size_t) state->buffer_height
+                                  * sizeof(uint32_t);
+        size_t pages = (framebuffer_size + PAGE_SIZE - 1) / PAGE_SIZE;
+        if (pages > 0)
+            unmap_pages(state->framebuffer, pages);
+    }
+    if (state->framebuffer_handle >= 0)
+        rsmgr_close(state->framebuffer_handle);
     free(state->backbuffer);
     memset(state, 0, sizeof(*state));
+    state->framebuffer_handle = RSRC_INVALID_HANDLE;
 }
 
 static void _populate_context(const _desktop_framebuffer_state_t *state, gfx_context_t *out_context)
@@ -141,7 +152,7 @@ static int _request_window_framebuffer(
 int desktop_connect(void)
 {
     _protocol_channel_id = ipc_connect(DESKTOP_CHANNEL_NAME);
-    if (_protocol_channel_id == -1) {
+    if (_protocol_channel_id < 0) {
         _last_error = DESKTOP_ERROR_CONNECT_FAILED;
         return -1;
     }
@@ -221,6 +232,7 @@ static _desktop_framebuffer_state_t *new_framebuffer_state(uint16_t window_id)
             continue;
         _framebuffer_states[i] = (_desktop_framebuffer_state_t){0};
         _framebuffer_states[i].active = true;
+        _framebuffer_states[i].framebuffer_handle = RSRC_INVALID_HANDLE;
         _framebuffer_states[i].window_id = window_id;
         return &_framebuffer_states[i];
     }
@@ -276,13 +288,33 @@ int desktop_handle_framebuffer_event(const desktop_event_t *event, gfx_context_t
     if (!state)
         return 0;
 
-    void *new_pixels = (void *) event->data.framebuffer_ready.address;
-    if (!new_pixels) {
+    rsrc_handle_t framebuffer_handle = RSRC_INVALID_HANDLE;
+    if (ipc_receive_resource(_protocol_channel_id, NULL, &framebuffer_handle) != 0
+        || framebuffer_handle < 0) {
         _last_error = DESKTOP_ERROR_SHM_FAILED;
         return -1;
     }
 
-    ipc_release_shared_memory(_protocol_channel_id, state->framebuffer);
+    void *new_pixels
+        = rsmgr_mmap(framebuffer_handle, 0, event->data.framebuffer_ready.size, ALLOC_PAGES_FLAG_RW);
+    if (!new_pixels) {
+        rsmgr_close(framebuffer_handle);
+        _last_error = DESKTOP_ERROR_SHM_FAILED;
+        return -1;
+    }
+
+    if (state->framebuffer) {
+        size_t old_pages = ((size_t) state->buffer_width * (size_t) state->buffer_height
+                                * sizeof(uint32_t)
+                            + PAGE_SIZE - 1)
+                           / PAGE_SIZE;
+        if (old_pages > 0)
+            unmap_pages(state->framebuffer, old_pages);
+    }
+    if (state->framebuffer_handle >= 0)
+        rsmgr_close(state->framebuffer_handle);
+
+    state->framebuffer_handle = framebuffer_handle;
     state->framebuffer = new_pixels;
     state->buffer_width = event->data.framebuffer_ready.width;
     state->buffer_height = event->data.framebuffer_ready.height;
@@ -306,7 +338,15 @@ int desktop_release_window_framebuffer(void *framebuffer_addr)
     if (!framebuffer_addr)
         return 0;
 
-    return ipc_release_shared_memory(_protocol_channel_id, framebuffer_addr);
+    for (size_t i = 0; i < DESKTOP_MAX_FRAMEBUFFERS; i++) {
+        _desktop_framebuffer_state_t *state = &_framebuffer_states[i];
+        if (!state->active || state->framebuffer != framebuffer_addr)
+            continue;
+        _clear_framebuffer_state(state);
+        return 0;
+    }
+
+    return 0;
 }
 
 int desktop_poll_event(desktop_event_t *event)
@@ -334,7 +374,7 @@ int desktop_disconnect()
         _clear_framebuffer_state(&_framebuffer_states[i]);
     }
 
-    if (_protocol_channel_id == -1)
+    if (_protocol_channel_id < 0)
         return 0;
 
     int result = ipc_disconnect(_protocol_channel_id);

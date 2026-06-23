@@ -9,13 +9,18 @@
 #include "./window.h"
 
 #include <ipc.h>
+#include <resource.h>
+#include <shm.h>
 #include <string.h>
+#include <unistd.h>
 
 #define PROTOCOL_SERVER_RECV_BUFFER_SIZE 4096
 #define WINDOW_CONTENT_MARGIN_X 5
 #define WINDOW_CONTENT_TOP_OFFSET (WINDOW_TITLE_BAR_HEIGHT - BORDER_THICKNESS)
 
 static channel_id_t _channel_id = -1;
+static rsrc_handle_t _keyboard_fd = -1;
+static rsrc_handle_t _mouse_fd = -1;
 
 static size_t _pages_for_size(size_t size)
 {
@@ -24,15 +29,16 @@ static size_t _pages_for_size(size_t size)
     return (size + PAGE_SIZE - 1) / PAGE_SIZE;
 }
 
-static void _release_surface_mapping(uint32_t *pixels, size_t size)
+static void _release_surface_mapping(rsrc_handle_t handle, uint32_t *pixels, size_t size)
 {
     if (!pixels || size == 0)
         return;
-    if (ipc_release_shared_memory(_channel_id, pixels) != 0) {
-        size_t pages = _pages_for_size(size);
-        if (pages > 0)
-            unmap_pages(pixels, pages);
-    }
+
+    size_t pages = _pages_for_size(size);
+    if (pages > 0)
+        unmap_pages(pixels, pages);
+    if (handle >= 0)
+        rsmgr_close(handle);
 }
 
 void protocol_release_window_surface(window_t *window)
@@ -40,8 +46,8 @@ void protocol_release_window_surface(window_t *window)
     if (!window || !window->surface_pixels || window->surface_size == 0)
         return;
 
-    _release_surface_mapping(window->surface_pixels, window->surface_size);
-    window_set_remote_surface(window, NULL, 0, 0, 0);
+    _release_surface_mapping(window->surface_handle, window->surface_pixels, window->surface_size);
+    window_set_remote_surface(window, RSRC_INVALID_HANDLE, NULL, 0, 0, 0);
 }
 
 static void _handle_create_window(uint64_t task_id, const desktop_request_t *request)
@@ -117,13 +123,20 @@ static void _handle_request_framebuffer(uint64_t task_id, const desktop_request_
         return protocol_send_error(task_id, request->sequence, 4, "invalid framebuffer size");
 
     uint32_t *old_pixels = window->surface_pixels;
+    rsrc_handle_t old_handle = window->surface_handle;
     uint16_t old_width = window->surface_width;
     uint16_t old_height = window->surface_height;
     size_t old_size = window->surface_size;
 
-    void *owner_pixels = alloc_pages(pages, ALLOC_PAGES_FLAG_RW);
-    if (!owner_pixels)
+    rsrc_handle_t surface_handle = shm_create(pages * PAGE_SIZE);
+    if (surface_handle < 0)
         return protocol_send_error(task_id, request->sequence, 5, "framebuffer allocation failed");
+
+    void *owner_pixels = rsmgr_mmap(surface_handle, 0, pages * PAGE_SIZE, ALLOC_PAGES_FLAG_RW);
+    if (!owner_pixels) {
+        rsmgr_close(surface_handle);
+        return protocol_send_error(task_id, request->sequence, 5, "framebuffer allocation failed");
+    }
 
     memset(owner_pixels, 0, pages * PAGE_SIZE);
     if (old_pixels && old_width > 0 && old_height > 0) {
@@ -140,26 +153,26 @@ static void _handle_request_framebuffer(uint64_t task_id, const desktop_request_
     connection_t client = {
         .task_id = task_id,
     };
-    void *client_pixels = ipc_share_memory(_channel_id, &client, owner_pixels, pages * PAGE_SIZE);
-    if (!client_pixels) {
+    if (protocol_send_event(
+            task_id,
+            (desktop_event_t){
+                .sequence = request->sequence,
+                .type = DESKTOP_EVENT_FRAMEBUFFER_READY,
+                .data.framebuffer_ready.id = (uint16_t) window->id,
+                .data.framebuffer_ready.address = 0,
+                .data.framebuffer_ready.width = width,
+                .data.framebuffer_ready.height = height,
+                .data.framebuffer_ready.stride = (uint32_t) width * sizeof(uint32_t),
+                .data.framebuffer_ready.size = effective_size,
+            }) != 0
+        || ipc_send_resource(_channel_id, &client, surface_handle) != 0) {
         unmap_pages(owner_pixels, pages);
+        rsmgr_close(surface_handle);
         return protocol_send_error(task_id, request->sequence, 4, "framebuffer share failed");
     }
 
-    window_set_remote_surface(window, (uint32_t *) owner_pixels, width, height, effective_size);
-    _release_surface_mapping(old_pixels, old_size);
-    protocol_send_event(
-        task_id,
-        (desktop_event_t){
-            .sequence = request->sequence,
-            .type = DESKTOP_EVENT_FRAMEBUFFER_READY,
-            .data.framebuffer_ready.id = (uint16_t) window->id,
-            .data.framebuffer_ready.address = (uintptr_t) client_pixels,
-            .data.framebuffer_ready.width = width,
-            .data.framebuffer_ready.height = height,
-            .data.framebuffer_ready.stride = (uint32_t) width * sizeof(uint32_t),
-            .data.framebuffer_ready.size = effective_size,
-        });
+    window_set_remote_surface(window, surface_handle, (uint32_t *) owner_pixels, width, height, effective_size);
+    _release_surface_mapping(old_handle, old_pixels, old_size);
 }
 
 static void _handle_present_window(uint64_t task_id, const desktop_request_t *request)
@@ -210,11 +223,11 @@ static void _handle_disconnect(uint64_t task_id)
 static bool _pump_input_events()
 {
     bool had_input = false;
-    input_event_t input_event = {0};
+    input_keyboard_event_t kb_event;
+    input_mouse_event_t mouse_event;
 
-    while (poll_input_event(&input_event) == 0) {
+    while (read_keyboard_event(_keyboard_fd, &kb_event) > 0) {
         had_input = true;
-        input_process_event(&input_event);
 
         window_t *window = get_active_window();
         if (!window || window->owner_task_id == 0)
@@ -222,36 +235,43 @@ static bool _pump_input_events()
 
         desktop_event_t event = {
             .sequence = 0,
+            .type = DESKTOP_EVENT_WINDOW_KEYBOARD,
+            .data.keyboard.window_id = (uint16_t) window->id,
+            .data.keyboard.keyboard = kb_event,
         };
+        protocol_send_event(window->owner_task_id, event);
+    }
 
-        if (input_event.type == INPUT_EVENT_KEYBOARD) {
-            event.type = DESKTOP_EVENT_WINDOW_KEYBOARD;
-            event.data.keyboard.window_id = (uint16_t) window->id;
-            event.data.keyboard.keyboard = input_event.data.keyboard;
-            protocol_send_event(window->owner_task_id, event);
+    while (read_mouse_event(_mouse_fd, &mouse_event) > 0) {
+        had_input = true;
+        input_process_mouse_event(&mouse_event);
+
+        window_t *window = get_active_window();
+        if (!window || window->owner_task_id == 0)
             continue;
+
+        input_mouse_event_t mouse_state = get_mouse_state();
+        uint32_t mouse_x = mouse_state.x < 0 ? 0u : (uint32_t) mouse_state.x;
+        uint32_t mouse_y = mouse_state.y < 0 ? 0u : (uint32_t) mouse_state.y;
+        if (!window_contains_content_point(window, mouse_x, mouse_y))
+            continue;
+
+        uint32_t content_x = window->pos_x;
+        uint32_t content_y = window->pos_y;
+        if (!window->borderless) {
+            content_x += WINDOW_CONTENT_MARGIN_X;
+            content_y += WINDOW_CONTENT_TOP_OFFSET;
         }
 
-        if (input_event.type == INPUT_EVENT_MOUSE) {
-            input_mouse_event_t mouse_state = get_mouse_state();
-            uint32_t mouse_x = mouse_state.x < 0 ? 0u : (uint32_t) mouse_state.x;
-            uint32_t mouse_y = mouse_state.y < 0 ? 0u : (uint32_t) mouse_state.y;
-            if (!window_contains_content_point(window, mouse_x, mouse_y))
-                continue;
-
-            uint32_t content_x = window->pos_x;
-            uint32_t content_y = window->pos_y;
-            if (!window->borderless) {
-                content_x += WINDOW_CONTENT_MARGIN_X;
-                content_y += WINDOW_CONTENT_TOP_OFFSET;
-            }
-            event.type = DESKTOP_EVENT_WINDOW_MOUSE;
-            event.data.mouse.window_id = (uint16_t) window->id;
-            event.data.mouse.mouse = input_event.data.mouse;
-            event.data.mouse.mouse.x = (int32_t) (mouse_x - content_x);
-            event.data.mouse.mouse.y = (int32_t) (mouse_y - content_y);
-            protocol_send_event(window->owner_task_id, event);
-        }
+        desktop_event_t event = {
+            .sequence = 0,
+            .type = DESKTOP_EVENT_WINDOW_MOUSE,
+            .data.mouse.window_id = (uint16_t) window->id,
+            .data.mouse.mouse = mouse_event,
+            .data.mouse.mouse.x = (int32_t) (mouse_x - content_x),
+            .data.mouse.mouse.y = (int32_t) (mouse_y - content_y),
+        };
+        protocol_send_event(window->owner_task_id, event);
     }
 
     return had_input;
@@ -319,42 +339,43 @@ static void _accept_pending_connections()
 
 int protocol_server_init()
 {
-    if (_channel_id != -1)
+    if (_channel_id >= 0)
         return 0;
 
     _channel_id = ipc_new_channel(DESKTOP_CHANNEL_NAME);
-    if (_channel_id == -1)
+    if (_channel_id < 0)
         return -1;
+
+    _keyboard_fd = open_keyboard_device();
+    _mouse_fd = open_mouse_device();
 
     return 0;
 }
 
 bool protocol_server_pump()
 {
-    if (_channel_id == -1)
+    if (_channel_id < 0)
         return false;
 
     bool had_activity = false;
 
     _accept_pending_connections();
-    unsigned char raw_message[PROTOCOL_SERVER_RECV_BUFFER_SIZE] = {0};
-    connection_t sender = {0};
+    unsigned char raw_packet[PROTOCOL_SERVER_RECV_BUFFER_SIZE] = {0};
 
-    while (ipc_receive(_channel_id, &sender, raw_message, sizeof(raw_message)) > 0) {
+    while (ipc_receive_packet(_channel_id, raw_packet, sizeof(raw_packet)) > 0) {
         had_activity = true;
-        ipc_message_t *message = (ipc_message_t *) raw_message;
+        ipc_channel_recv_out_t *packet = (ipc_channel_recv_out_t *) raw_packet;
 
-        switch (message->type) {
-        case IPC_OWNER_MSG_TYPE_DATA:
-            if (message->payload.data.size < sizeof(desktop_request_t)) {
-                protocol_send_error(message->sender_task_id, 0, 4, "invalid request size");
+        switch (packet->header.type) {
+        case IPC_CHANNEL_PACKET_MESSAGE:
+            if (packet->header.payload_len < sizeof(desktop_request_t)) {
+                protocol_send_error(packet->header.sender_task_id, 0, 4, "invalid request size");
                 break;
             }
-            _handle_client_request(
-                message->sender_task_id, (const desktop_request_t *) message->payload.data.data);
+            _handle_client_request(packet->header.sender_task_id, (const desktop_request_t *) packet->payload);
             break;
-        case IPC_OWNER_MSG_TYPE_DISCONNECT:
-            _handle_disconnect(message->sender_task_id);
+        case IPC_CHANNEL_PACKET_DISCONNECT:
+            _handle_disconnect(packet->header.sender_task_id);
             break;
         default:
             break;

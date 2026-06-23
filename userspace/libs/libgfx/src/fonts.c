@@ -4,9 +4,8 @@
  */
 
 #include <libgfx.h>
+#include <resource.h>
 #include <stdbool.h>
-#include <stdint.h>
-#include <unistd.h>
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #define STBTT_malloc(x, u) ((void) (u), malloc(x))
@@ -249,40 +248,43 @@ gfx_font_t gfx_load_font(const void *data, uint32_t font_size)
 
 gfx_font_t gfx_load_font_from_file(const char *path, uint32_t font_size)
 {
-    int fd = open(path, O_RDONLY);
+    int fd = rsmgr_open(path);
     if (fd < 0)
         return (gfx_font_t){0};
 
-    file_stats_t stats;
-    if (fstat(fd, &stats) < 0 || stats.type != TYPE_FILE || stats.size == 0) {
-        close(fd);
-        return (gfx_font_t){0};
-    }
-
     gfx_font_t font = {.first_glyph = SIZE_MAX, .last_glyph = SIZE_MAX};
-    unsigned char *data = _arena_alloc(&font, (size_t) stats.size, sizeof(void *), NULL);
-    if (!data) {
-        close(fd);
+    unsigned char *data = NULL;
+    uint64_t total_read = 0;
+    uint32_t capacity = 0;
+
+    while (1) {
+        if (total_read + 8192 > capacity) {
+            uint32_t new_cap = capacity == 0 ? 16384 : capacity * 2;
+            unsigned char *new_buf = realloc(data, new_cap);
+            if (!new_buf) {
+                free(data);
+                rsmgr_close(fd);
+                return (gfx_font_t){0};
+            }
+            data = new_buf;
+            capacity = new_cap;
+        }
+
+        int bytes_read = rsmgr_read(fd, data + total_read, 8192);
+        if (bytes_read <= 0)
+            break;
+        total_read += (uint64_t) bytes_read;
+    }
+
+    rsmgr_close(fd);
+
+    if (total_read == 0) {
+        free(data);
         return (gfx_font_t){0};
     }
-
-    uint64_t read_size = 0;
-    while (read_size < stats.size) {
-        uint32_t chunk = (uint32_t) ((stats.size - read_size) > 8192 ? 8192
-                                                                     : (stats.size - read_size));
-        int bytes_read = read(fd, data + read_size, chunk);
-        if (bytes_read <= 0) {
-            close(fd);
-            gfx_unload_font(&font);
-            return (gfx_font_t){0};
-        }
-        read_size += (uint64_t) bytes_read;
-    }
-
-    close(fd);
 
     if (!_init_font(&font, data, font_size)) {
-        gfx_unload_font(&font);
+        free(data);
         return (gfx_font_t){0};
     }
     return font;

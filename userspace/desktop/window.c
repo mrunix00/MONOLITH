@@ -325,6 +325,7 @@ window_t *new_window(const char *title, uint32_t width, uint32_t height, window_
         .snapped_right = false,
         .menubar = NULL,
         .owner_task_id = 0,
+        .surface_handle = RSRC_INVALID_HANDLE,
         .surface_pixels = NULL,
         .surface_width = 0,
         .surface_height = 0,
@@ -722,11 +723,12 @@ bool update_windows_state(gfx_context_t *context)
 }
 
 void window_set_remote_surface(
-    window_t *window, uint32_t *pixels, uint16_t width, uint16_t height, size_t size)
+    window_t *window, rsrc_handle_t handle, uint32_t *pixels, uint16_t width, uint16_t height, size_t size)
 {
     if (!window)
         return;
 
+    window->surface_handle = handle;
     window->surface_pixels = pixels;
     window->surface_width = width;
     window->surface_height = height;

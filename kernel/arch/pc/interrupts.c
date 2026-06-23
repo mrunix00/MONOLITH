@@ -7,7 +7,6 @@
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/interrupts.h>
 #include <kernel/arch/pc/pic.h>
-#include <stdint.h>
 
 void interrupts_eoi(uint8_t isr)
 {

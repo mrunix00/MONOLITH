@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-#include <kernel/debug.h>
+#include <kernel/devices/debug.h>
+#include <kernel/devices/device_domain.h>
 #include <kernel/klibc/string.h>
 #include <kernel/timer.h>
 #include <libs/flanterm/src/flanterm_backends/fb.h>
@@ -245,4 +246,49 @@ bool _debug_assert(bool expr, const char *line, const char *expr_str)
     if (!expr)
         _debug_log_fmt("%s: Assertion \"%s\" failed\n", line, expr_str);
     return expr;
+}
+
+static rsrc_status_t _debug_dev_write(
+    rsrc_t *resource,
+    void *handle_state,
+    const void *buffer,
+    uint64_t buffer_len,
+    uint64_t *out_bytes_written)
+{
+    (void) resource;
+    (void) handle_state;
+
+    if (buffer == NULL || buffer_len == 0) {
+        if (out_bytes_written != NULL)
+            *out_bytes_written = 0;
+        return RSRC_ERROR_INVALID_ARGUMENT;
+    }
+
+    _debug_log(buffer);
+
+    if (out_bytes_written != NULL)
+        *out_bytes_written = buffer_len;
+    return RSRC_STATUS_OK;
+}
+
+static const rsrc_ops_t _debug_ops = {
+    .open = NULL,
+    .lookup = NULL,
+    .dup_handle = NULL,
+    .close_handle = NULL,
+    .destroy = NULL,
+    .describe = NULL,
+    .seek = NULL,
+    .list = NULL,
+    .read = NULL,
+    .write = _debug_dev_write,
+    .mmap = NULL,
+    .poll = NULL,
+    .remove = NULL,
+    .control = NULL,
+};
+
+void debug_device_init()
+{
+    device_register("/debug", &_debug_ops, NULL);
 }

@@ -4,15 +4,13 @@
  */
 
 #include <kernel/arch/pc/interrupts.h>
-#include <kernel/debug.h>
-#include <kernel/fs/vfs.h>
+#include <kernel/devices/debug.h>
 #include <kernel/klibc/memory.h>
-#include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
 #include <kernel/tasking/elf.h>
 #include <kernel/tasking/loader.h>
-#include <stdint.h>
+#include <shared/include/monolith/stdio.h>
 
 task_t *load_elf(const char *path)
 {
@@ -21,8 +19,8 @@ task_t *load_elf(const char *path)
 
 task_t *load_elf_for_parent(const char *path, task_t *parent)
 {
-    file_t file = file_open(path);
-    if (file.internal == NULL)
+    rsrc_t *file = rsmgr_open(path);
+    if (file == NULL)
         return NULL;
 
     interrupts_disable();
@@ -33,7 +31,7 @@ task_t *load_elf_for_parent(const char *path, task_t *parent)
         elf64_header_t elf64;
     } header;
 
-    if (parse_elf_header(&file, &header) < 0) {
+    if (parse_elf_header(file, &header) < 0) {
         debug_log("ELF parsing error\n");
         interrupts_enable();
         return NULL;
@@ -45,7 +43,8 @@ task_t *load_elf_for_parent(const char *path, task_t *parent)
         interrupts_enable();
         return NULL;
     } else if (header.common.isa != ELF_ISA_X86_64) {
-        debug_log_fmt("ELF is not compatible with x86_64! header.isa = 0x%x\n", (uintptr_t) header.common.isa);
+        debug_log_fmt(
+            "ELF is not compatible with x86_64! header.isa = 0x%x\n", (uintptr_t) header.common.isa);
         interrupts_enable();
         return NULL;
     }
@@ -65,13 +64,9 @@ task_t *load_elf_for_parent(const char *path, task_t *parent)
     task_t *task = task_create((void *) entry_offset, path, TASK_MODE_USER);
 
     for (int i = 0; i < pht_entry_count; i++) {
-        if (file_seek(&file, pht_offset + i * pht_entry_size, SEEK_SET) < 0) {
-            interrupts_enable();
-            return NULL;
-        }
-
         elf64_psh_t psh;
-        if (parse_elf_program_header(&file, &psh, pht_entry_size) < 0) {
+        if (parse_elf_program_header(file, pht_offset + i * pht_entry_size, &psh, pht_entry_size)
+            < 0) {
             interrupts_enable();
             return NULL;
         }
@@ -103,14 +98,14 @@ task_t *load_elf_for_parent(const char *path, task_t *parent)
         memset(hddm_addr, 0, npages * PAGE_SIZE);
 
         size_t offset_in_page = vaddr - vaddr_start;
-        if (file_seek(&file, psh.section_offset, SEEK_SET) < 0) {
-            debug_log("Failed to seek to segment offset\n");
-            pmm_free(phys_mem, npages);
-            interrupts_enable();
-            return NULL;
-        }
 
-        if (file_read(&file, hddm_addr + offset_in_page, psh.section_file_size) < 0) {
+        uint64_t offset = psh.section_offset;
+        uint64_t bytes_read = 0;
+        if (rsmgr_seek(file, &offset, (int64_t) psh.section_offset, SEEK_SET, &offset)
+                != RSRC_STATUS_OK
+            || rsmgr_read(file, &offset, hddm_addr + offset_in_page, psh.section_file_size, &bytes_read)
+                   != RSRC_STATUS_OK
+            || bytes_read < psh.section_file_size) {
             debug_log("Failed to read segment data\n");
             pmm_free(phys_mem, npages);
             interrupts_enable();

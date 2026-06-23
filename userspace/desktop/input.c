@@ -19,23 +19,20 @@ void input_set_screen_bounds(uint32_t width, uint32_t height)
     _screen_height = height;
 }
 
-bool input_process_event(const input_event_t *event)
+bool input_process_mouse_event(const input_mouse_event_t *event)
 {
     if (!event)
         return false;
 
-    if (event->type != INPUT_EVENT_MOUSE)
-        return false;
-
-    uint32_t new_x = event->data.mouse.x < 0 ? 0u : (uint32_t) event->data.mouse.x;
-    uint32_t new_y = event->data.mouse.y < 0 ? 0u : (uint32_t) event->data.mouse.y;
+    uint32_t new_x = event->x < 0 ? 0u : (uint32_t) event->x;
+    uint32_t new_y = event->y < 0 ? 0u : (uint32_t) event->y;
 
     if (_screen_width > 0 && new_x >= _screen_width)
         new_x = _screen_width - 1;
     if (_screen_height > 0 && new_y >= _screen_height)
         new_y = _screen_height - 1;
 
-    _mouse_state = event->data.mouse;
+    _mouse_state = *event;
     _mouse_state.x = (int32_t) new_x;
     _mouse_state.y = (int32_t) new_y;
     return true;

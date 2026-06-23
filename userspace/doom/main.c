@@ -9,9 +9,6 @@
 
 #include <libdesktop.h>
 #include <libgfx.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -19,10 +16,36 @@ typedef struct
 {
     int fd;
     uint64_t size;
-    uint64_t pos;
     bool writable;
     bool size_known;
 } doom_file_t;
+
+static int doom_tell_fd(int fd)
+{
+    return rsmgr_seek(fd, 0, SEEK_CUR);
+}
+
+static int doom_ensure_size(doom_file_t *file)
+{
+    if (!file)
+        return -1;
+
+    if (file->size_known)
+        return 0;
+
+    int original_pos = rsmgr_seek(file->fd, 0, SEEK_CUR);
+    if (original_pos < 0)
+        return -1;
+
+    int end_pos = rsmgr_seek(file->fd, 0, SEEK_END);
+    if (end_pos < 0)
+        return -1;
+
+    file->size = (uint64_t) end_pos;
+    file->size_known = true;
+
+    return rsmgr_seek(file->fd, original_pos, SEEK_SET) < 0 ? -1 : 0;
+}
 
 static void doom_print_override(const char *str)
 {
@@ -50,70 +73,67 @@ static bool mode_has_plus(const char *mode)
     return false;
 }
 
+static int doom_create_file(const char *filename)
+{
+    if (!filename)
+        return -1;
+
+    return rsmgr_create(filename, RSRC_TYPE_RESOURCE);
+}
+
 static void *doom_open_override(const char *filename, const char *mode)
 {
     if (!filename || !mode)
         return NULL;
 
-    int flags = 0;
     bool writable = false;
 
     if (mode[0] == 'r') {
-        flags = O_RDONLY;
         writable = false;
         if (mode_has_plus(mode)) {
-            flags = O_RDWR;
             writable = true;
         }
     } else if (mode[0] == 'w') {
-        flags = O_WRONLY | O_CREAT | O_TRUNC;
         writable = true;
         if (mode_has_plus(mode)) {
-            flags = O_RDWR | O_CREAT | O_TRUNC;
             writable = true;
         }
     } else if (mode[0] == 'a') {
-        flags = O_WRONLY | O_CREAT;
         writable = true;
         if (mode_has_plus(mode)) {
-            flags = O_RDWR | O_CREAT;
             writable = true;
         }
-    } else {
-        flags = O_RDONLY;
     }
 
-    int fd = open(filename, flags);
+    int fd = rsmgr_open(filename);
+    if (fd < 0 && (mode[0] == 'w' || mode[0] == 'a'))
+        fd = doom_create_file(filename);
     if (fd < 0)
         return NULL;
 
     doom_file_t *file = (doom_file_t *) malloc(sizeof(doom_file_t));
     if (!file) {
-        close(fd);
+        rsmgr_close(fd);
         return NULL;
     }
 
     memset(file, 0, sizeof(*file));
     file->fd = fd;
     file->writable = writable;
-
-    file_stats_t stats;
-    if (fstat(fd, &stats) == 0 && stats.type == TYPE_FILE) {
-        file->size = stats.size;
-        file->size_known = true;
-    } else {
-        file->size = 0;
-        file->size_known = false;
-    }
-
-    file->pos = 0;
+    file->size = 0;
+    file->size_known = false;
 
     if (mode[0] == 'a') {
-        uint64_t end = file->size;
-        if (end > UINT32_MAX)
-            end = UINT32_MAX;
-        lseek(fd, (uint32_t) end, SEEK_SET);
-        file->pos = end;
+        if (doom_ensure_size(file) < 0) {
+            rsmgr_close(fd);
+            free(file);
+            return NULL;
+        }
+        if (rsmgr_seek(fd, (int) file->size, SEEK_SET) < 0) {
+            rsmgr_close(fd);
+            free(file);
+            return NULL;
+        }
     }
 
     return file;
@@ -125,7 +145,7 @@ static void doom_close_override(void *handle)
         return;
 
     doom_file_t *file = (doom_file_t *) handle;
-    close(file->fd);
+    rsmgr_close(file->fd);
     free(file);
 }
 
@@ -135,11 +155,11 @@ static int doom_read_override(void *handle, void *buf, int count)
         return 0;
 
     doom_file_t *file = (doom_file_t *) handle;
-    int read_bytes = read(file->fd, buf, (uint32_t) count);
-    if (read_bytes > 0) {
-        file->pos += (uint64_t) read_bytes;
-    } else if (read_bytes == 0 && !file->size_known) {
-        file->size = file->pos;
+    int read_bytes = rsmgr_read(file->fd, buf, (uint32_t) count);
+    if (read_bytes == 0 && !file->size_known) {
+        int pos = doom_tell_fd(file->fd);
+        if (pos >= 0)
+            file->size = (uint64_t) pos;
         file->size_known = true;
     }
     return read_bytes;
@@ -154,12 +174,9 @@ static int doom_write_override(void *handle, const void *buf, int count)
     if (!file->writable)
         return 0;
 
-    int written = write(file->fd, buf, (uint32_t) count);
+    int written = rsmgr_write(file->fd, buf, (uint32_t) count);
     if (written > 0) {
-        file->pos += (uint64_t) written;
-        if (file->pos > file->size)
-            file->size = file->pos;
-        file->size_known = true;
+        file->size_known = false;
     }
     return written;
 }
@@ -170,14 +187,16 @@ static int doom_seek_override(void *handle, int offset, doom_seek_t origin)
         return -1;
 
     doom_file_t *file = (doom_file_t *) handle;
-    int64_t base = 0;
+    int base = 0;
 
     switch (origin) {
     case DOOM_SEEK_CUR:
-        base = (int64_t) file->pos;
+        base = doom_tell_fd(file->fd);
         break;
     case DOOM_SEEK_END:
-        base = (int64_t) file->size;
+        if (doom_ensure_size(file) < 0)
+            return -1;
+        base = (int) file->size;
         break;
     case DOOM_SEEK_SET:
     default:
@@ -185,17 +204,16 @@ static int doom_seek_override(void *handle, int offset, doom_seek_t origin)
         break;
     }
 
-    int64_t desired = base + (int64_t) offset;
-    if (desired < 0)
-        desired = 0;
-    if (desired > (int64_t) UINT32_MAX)
-        desired = (int64_t) UINT32_MAX;
-
-    if (lseek(file->fd, (uint32_t) desired, SEEK_SET) < 0)
+    if (base < 0)
         return -1;
 
-    file->pos = (uint64_t) desired;
-    return 0;
+    int64_t target = (int64_t) base + (int64_t) offset;
+    if (target < 0)
+        target = 0;
+    if (target > INT32_MAX)
+        target = INT32_MAX;
+
+    return rsmgr_seek(file->fd, (int) target, SEEK_SET) < 0 ? -1 : 0;
 }
 
 static int doom_tell_override(void *handle)
@@ -204,9 +222,7 @@ static int doom_tell_override(void *handle)
         return -1;
 
     doom_file_t *file = (doom_file_t *) handle;
-    if (file->pos > (uint64_t) INT32_MAX)
-        return (int) INT32_MAX;
-    return (int) file->pos;
+    return doom_tell_fd(file->fd);
 }
 
 static int doom_eof_override(void *handle)
@@ -216,8 +232,12 @@ static int doom_eof_override(void *handle)
 
     doom_file_t *file = (doom_file_t *) handle;
     if (!file->size_known)
-        return 0;
-    return file->pos >= file->size;
+        return doom_ensure_size(file) < 0 ? 1 : 0;
+
+    int pos = doom_tell_fd(file->fd);
+    if (pos < 0)
+        return 1;
+    return (uint64_t) pos >= file->size;
 }
 
 static void doom_gettime_override(int *sec, int *usec)
@@ -239,9 +259,9 @@ static char *doom_getenv_override(const char *var)
     if (!var)
         return NULL;
     if (strcmp(var, "DOOMWADDIR") == 0)
-        return "system:/assets";
+        return "file:/system/assets";
     if (strcmp(var, "HOME") == 0)
-        return "system:/";
+        return "file:/system/";
     return NULL;
 }
 
@@ -475,7 +495,7 @@ int main(void)
     doom_set_exit(doom_exit_override);
     doom_set_getenv(doom_getenv_override);
 
-    char *argv[32] = {"system:/doom", "system:/assets/doom1.wad"};
+    char *argv[32] = {"file:/system/doom", "file:/system/assets/doom1.wad"};
     doom_init(
         2,
         argv,

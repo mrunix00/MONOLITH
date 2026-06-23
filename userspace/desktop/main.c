@@ -10,63 +10,64 @@
 
 #include <libgfx.h>
 #include <libgfx/images.h>
+#include <resource.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 gfx_font_t default_font;
 
 static void _menu_action_about(void)
 {
-    syscall1(SYSCALL_SPAWN_TASK, (long) "system:/about");
+    syscall1(SYSCALL_SPAWN_TASK, (long) "file:/system/about");
 }
 
 static void _menu_action_gfxdemo(void)
 {
-    syscall1(SYSCALL_SPAWN_TASK, (long) "system:/gfxdemo");
+    syscall1(SYSCALL_SPAWN_TASK, (long) "file:/system/gfxdemo");
 }
 
 static void _menu_action_doom(void)
 {
-    syscall1(SYSCALL_SPAWN_TASK, (long) "system:/doom");
+    syscall1(SYSCALL_SPAWN_TASK, (long) "file:/system/doom");
 }
 
 static gfx_colored_bitmap_t _load_wallpaper(const char *wallpaper, uint32_t width, uint32_t height)
 {
-    int fd = open(wallpaper, O_RDONLY);
+    int fd = rsmgr_open(wallpaper);
     if (fd < 0)
         return (gfx_colored_bitmap_t){0};
 
-    file_stats_t stats;
-    if (fstat(fd, &stats) < 0) {
-        close(fd);
-        return (gfx_colored_bitmap_t){0};
-    }
-    if (stats.type != TYPE_FILE || stats.size == 0) {
-        close(fd);
-        return (gfx_colored_bitmap_t){0};
-    }
+    uint8_t *img_data = NULL;
+    uint64_t total_read = 0;
+    uint32_t capacity = 0;
 
-    uint8_t *img_data = malloc((size_t) stats.size);
-    if (img_data == NULL) {
-        close(fd);
-        return (gfx_colored_bitmap_t){0};
-    }
-
-    uint64_t read_size = 0;
-    do {
-        uint32_t chunk = (uint32_t) ((stats.size - read_size) > 8192 ? 8192
-                                                                     : (stats.size - read_size));
-        int bytes_read = read(fd, img_data + read_size, chunk);
-        if (bytes_read <= 0) {
-            close(fd);
-            free(img_data);
-            return (gfx_colored_bitmap_t){0};
+    while (1) {
+        if (total_read + 8192 > capacity) {
+            uint32_t new_cap = capacity == 0 ? 16384 : capacity * 2;
+            uint8_t *new_buf = realloc(img_data, new_cap);
+            if (new_buf == NULL) {
+                free(img_data);
+                rsmgr_close(fd);
+                return (gfx_colored_bitmap_t){0};
+            }
+            img_data = new_buf;
+            capacity = new_cap;
         }
-        read_size += (uint64_t) bytes_read;
-    } while (read_size < stats.size);
 
-    close(fd);
+        int bytes_read = rsmgr_read(fd, img_data + total_read, 8192);
+        if (bytes_read <= 0)
+            break;
+        total_read += (uint64_t) bytes_read;
+    }
 
-    gfx_colored_bitmap_t wallpaper_img = gfx_load_image(img_data, (size_t) stats.size);
+    rsmgr_close(fd);
+
+    if (total_read == 0) {
+        free(img_data);
+        return (gfx_colored_bitmap_t){0};
+    }
+
+    gfx_colored_bitmap_t wallpaper_img = gfx_load_image(img_data, (size_t) total_read);
     free(img_data);
     gfx_resize_image(&wallpaper_img, width, height);
 
@@ -81,10 +82,11 @@ int main()
     gfx_context_t context = gfx_init_screen();
     if (FRAME_RATE > 0)
         gfx_set_target_fps(&context, FRAME_RATE);
-    default_font = gfx_load_font_from_file("system:/assets/IBMPlexSans_Condensed-Medium.ttf", 18);
+    default_font
+        = gfx_load_font_from_file("file:/system/assets/IBMPlexSans_Condensed-Medium.ttf", 18);
 
     gfx_colored_bitmap_t wallpaper
-        = _load_wallpaper("system:/assets/wallpaper.jpg", context.width, context.height);
+        = _load_wallpaper("file:/system/assets/wallpaper.jpg", context.width, context.height);
 
     const menu_item_t system_menu_items[] = {
         {.label = "About MONOLITH", .type = MENU_ITEM_ACTION, .action = _menu_action_about},

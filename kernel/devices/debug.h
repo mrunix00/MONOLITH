@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include <kernel/framebuffer.h>
-#include <kernel/serial.h>
+#include <kernel/devices/framebuffer.h>
+#include <kernel/devices/serial.h>
 #include <stdbool.h>
 
 /*
@@ -47,3 +47,5 @@ void _debug_log(const char *message);
 void _debug_log_fmt(const char *format, ...);
 
 bool _debug_assert(bool expr, const char *line, const char *expr_str);
+
+void debug_device_init();

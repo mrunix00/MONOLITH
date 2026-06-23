@@ -73,7 +73,7 @@ int main(void)
     uint32_t height = 0;
     uint32_t window_id = 0;
     gfx_font_t _about_font
-        = gfx_load_font_from_file("system:/assets/IBMPlexSans_Condensed-Medium.ttf", 18);
+        = gfx_load_font_from_file("file:/system/assets/IBMPlexSans_Condensed-Medium.ttf", 18);
 
     if (_about_font.data == NULL || desktop_connect() != 0)
         return 1;

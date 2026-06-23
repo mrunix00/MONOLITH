@@ -5,12 +5,9 @@
 
 #include <kernel/arch/pc/apic.h>
 #include <kernel/arch/pc/asm.h>
-#include <kernel/debug.h>
+#include <kernel/devices/debug.h>
 #include <kernel/klibc/memory.h>
 #include <kernel/memory/vmm.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
 
 #define IA32_APIC_BASE_MSR 0x1B
 #define IA32_APIC_BASE_ENABLE (1ULL << 11)

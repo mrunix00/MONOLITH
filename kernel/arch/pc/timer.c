@@ -6,7 +6,7 @@
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/interrupts.h>
 #include <kernel/arch/pc/pit.h>
-#include <kernel/debug.h>
+#include <kernel/devices/debug.h>
 #include <kernel/tasking/scheduler.h>
 #include <kernel/timer.h>
 #include <stdbool.h>

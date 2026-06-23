@@ -5,10 +5,7 @@
 
 #pragma once
 
-#include <kernel/fs/vfs.h>
 #include <kernel/tasking/task.h>
-#include <stddef.h>
-#include <stdint.h>
 
 /*
  * Load and execute an executable file into memory.

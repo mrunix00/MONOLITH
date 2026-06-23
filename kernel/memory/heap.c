@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-#include <kernel/debug.h>
+#include <kernel/devices/debug.h>
 #include <kernel/klibc/memory.h>
 #include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>

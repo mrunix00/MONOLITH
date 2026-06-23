@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-#include <kernel/arch/pc/interrupts.h>
 #include <kernel/arch/pc/asm.h>
-#include <kernel/input/ps2_input.h>
+#include <kernel/arch/pc/interrupts.h>
+#include <kernel/devices/input/ps2_input.h>
 
 void ps2_wait_ibf_clear()
 {

@@ -5,9 +5,9 @@
 
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/interrupts.h>
-#include <kernel/input/input_events.h>
-#include <kernel/input/ps2_input.h>
-#include <kernel/input/ps2_mouse.h>
+#include <kernel/devices/input/input_device.h>
+#include <kernel/devices/input/ps2_input.h>
+#include <kernel/devices/input/ps2_mouse.h>
 
 uint8_t _mouse_cycle = 0;
 uint8_t _mouse_byte[3];

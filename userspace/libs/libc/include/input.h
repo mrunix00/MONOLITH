@@ -5,15 +5,8 @@
 
 #pragma once
 
-#include <stdbool.h>
+#include <resource.h>
 #include <stdint.h>
-#include <unistd.h>
-
-typedef enum : uint8_t {
-    INPUT_EVENT_NONE = 0,
-    INPUT_EVENT_KEYBOARD,
-    INPUT_EVENT_MOUSE,
-} input_event_type_t;
 
 typedef struct
 {
@@ -30,21 +23,22 @@ typedef struct
     uint8_t buttons;
 } input_mouse_event_t;
 
-typedef struct
+static inline rsrc_handle_t open_keyboard_device(void)
 {
-    input_event_type_t type;
-    uint8_t reserved;
-    uint16_t reserved2;
-    union {
-        input_keyboard_event_t keyboard;
-        input_mouse_event_t mouse;
-    } data;
-} input_event_t;
+    return rsmgr_open("device:/input/keyboard");
+}
 
-/*
- * Poll for input events. Returns 0 on event, 1 if none.
- */
-static inline int poll_input_event(input_event_t *event)
+static inline rsrc_handle_t open_mouse_device(void)
 {
-    return syscall1(SYSCALL_POLL_INPUT_EVENT, (long) event);
+    return rsmgr_open("device:/input/mouse");
+}
+
+static inline int read_keyboard_event(rsrc_handle_t fd, input_keyboard_event_t *event)
+{
+    return rsmgr_read(fd, event, sizeof(input_keyboard_event_t));
+}
+
+static inline int read_mouse_event(rsrc_handle_t fd, input_mouse_event_t *event)
+{
+    return rsmgr_read(fd, event, sizeof(input_mouse_event_t));
 }

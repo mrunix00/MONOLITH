@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <kernel/fs/vfs.h>
+#include <kernel/rsmgr/rsmgr.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -176,10 +176,10 @@ typedef struct __attribute__((packed))
  * Parse an ELF file header.
  * Returns read bytes on success, -1 on failure.
  */
-int parse_elf_header(file_t *file, void *buffer);
+int parse_elf_header(rsrc_t *resource, void *buffer);
 
 /*
  * Parse an ELF program header.
  * Returns read bytes on success, -1 on failure.
  */
-int parse_elf_program_header(file_t *file, void *buffer, size_t size);
+int parse_elf_program_header(rsrc_t *resource, uint64_t offset, void *buffer, size_t size);

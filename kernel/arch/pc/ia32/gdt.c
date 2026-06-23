@@ -4,7 +4,7 @@
  */
 
 #include <kernel/arch/pc/gdt.h>
-#include <kernel/debug.h>
+#include <kernel/devices/debug.h>
 
 gdt_t gdt = {0};
 gdtr_t gdtr = {0};

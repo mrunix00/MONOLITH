@@ -5,7 +5,7 @@
 
 #include <kernel/arch/pc/asm.h>
 #include <kernel/arch/pc/pic.h>
-#include <kernel/debug.h>
+#include <kernel/devices/debug.h>
 
 static bool _pic_initialized = false;
 

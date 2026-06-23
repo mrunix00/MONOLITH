@@ -6,8 +6,6 @@
 #include <kernel/klibc/memory.h>
 #include <kernel/klibc/string.h>
 #include <kernel/memory/heap.h>
-#include <kernel/memory/pmm.h>
-#include <kernel/memory/vmm.h>
 #include <kernel/tasking/ipc.h>
 #include <kernel/timer.h>
 
@@ -17,262 +15,127 @@ typedef enum {
     IPC_CONN_REJECTED = 2,
 } _ipc_conn_state_t;
 
-typedef struct
+typedef struct _ipc_packet
 {
-    void *data;
-    size_t size;
-} _ipc_message_t;
+    ipc_channel_packet_header_t header;
+    rsrc_t *resource;
+    unsigned char payload[];
+} _ipc_packet_t;
 
 typedef struct
 {
-    size_t size;
-    uint64_t sender_task_id;
-} _ipc_batch_entry_t;
-
-typedef struct
-{
-    _ipc_message_t message;
-    uint64_t sender_task_id;
-} _ipc_owner_message_t;
-
-#define IPC_SHM_MAX_REGIONS 128
-#define IPC_SHM_DEFAULT_REGION_CAPACITY 4
-
-typedef struct
-{
-    uint64_t owner_task_id;
-    uint64_t client_task_id;
-    uintptr_t phys_addr;
-    uintptr_t owner_vaddr;
-    uintptr_t client_vaddr;
-    size_t size;
-    uint64_t flags;
-} _ipc_shared_region_t;
+    _ipc_packet_t **packets;
+    size_t count;
+    size_t capacity;
+} _ipc_packet_queue_t;
 
 typedef struct
 {
     uint64_t task_id;
     _ipc_conn_state_t state;
-    _ipc_message_t *messages;
-    size_t messages_count;
-    size_t messages_capacity;
+    _ipc_packet_queue_t queue;
 } _ipc_connection_t;
 
 typedef struct
 {
     char name[IPC_CHANNEL_NAME_MAX];
     channel_id_t id;
+    rsrc_t *resource;
     _ipc_connection_t *connections;
-    size_t connections_count;
     size_t max_connections;
     uint64_t owner_task_id;
-    _ipc_owner_message_t *owner_messages;
-    size_t owner_messages_count;
-    size_t owner_messages_capacity;
-    _ipc_shared_region_t *shared_regions;
-    size_t shared_regions_count;
-    size_t shared_regions_capacity;
+    _ipc_packet_queue_t owner_queue;
 } _ipc_channel_t;
 
 static _ipc_channel_t **_channels;
-static size_t _channels_count;
 static size_t _channels_capacity;
 static channel_id_t _next_channel_id = 1;
+static bool _ipc_resource_initialized = false;
+static const rsrc_ops_t _channel_resource_ops;
 
-static void _remove_connection(_ipc_channel_t *channel, size_t index);
+static _ipc_connection_t *_get_connection_by_task_id(_ipc_channel_t *channel, uint64_t task_id);
 
-static int _ensure_shared_region_capacity(_ipc_channel_t *channel)
+static _ipc_packet_queue_t *_queue_for_task(_ipc_channel_t *channel, task_t *task)
 {
-    if (channel->shared_regions_count < channel->shared_regions_capacity)
-        return 0;
-
-    size_t new_capacity = channel->shared_regions_capacity == 0
-                              ? IPC_SHM_DEFAULT_REGION_CAPACITY
-                              : channel->shared_regions_capacity * 2;
-    _ipc_shared_region_t *new_regions = (_ipc_shared_region_t *)
-        krealloc(channel->shared_regions, sizeof(_ipc_shared_region_t) * new_capacity);
-    if (!new_regions)
-        return -1;
-
-    channel->shared_regions = new_regions;
-    channel->shared_regions_capacity = new_capacity;
-    return 0;
-}
-
-static task_memblock_t *_find_task_memblock(task_t *task, uintptr_t virt_addr, size_t required_size)
-{
-    if (!task || !task->memory.memblocks || required_size == 0)
+    if (channel == NULL || task == NULL)
         return NULL;
+    if (channel->owner_task_id == task->id)
+        return &channel->owner_queue;
 
-    uintptr_t required_end = virt_addr + required_size;
-    if (required_end < virt_addr)
+    _ipc_connection_t *connection = _get_connection_by_task_id(channel, task->id);
+    if (connection == NULL || connection->state != IPC_CONN_ACCEPTED)
         return NULL;
-
-    for (size_t i = 0; i < task->memory.memblocks_count; i++) {
-        task_memblock_t *memblock = &task->memory.memblocks[i];
-        uintptr_t block_start = memblock->virt_addr;
-        uintptr_t block_end = block_start + memblock->page_count * PAGE_SIZE;
-        if (block_end < block_start)
-            continue;
-
-        if (virt_addr < block_start || required_end > block_end)
-            continue;
-
-        return memblock;
-    }
-
-    return NULL;
+    return &connection->queue;
 }
 
-static void _remove_shared_region_at(_ipc_channel_t *channel, size_t index)
+static int _list_collection_entries(
+    rsrc_t *resource, uint64_t cursor, void *buffer, uint64_t buffer_len)
 {
-    if (index >= channel->shared_regions_count)
-        return;
-
-    for (size_t i = index + 1; i < channel->shared_regions_count; i++)
-        channel->shared_regions[i - 1] = channel->shared_regions[i];
-
-    channel->shared_regions_count--;
-}
-
-static void _release_shared_region_client(_ipc_channel_t *channel, size_t index)
-{
-    if (index >= channel->shared_regions_count)
-        return;
-
-    _ipc_shared_region_t *region = &channel->shared_regions[index];
-    size_t pages = PAGE_UP(region->size) / PAGE_SIZE;
-    task_t *client = task_find_by_id(region->client_task_id);
-
-    if (client && region->client_vaddr)
-        task_unmap(client, region->client_vaddr, pages, false);
-
-    region->client_task_id = 0;
-    region->client_vaddr = 0;
-}
-
-static void _release_shared_region_entry(_ipc_channel_t *channel, size_t index)
-{
-    if (index >= channel->shared_regions_count)
-        return;
-
-    _ipc_shared_region_t region = channel->shared_regions[index];
-    size_t pages = PAGE_UP(region.size) / PAGE_SIZE;
-
-    task_t *owner = task_find_by_id(region.owner_task_id);
-    task_t *client = task_find_by_id(region.client_task_id);
-
-    if (client && region.client_vaddr)
-        task_unmap(client, region.client_vaddr, pages, false);
-
-    if (region.phys_addr) {
-        if (owner && region.owner_vaddr)
-            task_unmap(owner, region.owner_vaddr, pages, false);
-
-        pmm_free((void *) region.phys_addr, pages);
-    }
-
-    _remove_shared_region_at(channel, index);
-}
-
-static void _release_shared_regions_for_task(_ipc_channel_t *channel, uint64_t task_id)
-{
-    if (!channel)
-        return;
-
-    size_t i = 0;
-    while (i < channel->shared_regions_count) {
-        _ipc_shared_region_t *region = &channel->shared_regions[i];
-        if (region->owner_task_id == task_id) {
-            _release_shared_region_entry(channel, i);
-            continue;
-        }
-        if (region->client_task_id == task_id)
-            _release_shared_region_client(channel, i);
-        i++;
-    }
-}
-
-static int _enqueue_owner_message(
-    _ipc_channel_t *channel, const task_t *sender, const void *data, size_t size)
-{
-    if (size == 0 || !sender)
-        return -1;
-
-    if (channel->owner_messages_count >= channel->owner_messages_capacity) {
-        size_t new_capacity = channel->owner_messages_capacity == 0
-                                  ? 4
-                                  : channel->owner_messages_capacity * 2;
-        _ipc_owner_message_t *new_messages = (_ipc_owner_message_t *)
-            krealloc(channel->owner_messages, sizeof(_ipc_owner_message_t) * new_capacity);
-        if (!new_messages)
-            return -1;
-        channel->owner_messages = new_messages;
-        channel->owner_messages_capacity = new_capacity;
-    }
-
-    _ipc_owner_message_t *message = &channel->owner_messages[channel->owner_messages_count++];
-    message->message.data = kmalloc(size);
-    if (!message->message.data) {
-        channel->owner_messages_count--;
+    if (resource == NULL || resource->header.type != RSRC_TYPE_COLLECTION || resource->node == NULL
+        || buffer == NULL) {
         return -1;
     }
-    message->message.size = size;
-    memcpy(message->message.data, data, size);
-    message->sender_task_id = sender->id;
-    return 0;
-}
 
-static void _destroy_channel(size_t index)
-{
-    if (index >= _channels_capacity)
-        return;
+    rsrc_node_t *current = resource->node->first_child;
+    uint32_t buffer_offset = 0;
+    size_t current_offset = 0;
 
-    _ipc_channel_t *channel = _channels[index];
-    if (channel) {
-        if (channel->connections) {
-            for (size_t i = 0; i < channel->max_connections; i++) {
-                if (channel->connections[i].task_id != 0)
-                    _remove_connection(channel, i);
-            }
+    while (current != NULL) {
+        size_t name_len = strlen(current->resource->header.name);
+        size_t entry_size = sizeof(uint32_t) + name_len + 1;
+
+        if (current_offset + entry_size <= cursor) {
+            current_offset += entry_size;
+            current = current->next_sibling;
+            continue;
         }
 
-        while (channel->shared_regions_count > 0)
-            _release_shared_region_entry(channel, 0);
+        if (buffer_offset + entry_size > buffer_len)
+            break;
 
-        if (channel->connections)
-            kfree(channel->connections);
-        if (channel->owner_messages) {
-            for (size_t i = 0; i < channel->owner_messages_count; i++)
-                kfree(channel->owner_messages[i].message.data);
-            kfree(channel->owner_messages);
-        }
-        if (channel->shared_regions)
-            kfree(channel->shared_regions);
+        memcpy((uint8_t *) buffer + buffer_offset, &entry_size, sizeof(uint32_t));
+        memcpy(
+            (uint8_t *) buffer + buffer_offset + sizeof(uint32_t),
+            current->resource->header.name,
+            name_len + 1);
 
-        kfree(channel);
+        buffer_offset += (uint32_t) entry_size;
+        current_offset += entry_size;
+        current = current->next_sibling;
     }
 
-    _channels[index] = NULL;
-    if (_channels_count > 0)
-        _channels_count--;
+    return (int) buffer_offset;
+}
+
+static void _channel_detach_resource(rsrc_t *resource)
+{
+    if (resource == NULL || resource->node == NULL || resource->node->parent == NULL)
+        return;
+
+    rsrc_node_t *node = resource->node;
+    rsrc_node_t *parent = node->parent;
+    if (parent->first_child == node) {
+        parent->first_child = node->next_sibling;
+    } else {
+        rsrc_node_t *current = parent->first_child;
+        while (current != NULL && current->next_sibling != node)
+            current = current->next_sibling;
+        if (current != NULL)
+            current->next_sibling = node->next_sibling;
+    }
+
+    resource->node = NULL;
+    kfree(node);
 }
 
 static _ipc_channel_t *_find_channel(const char *name)
 {
     for (size_t i = 0; i < _channels_capacity; i++) {
         _ipc_channel_t *channel = _channels[i];
-        if (channel && channel->name[0] != '\0' && strcmp(channel->name, name) == 0)
+        if (channel != NULL && strcmp(channel->name, name) == 0)
             return channel;
     }
     return NULL;
-}
-
-static _ipc_channel_t *_get_channel_by_id(channel_id_t id)
-{
-    if (id <= 0 || (size_t) id >= _channels_capacity)
-        return NULL;
-    return _channels[id];
 }
 
 static int _ensure_channel_capacity(channel_id_t required_id)
@@ -285,581 +148,838 @@ static int _ensure_channel_capacity(channel_id_t required_id)
         return 0;
 
     size_t old_capacity = _channels_capacity;
-    size_t new_capacity = _channels_capacity == 0 ? 4 : _channels_capacity;
+    size_t new_capacity = old_capacity == 0 ? 4 : old_capacity;
     while (new_capacity <= required_index)
         new_capacity *= 2;
 
     _ipc_channel_t **new_channels
         = (_ipc_channel_t **) krealloc(_channels, sizeof(_ipc_channel_t *) * new_capacity);
-    if (!new_channels)
+    if (new_channels == NULL)
         return -1;
 
     _channels = new_channels;
-    if (new_capacity > old_capacity)
-        memset(&_channels[old_capacity], 0, sizeof(_ipc_channel_t *) * (new_capacity - old_capacity));
+    memset(&_channels[old_capacity], 0, sizeof(_ipc_channel_t *) * (new_capacity - old_capacity));
     _channels_capacity = new_capacity;
     return 0;
 }
 
 static _ipc_connection_t *_get_connection_by_task_id(_ipc_channel_t *channel, uint64_t task_id)
 {
-    if (task_id >= channel->max_connections)
+    if (channel == NULL || task_id >= channel->max_connections)
         return NULL;
 
-    _ipc_connection_t *conn = &channel->connections[task_id];
-    if (conn->task_id != task_id)
-        return NULL;
-
-    return conn;
+    _ipc_connection_t *connection = &channel->connections[task_id];
+    return connection->task_id == task_id ? connection : NULL;
 }
 
 static int _ensure_connection_capacity(_ipc_channel_t *channel, uint64_t task_id)
 {
-    if (!channel || task_id == 0)
+    if (channel == NULL || task_id == 0)
         return -1;
 
     if (task_id < channel->max_connections)
         return 0;
 
     size_t old_capacity = channel->max_connections;
-    size_t new_capacity = channel->max_connections == 0 ? 4 : channel->max_connections;
+    size_t new_capacity = old_capacity == 0 ? 4 : old_capacity;
     while (new_capacity <= task_id)
         new_capacity *= 2;
 
-    _ipc_connection_t *new_connections = (_ipc_connection_t *)
+    _ipc_connection_t *connections = (_ipc_connection_t *)
         krealloc(channel->connections, sizeof(_ipc_connection_t) * new_capacity);
-    if (!new_connections)
+    if (connections == NULL)
         return -1;
 
-    channel->connections = new_connections;
-    if (new_capacity > old_capacity)
-        memset(
-            &channel->connections[old_capacity],
-            0,
-            sizeof(_ipc_connection_t) * (new_capacity - old_capacity));
+    channel->connections = connections;
+    memset(
+        &channel->connections[old_capacity],
+        0,
+        sizeof(_ipc_connection_t) * (new_capacity - old_capacity));
     channel->max_connections = new_capacity;
     return 0;
 }
 
-static _ipc_connection_t *_add_connection(_ipc_channel_t *channel, task_t *task)
+static int _ensure_queue_capacity(_ipc_packet_queue_t *queue)
 {
-    if (!channel || !task || task->id == 0)
-        return NULL;
+    if (queue == NULL)
+        return -1;
+    if (queue->count < queue->capacity)
+        return 0;
 
-    if (_ensure_connection_capacity(channel, task->id) != 0)
-        return NULL;
-
-    _ipc_connection_t *conn = &channel->connections[task->id];
-    if (conn->task_id != 0)
-        return conn;
-
-    memset(conn, 0, sizeof(*conn));
-    conn->task_id = task->id;
-    conn->state = IPC_CONN_PENDING;
-    channel->connections_count++;
-    return conn;
-}
-
-static void _free_messages(_ipc_connection_t *connection)
-{
-    if (!connection || !connection->messages)
-        return;
-
-    for (size_t i = 0; i < connection->messages_count; i++)
-        kfree(connection->messages[i].data);
-
-    kfree(connection->messages);
-    connection->messages = NULL;
-    connection->messages_count = 0;
-    connection->messages_capacity = 0;
-}
-
-static void _remove_connection(_ipc_channel_t *channel, size_t index)
-{
-    if (!channel || !channel->connections || index >= channel->max_connections)
-        return;
-
-    _ipc_connection_t *conn = &channel->connections[index];
-    if (conn->task_id == 0)
-        return;
-
-    _free_messages(conn);
-    memset(conn, 0, sizeof(*conn));
-    if (channel->connections_count > 0)
-        channel->connections_count--;
-}
-
-static int _enqueue_message(_ipc_connection_t *connection, const void *data, size_t size)
-{
-    if (!connection || !data || size == 0)
+    size_t new_capacity = queue->capacity == 0 ? 4 : queue->capacity * 2;
+    _ipc_packet_t **packets
+        = (_ipc_packet_t **) krealloc(queue->packets, sizeof(_ipc_packet_t *) * new_capacity);
+    if (packets == NULL)
         return -1;
 
-    if (connection->messages_count >= connection->messages_capacity) {
-        size_t new_capacity = connection->messages_capacity == 0
-                                  ? 4
-                                  : connection->messages_capacity * 2;
-        _ipc_message_t *new_messages = (_ipc_message_t *)
-            krealloc(connection->messages, sizeof(_ipc_message_t) * new_capacity);
-        if (!new_messages)
-            return -1;
-        connection->messages = new_messages;
-        connection->messages_capacity = new_capacity;
-    }
-
-    _ipc_message_t *message = &connection->messages[connection->messages_count++];
-    message->data = kmalloc(size);
-    if (!message->data) {
-        connection->messages_count--;
-        return -1;
-    }
-    message->size = size;
-    memcpy(message->data, data, size);
+    queue->packets = packets;
+    queue->capacity = new_capacity;
     return 0;
 }
 
-channel_id_t ipc_new_channel(task_t *task, const char *name)
+static void _free_packet(_ipc_packet_t *packet)
 {
-    if (!task || !name)
-        return -1;
+    if (packet == NULL)
+        return;
+    if (packet->resource != NULL && packet->resource->refcount > 0)
+        packet->resource->refcount--;
+    kfree(packet);
+}
 
-    if (_find_channel(name))
-        return -1;
+static void _free_queue(_ipc_packet_queue_t *queue)
+{
+    if (queue == NULL)
+        return;
+    for (size_t i = 0; i < queue->count; i++)
+        _free_packet(queue->packets[i]);
+    kfree(queue->packets);
+    queue->packets = NULL;
+    queue->count = 0;
+    queue->capacity = 0;
+}
 
+static _ipc_packet_t *_new_packet(
+    uint32_t type,
+    uint64_t connection_id,
+    uint64_t sender_task_id,
+    uint64_t flags,
+    const void *payload,
+    uint64_t payload_len,
+    rsrc_t *resource)
+{
+    _ipc_packet_t *packet = (_ipc_packet_t *) kmalloc(sizeof(_ipc_packet_t) + payload_len);
+    if (packet == NULL)
+        return NULL;
+
+    memset(packet, 0, sizeof(_ipc_packet_t) + payload_len);
+    packet->header.type = type;
+    packet->header.connection_id = connection_id;
+    packet->header.sender_task_id = sender_task_id;
+    packet->header.payload_len = payload_len;
+    packet->header.flags = flags;
+    packet->resource = resource;
+
+    if (resource != NULL)
+        resource->refcount++;
+    if (payload_len > 0 && payload != NULL)
+        memcpy(packet->payload, payload, payload_len);
+    return packet;
+}
+
+static int _enqueue_packet(_ipc_packet_queue_t *queue, _ipc_packet_t *packet)
+{
+    if (queue == NULL || packet == NULL || _ensure_queue_capacity(queue) != 0)
+        return -1;
+    queue->packets[queue->count++] = packet;
+    return 0;
+}
+
+static void _dequeue_packet(_ipc_packet_queue_t *queue, size_t index)
+{
+    if (queue == NULL || index >= queue->count)
+        return;
+    _free_packet(queue->packets[index]);
+    for (size_t i = index + 1; i < queue->count; i++)
+        queue->packets[i - 1] = queue->packets[i];
+    queue->count--;
+}
+
+static _ipc_connection_t *_add_connection(_ipc_channel_t *channel, task_t *task)
+{
+    if (channel == NULL || task == NULL || _ensure_connection_capacity(channel, task->id) != 0)
+        return NULL;
+
+    _ipc_connection_t *connection = &channel->connections[task->id];
+    if (connection->task_id == 0) {
+        memset(connection, 0, sizeof(*connection));
+        connection->task_id = task->id;
+        connection->state = IPC_CONN_PENDING;
+    }
+    return connection;
+}
+
+static void _remove_connection(_ipc_channel_t *channel, uint64_t task_id)
+{
+    if (channel == NULL || task_id >= channel->max_connections)
+        return;
+
+    _ipc_connection_t *connection = &channel->connections[task_id];
+    if (connection->task_id == 0)
+        return;
+
+    _free_queue(&connection->queue);
+    memset(connection, 0, sizeof(*connection));
+}
+
+static _ipc_channel_t *_create_channel(task_t *task, const char *name)
+{
+    if (task == NULL || name == NULL || !ipc_init() || _find_channel(name) != NULL)
+        return NULL;
     if (_ensure_channel_capacity(_next_channel_id) != 0)
-        return -1;
+        return NULL;
 
     _ipc_channel_t *channel = (_ipc_channel_t *) kmalloc(sizeof(_ipc_channel_t));
-    if (!channel)
-        return -1;
+    if (channel == NULL)
+        return NULL;
 
     memset(channel, 0, sizeof(*channel));
     strncpy(channel->name, name, IPC_CHANNEL_NAME_MAX);
     channel->name[IPC_CHANNEL_NAME_MAX - 1] = '\0';
-    channel->owner_task_id = task->id;
     channel->id = _next_channel_id++;
+    channel->owner_task_id = task->id;
 
-    _channels[channel->id] = channel;
-    _channels_count++;
-    return channel->id;
-}
-
-channel_id_t ipc_connect(task_t *task, const char *name)
-{
-    if (!task || !name)
-        return -1;
-
-    _ipc_channel_t *ipc_channel = _find_channel(name);
-    if (!ipc_channel)
-        return -1;
-
-    _ipc_connection_t *existing = _get_connection_by_task_id(ipc_channel, task->id);
-    if (!existing) {
-        if (!_add_connection(ipc_channel, task))
-            return -1;
-    } else if (existing->state == IPC_CONN_REJECTED) {
-        existing->state = IPC_CONN_PENDING;
+    channel->resource = rsmgr_new_resource(RSRC_DOMAIN_CHANNEL, name);
+    if (channel->resource == NULL) {
+        kfree(channel);
+        return NULL;
     }
 
-    return ipc_channel->id;
+    channel->resource->header.type = RSRC_TYPE_RESOURCE;
+    channel->resource->ops = &_channel_resource_ops;
+    channel->resource->type_state = channel;
+    rsrc_domain_t *domain = rsmgr_get_domain("channel");
+    if (domain == NULL || domain->root_node == NULL
+        || rsmgr_attach_resource(domain->root_node, channel->resource) == NULL) {
+        kfree(channel->resource);
+        kfree(channel);
+        return NULL;
+    }
+
+    _channels[channel->id] = channel;
+    return channel;
 }
 
-int ipc_poll_connection(task_t *task, channel_id_t channel_id, connection_t *connection)
+static int _connect_channel(task_t *task, _ipc_channel_t *channel)
 {
-    if (!task || channel_id < 0 || !connection)
+    if (task == NULL || channel == NULL)
+        return -1;
+    if (channel->owner_task_id == task->id)
+        return 0;
+
+    _ipc_connection_t *connection = _get_connection_by_task_id(channel, task->id);
+    if (connection == NULL) {
+        connection = _add_connection(channel, task);
+        if (connection == NULL)
+            return -1;
+    } else if (connection->state == IPC_CONN_REJECTED) {
+        connection->state = IPC_CONN_PENDING;
+    } else if (connection->state == IPC_CONN_ACCEPTED) {
+        return 0;
+    }
+
+    _ipc_packet_t *packet
+        = _new_packet(IPC_CHANNEL_PACKET_CONNECTION_REQUEST, task->id, task->id, 0, NULL, 0, NULL);
+    if (packet == NULL)
+        return -1;
+    if (_enqueue_packet(&channel->owner_queue, packet) != 0) {
+        _free_packet(packet);
+        return -1;
+    }
+    return 0;
+}
+
+static int _poll_channel_connection(task_t *task, _ipc_channel_t *channel, connection_t *connection)
+{
+    if (task == NULL || channel == NULL || connection == NULL || channel->owner_task_id != task->id)
         return -1;
 
-    _ipc_channel_t *ipc_channel = _get_channel_by_id(channel_id);
-    if (!ipc_channel || (ipc_channel->owner_task_id != 0 && ipc_channel->owner_task_id != task->id))
-        return -1;
-
-    for (size_t i = 0; i < ipc_channel->max_connections; i++) {
-        _ipc_connection_t *conn = &ipc_channel->connections[i];
-        if (conn->task_id == 0 || conn->state != IPC_CONN_PENDING)
+    for (size_t i = 0; i < channel->max_connections; i++) {
+        _ipc_connection_t *candidate = &channel->connections[i];
+        if (candidate->task_id == 0 || candidate->state != IPC_CONN_PENDING)
             continue;
-        connection->task_id = conn->task_id;
+        connection->task_id = candidate->task_id;
         return 0;
     }
 
     return 1;
 }
 
-int ipc_await_connection(task_t *task, channel_id_t channel_id, connection_t *connection)
+static int _await_channel_connection(task_t *task, _ipc_channel_t *channel, connection_t *connection)
 {
-    if (!task || channel_id < 0 || !connection)
+    if (task == NULL || channel == NULL || connection == NULL)
         return -1;
 
-    _ipc_channel_t *ipc_channel = _get_channel_by_id(channel_id);
-    if (!ipc_channel)
-        return -1;
-
-    if (ipc_channel->owner_task_id == task->id) {
+    if (channel->owner_task_id == task->id) {
         while (true) {
-            int result = ipc_poll_connection(task, channel_id, connection);
+            int result = _poll_channel_connection(task, channel, connection);
             if (result <= 0)
                 return result;
             sleep(1);
         }
     }
 
-    _ipc_connection_t *conn = _get_connection_by_task_id(ipc_channel, task->id);
-    if (!conn)
+    _ipc_connection_t *candidate = _get_connection_by_task_id(channel, task->id);
+    if (candidate == NULL)
         return -1;
 
     while (true) {
-        if (conn->state == IPC_CONN_ACCEPTED) {
+        if (candidate->state == IPC_CONN_ACCEPTED) {
             connection->task_id = task->id;
             return 0;
         }
-        if (conn->state == IPC_CONN_REJECTED)
+        if (candidate->state == IPC_CONN_REJECTED)
             return -1;
-
         sleep(1);
-        conn = _get_connection_by_task_id(ipc_channel, task->id);
-        if (!conn)
+        candidate = _get_connection_by_task_id(channel, task->id);
+        if (candidate == NULL)
             return -1;
     }
 }
 
-int ipc_accept_connection(task_t *task, channel_id_t channel_id, connection_t *connection)
+static int _accept_channel_connection(task_t *task, _ipc_channel_t *channel, connection_t *connection)
 {
-    if (!task || channel_id < 0 || !connection)
+    if (task == NULL || channel == NULL || connection == NULL || channel->owner_task_id != task->id)
         return -1;
 
-    _ipc_channel_t *ipc_channel = _get_channel_by_id(channel_id);
-    if (!ipc_channel || (ipc_channel->owner_task_id != 0 && ipc_channel->owner_task_id != task->id))
+    _ipc_connection_t *candidate = _get_connection_by_task_id(channel, connection->task_id);
+    if (candidate == NULL)
         return -1;
 
-    _ipc_connection_t *conn = _get_connection_by_task_id(ipc_channel, connection->task_id);
-    if (!conn)
-        return -1;
-
-    conn->state = IPC_CONN_ACCEPTED;
+    candidate->state = IPC_CONN_ACCEPTED;
     return 0;
 }
 
-int ipc_reject_connection(task_t *task, channel_id_t channel_id, connection_t *connection)
+static int _reject_channel_connection(task_t *task, _ipc_channel_t *channel, connection_t *connection)
 {
-    if (!task || channel_id < 0 || !connection)
+    if (task == NULL || channel == NULL || connection == NULL || channel->owner_task_id != task->id)
         return -1;
 
-    _ipc_channel_t *ipc_channel = _get_channel_by_id(channel_id);
-    if (!ipc_channel || (ipc_channel->owner_task_id != 0 && ipc_channel->owner_task_id != task->id))
+    _ipc_connection_t *candidate = _get_connection_by_task_id(channel, connection->task_id);
+    if (candidate == NULL)
         return -1;
 
-    _ipc_connection_t *conn = _get_connection_by_task_id(ipc_channel, connection->task_id);
-    if (!conn)
-        return -1;
-
-    _remove_connection(ipc_channel, connection->task_id);
+    candidate->state = IPC_CONN_REJECTED;
+    _remove_connection(channel, connection->task_id);
     return 0;
 }
 
-int ipc_disconnect(task_t *task, channel_id_t channel_id)
+static int _queue_message_packet(
+    _ipc_packet_queue_t *queue,
+    uint64_t connection_id,
+    uint64_t sender_task_id,
+    const void *payload,
+    uint64_t payload_len)
 {
-    if (!task || channel_id < 0)
+    _ipc_packet_t *packet = _new_packet(
+        IPC_CHANNEL_PACKET_MESSAGE, connection_id, sender_task_id, 0, payload, payload_len, NULL);
+    if (packet == NULL)
         return -1;
-
-    _ipc_channel_t *ipc_channel = _get_channel_by_id(channel_id);
-    if (!ipc_channel)
+    if (_enqueue_packet(queue, packet) != 0) {
+        _free_packet(packet);
         return -1;
-
-    if (ipc_channel->owner_task_id == task->id) {
-        _destroy_channel((size_t) channel_id);
-        return 0;
     }
-
-    _ipc_connection_t *conn = _get_connection_by_task_id(ipc_channel, task->id);
-    if (conn) {
-        ipc_message_t owner_msg;
-        memset(&owner_msg, 0, sizeof(owner_msg));
-        owner_msg.type = IPC_OWNER_MSG_TYPE_DISCONNECT;
-        owner_msg.sender_task_id = task->id;
-        if (ipc_channel->owner_task_id != 0)
-            _enqueue_owner_message(ipc_channel, task, &owner_msg, sizeof(owner_msg));
-
-        _remove_connection(ipc_channel, task->id);
-        _release_shared_regions_for_task(ipc_channel, task->id);
-        return 0;
-    }
-
-    return 1;
-}
-
-int ipc_send_to(
-    task_t *task, channel_id_t channel_id, connection_t *connection, void *data, size_t size)
-{
-    if (!task || channel_id < 0 || !connection || !data || size == 0)
-        return -1;
-
-    _ipc_channel_t *ipc_channel = _get_channel_by_id(channel_id);
-    if (!ipc_channel)
-        return -1;
-
-    if (ipc_channel->owner_task_id != task->id)
-        return -1;
-
-    _ipc_connection_t *conn = _get_connection_by_task_id(ipc_channel, connection->task_id);
-    if (!conn || conn->state != IPC_CONN_ACCEPTED)
-        return -1;
-
-    if (_enqueue_message(conn, data, size) != 0)
-        return -1;
-
     return 0;
 }
 
-int ipc_send(task_t *task, channel_id_t channel_id, void *data, size_t size)
+static int _queue_object_packet(
+    _ipc_packet_queue_t *queue,
+    uint64_t connection_id,
+    uint64_t sender_task_id,
+    uint64_t flags,
+    rsrc_t *resource)
 {
-    if (!task || channel_id < 0 || !data || size == 0)
+    _ipc_packet_t *packet = _new_packet(
+        IPC_CHANNEL_PACKET_OBJECT, connection_id, sender_task_id, flags, NULL, 0, resource);
+    if (packet == NULL)
         return -1;
-
-    _ipc_channel_t *ipc_channel = _get_channel_by_id(channel_id);
-    if (!ipc_channel)
+    if (_enqueue_packet(queue, packet) != 0) {
+        _free_packet(packet);
         return -1;
-
-    if (ipc_channel->owner_task_id != task->id) {
-        _ipc_connection_t *conn = _get_connection_by_task_id(ipc_channel, task->id);
-        if (!conn || conn->state != IPC_CONN_ACCEPTED)
-            return -1;
-
-        size_t msg_size = sizeof(ipc_message_t) + size;
-        ipc_message_t *owner_msg = (ipc_message_t *) kmalloc(msg_size);
-        if (!owner_msg)
-            return -1;
-
-        memset(owner_msg, 0, msg_size);
-        owner_msg->type = IPC_OWNER_MSG_TYPE_DATA;
-        owner_msg->sender_task_id = task->id;
-        owner_msg->payload.data.size = size;
-        memcpy(owner_msg->payload.data.data, data, size);
-
-        int result = _enqueue_owner_message(ipc_channel, task, owner_msg, msg_size);
-        kfree(owner_msg);
-        if (result != 0)
-            return -1;
-
-        return 0;
     }
-
-    for (size_t i = 0; i < ipc_channel->max_connections; i++) {
-        _ipc_connection_t *conn = &ipc_channel->connections[i];
-        if (conn->task_id == 0 || conn->state != IPC_CONN_ACCEPTED)
-            continue;
-        if (_enqueue_message(conn, data, size) != 0)
-            return -1;
-    }
-
     return 0;
 }
 
-void *ipc_share_memory(
-    task_t *task, channel_id_t channel_id, connection_t *connection, void *owner_addr, size_t size)
+static int _send_channel(task_t *task, _ipc_channel_t *channel, const void *data, size_t size)
 {
-    if (!task || channel_id < 0 || !connection || !owner_addr || size == 0)
-        return NULL;
-
-    _ipc_channel_t *ipc_channel = _get_channel_by_id(channel_id);
-    if (!ipc_channel)
-        return NULL;
-
-    if (ipc_channel->owner_task_id != task->id)
-        return NULL;
-
-    _ipc_connection_t *conn = _get_connection_by_task_id(ipc_channel, connection->task_id);
-    if (!conn || conn->state != IPC_CONN_ACCEPTED)
-        return NULL;
-
-    task_t *client = task_find_by_id(connection->task_id);
-    if (!client)
-        return NULL;
-
-    if (ipc_channel->shared_regions_count >= IPC_SHM_MAX_REGIONS)
-        return NULL;
-
-    size_t aligned_size = PAGE_UP(size);
-    size_t num_pages = aligned_size / PAGE_SIZE;
-    if (num_pages == 0)
-        return NULL;
-
-    uintptr_t owner_vaddr = (uintptr_t) owner_addr;
-    task_memblock_t *owner_memblock = _find_task_memblock(task, owner_vaddr, aligned_size);
-    if (!owner_memblock)
-        return NULL;
-
-    uintptr_t offset = owner_vaddr - owner_memblock->virt_addr;
-    uintptr_t phys_addr = owner_memblock->phys_addr + offset;
-
-    uintptr_t client_vaddr = task_find_free_vaddr(client, num_pages);
-    if (client_vaddr == 0)
-        return NULL;
-
-    if (task_map(client, client_vaddr, phys_addr, num_pages, owner_memblock->flags, false) < 0) {
-        return NULL;
-    }
-
-    if (_ensure_shared_region_capacity(ipc_channel) != 0) {
-        task_unmap(client, client_vaddr, num_pages, false);
-        return NULL;
-    }
-
-    _ipc_shared_region_t *region = &ipc_channel->shared_regions[ipc_channel->shared_regions_count++];
-    memset(region, 0, sizeof(*region));
-    region->owner_task_id = task->id;
-    region->client_task_id = client->id;
-    region->phys_addr = phys_addr;
-    region->owner_vaddr = owner_vaddr;
-    region->client_vaddr = client_vaddr;
-    region->size = size;
-    region->flags = owner_memblock->flags;
-
-    return (void *) client_vaddr;
-}
-
-int ipc_release_shared_memory(task_t *task, channel_id_t channel_id, void *addr)
-{
-    if (!task || channel_id < 0 || !addr)
+    if (task == NULL || channel == NULL || data == NULL || size == 0)
         return -1;
 
-    _ipc_channel_t *ipc_channel = _get_channel_by_id(channel_id);
-    if (!ipc_channel)
-        return -1;
-
-    uintptr_t target_addr = (uintptr_t) addr;
-
-    if (ipc_channel->owner_task_id == task->id) {
-        for (size_t i = 0; i < ipc_channel->shared_regions_count; i++) {
-            _ipc_shared_region_t *region = &ipc_channel->shared_regions[i];
-            if (region->owner_vaddr != target_addr)
+    if (channel->owner_task_id == task->id) {
+        for (size_t i = 0; i < channel->max_connections; i++) {
+            _ipc_connection_t *connection = &channel->connections[i];
+            if (connection->task_id == 0 || connection->state != IPC_CONN_ACCEPTED)
                 continue;
-            _release_shared_region_entry(ipc_channel, i);
-            return 0;
+            if (_queue_message_packet(&connection->queue, connection->task_id, task->id, data, size)
+                != 0)
+                return -1;
         }
-        return -1;
-    }
-
-    _ipc_connection_t *conn = _get_connection_by_task_id(ipc_channel, task->id);
-    if (!conn || conn->state != IPC_CONN_ACCEPTED)
-        return -1;
-
-    for (size_t i = 0; i < ipc_channel->shared_regions_count; i++) {
-        _ipc_shared_region_t *region = &ipc_channel->shared_regions[i];
-        if (region->client_task_id != task->id)
-            continue;
-        if (region->client_vaddr != target_addr)
-            continue;
-        _release_shared_region_client(ipc_channel, i);
         return 0;
     }
 
-    return -1;
+    _ipc_connection_t *connection = _get_connection_by_task_id(channel, task->id);
+    if (connection == NULL || connection->state != IPC_CONN_ACCEPTED)
+        return -1;
+    return _queue_message_packet(&channel->owner_queue, task->id, task->id, data, size);
 }
 
-int ipc_receive(task_t *task, channel_id_t channel_id, connection_t *sender, void *data, size_t size)
+static int _send_channel_to(
+    task_t *task, _ipc_channel_t *channel, uint64_t connection_id, const void *data, size_t size)
 {
-    if (!task || channel_id < 0 || !data || size == 0)
+    if (task == NULL || channel == NULL || data == NULL || size == 0
+        || channel->owner_task_id != task->id)
         return -1;
 
-    int bytes_written = 0;
-
-    _ipc_channel_t *ipc_channel = _get_channel_by_id(channel_id);
-    if (!ipc_channel)
+    _ipc_connection_t *connection = _get_connection_by_task_id(channel, connection_id);
+    if (connection == NULL || connection->state != IPC_CONN_ACCEPTED)
         return -1;
 
-    if (ipc_channel->owner_task_id == task->id) {
-        if (ipc_channel->owner_messages_count == 0)
-            return bytes_written;
+    return _queue_message_packet(&connection->queue, connection_id, task->id, data, size);
+}
 
-        size_t required_size = 0;
-        for (size_t i = 0; i < ipc_channel->owner_messages_count; i++) {
-            required_size += sizeof(_ipc_batch_entry_t)
-                             + ipc_channel->owner_messages[i].message.size;
-        }
-        if (required_size > size)
+static int _send_channel_resource(
+    task_t *task,
+    _ipc_channel_t *channel,
+    uint64_t connection_id,
+    rsrc_handle_t handle,
+    uint64_t flags)
+{
+    if (task == NULL || channel == NULL || handle < 0)
+        return -1;
+
+    rsrc_handle_entry_t *entry = rsmgr_handle_table_get(&task->handle_table, (int) handle);
+    if (entry == NULL || entry->resource == NULL)
+        return -1;
+
+    if (channel->owner_task_id == task->id) {
+        _ipc_connection_t *connection = _get_connection_by_task_id(channel, connection_id);
+        if (connection == NULL || connection->state != IPC_CONN_ACCEPTED)
+            return -1;
+        return _queue_object_packet(
+            &connection->queue, connection_id, task->id, flags, entry->resource);
+    }
+
+    _ipc_connection_t *connection = _get_connection_by_task_id(channel, task->id);
+    if (connection == NULL || connection->state != IPC_CONN_ACCEPTED)
+        return -1;
+    return _queue_object_packet(&channel->owner_queue, task->id, task->id, flags, entry->resource);
+}
+
+static int _write_packet(_ipc_packet_t *packet, task_t *receiver, void *buffer, uint64_t buffer_len)
+{
+    if (packet == NULL || receiver == NULL || buffer == NULL
+        || buffer_len < sizeof(ipc_channel_packet_header_t))
+        return -1;
+
+    ipc_channel_recv_out_t *out = (ipc_channel_recv_out_t *) buffer;
+    out->header = packet->header;
+
+    if (packet->header.type == IPC_CHANNEL_PACKET_OBJECT) {
+        if (buffer_len < sizeof(ipc_channel_recv_out_t) + sizeof(ipc_channel_object_payload_t))
             return -1;
 
-        if (sender)
-            sender->task_id = ipc_channel->owner_messages[0].sender_task_id;
+        int handle = rsmgr_handle_table_alloc(&receiver->handle_table, packet->resource);
+        if (handle < 0)
+            return -1;
 
-        while (ipc_channel->owner_messages_count > 0) {
-            _ipc_owner_message_t *msg = &ipc_channel->owner_messages[0];
-            size_t entry_size = sizeof(_ipc_batch_entry_t) + msg->message.size;
+        ipc_channel_object_payload_t payload = {
+            .resource = handle,
+            .resource_type = packet->resource != NULL ? packet->resource->header.domain_id : 0,
+            .rights = 0,
+        };
+        memcpy(out->payload, &payload, sizeof(payload));
+        out->header.payload_len = sizeof(payload);
+        return (int) (sizeof(ipc_channel_packet_header_t) + sizeof(payload));
+    }
 
-            _ipc_batch_entry_t *entry = (_ipc_batch_entry_t *) ((char *) data + bytes_written);
-            entry->size = msg->message.size;
-            entry->sender_task_id = msg->sender_task_id;
-            memcpy(entry + 1, msg->message.data, msg->message.size);
-            bytes_written += entry_size;
+    if (sizeof(ipc_channel_recv_out_t) + packet->header.payload_len > buffer_len)
+        return -1;
 
-            kfree(msg->message.data);
-            for (size_t i = 1; i < ipc_channel->owner_messages_count; i++)
-                ipc_channel->owner_messages[i - 1] = ipc_channel->owner_messages[i];
-            ipc_channel->owner_messages_count--;
+    if (packet->header.payload_len > 0)
+        memcpy(out->payload, packet->payload, packet->header.payload_len);
+    return (int) (sizeof(ipc_channel_packet_header_t) + packet->header.payload_len);
+}
+
+static int _receive_packet(
+    task_t *task, _ipc_channel_t *channel, _ipc_packet_queue_t *queue, void *buffer, size_t size)
+{
+    if (task == NULL || channel == NULL || queue == NULL || buffer == NULL || size == 0)
+        return -1;
+    if (queue->count == 0)
+        return 0;
+
+    int written = _write_packet(queue->packets[0], task, buffer, size);
+    if (written < 0)
+        return -1;
+
+    _dequeue_packet(queue, 0);
+    return written;
+}
+
+static int _receive_message(
+    task_t *task, _ipc_channel_t *channel, _ipc_packet_queue_t *queue, void *buffer, size_t size)
+{
+    if (task == NULL || channel == NULL || queue == NULL || buffer == NULL || size == 0)
+        return -1;
+    if (queue->count == 0)
+        return 0;
+
+    _ipc_packet_t *packet = queue->packets[0];
+    if (packet->header.type != IPC_CHANNEL_PACKET_MESSAGE || packet->header.payload_len > size)
+        return -1;
+
+    memcpy(buffer, packet->payload, packet->header.payload_len);
+    int written = (int) packet->header.payload_len;
+    _dequeue_packet(queue, 0);
+    return written;
+}
+
+static int _disconnect_channel(task_t *task, _ipc_channel_t *channel)
+{
+    if (task == NULL || channel == NULL)
+        return -1;
+
+    if (channel->owner_task_id == task->id) {
+        channel_id_t id = channel->id;
+        if (channel->resource != NULL) {
+            _channel_detach_resource(channel->resource);
+            channel->resource->type_state = NULL;
         }
 
-        return bytes_written;
+        for (size_t i = 0; i < channel->max_connections; i++) {
+            if (channel->connections[i].task_id != 0)
+                _remove_connection(channel, channel->connections[i].task_id);
+        }
+        _free_queue(&channel->owner_queue);
+        kfree(channel->connections);
+        kfree(channel);
+        _channels[id] = NULL;
+        return 0;
     }
 
-    _ipc_connection_t *conn = _get_connection_by_task_id(ipc_channel, task->id);
-    if (!conn || conn->state != IPC_CONN_ACCEPTED)
+    _ipc_connection_t *connection = _get_connection_by_task_id(channel, task->id);
+    if (connection == NULL)
+        return 1;
+
+    _ipc_packet_t *packet
+        = _new_packet(IPC_CHANNEL_PACKET_DISCONNECT, task->id, task->id, 0, NULL, 0, NULL);
+    if (packet != NULL)
+        _enqueue_packet(&channel->owner_queue, packet);
+    _remove_connection(channel, task->id);
+    return 0;
+}
+
+static int _channel_connect_resource(task_t *task, rsrc_t *resource)
+{
+    if (task == NULL || resource == NULL || resource->type_state == NULL)
         return -1;
+    return _connect_channel(task, (_ipc_channel_t *) resource->type_state);
+}
 
-    if (conn->messages_count == 0)
-        return bytes_written;
+static rsrc_status_t _channel_domain_open(
+    rsrc_domain_t *domain, const char *path, rsrc_t **out_resource, void **out_handle_state)
+{
+    if (domain == NULL || path == NULL || out_resource == NULL || out_handle_state == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
 
-    size_t required_size = 0;
-    for (size_t i = 0; i < conn->messages_count; i++)
-        required_size += sizeof(_ipc_batch_entry_t) + conn->messages[i].size;
-    if (required_size > size)
-        return -1;
+    rsrc_node_t *node = path[0] == '\0' || strcmp(path, "/") == 0
+                            ? domain->root_node
+                            : rsmgr_get_relative_path(domain->root_node, path);
+    if (node == NULL)
+        return RSRC_ERROR_NOT_FOUND;
 
-    if (sender)
-        sender->task_id = ipc_channel->owner_task_id;
-
-    while (conn->messages_count > 0) {
-        _ipc_message_t *msg = &conn->messages[0];
-        size_t entry_size = sizeof(_ipc_batch_entry_t) + msg->size;
-
-        _ipc_batch_entry_t *entry = (_ipc_batch_entry_t *) ((char *) data + bytes_written);
-        entry->size = msg->size;
-        entry->sender_task_id = ipc_channel->owner_task_id;
-        memcpy(entry + 1, msg->data, msg->size);
-        bytes_written += entry_size;
-
-        kfree(msg->data);
-        for (size_t i = 1; i < conn->messages_count; i++)
-            conn->messages[i - 1] = conn->messages[i];
-        conn->messages_count--;
+    if (node->resource->header.type != RSRC_TYPE_COLLECTION
+        && _channel_connect_resource(task_get_current(), node->resource) < 0) {
+        return RSRC_ERROR_PERMISSION_DENIED;
     }
 
-    return bytes_written;
+    *out_resource = node->resource;
+    *out_handle_state = NULL;
+    return RSRC_STATUS_OK;
+}
+
+static rsrc_status_t _channel_domain_lookup(
+    rsrc_node_t *parent, const char *path, rsrc_t **out_resource, void **out_handle_state)
+{
+    if (parent == NULL || path == NULL || out_resource == NULL || out_handle_state == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    rsrc_node_t *node = rsmgr_get_relative_path(parent, path);
+    if (node == NULL)
+        return RSRC_ERROR_NOT_FOUND;
+
+    if (node->resource->header.type != RSRC_TYPE_COLLECTION
+        && _channel_connect_resource(task_get_current(), node->resource) < 0) {
+        return RSRC_ERROR_PERMISSION_DENIED;
+    }
+
+    *out_resource = node->resource;
+    *out_handle_state = NULL;
+    return RSRC_STATUS_OK;
+}
+
+static rsrc_status_t _channel_list_op(
+    rsrc_t *resource,
+    void *handle_state,
+    uint64_t cursor,
+    void *buffer,
+    uint64_t buffer_len,
+    uint64_t *out_next_cursor,
+    uint64_t *out_bytes_written)
+{
+    (void) handle_state;
+    if (resource == NULL || out_bytes_written == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    int result = _list_collection_entries(resource, cursor, buffer, buffer_len);
+    if (result < 0)
+        return RSRC_ERROR_IO;
+    *out_bytes_written = (uint64_t) result;
+    if (out_next_cursor != NULL)
+        *out_next_cursor = cursor + (uint64_t) result;
+    return RSRC_STATUS_OK;
+}
+
+static rsrc_status_t _channel_read_op(
+    rsrc_t *resource, void *handle_state, void *buffer, uint64_t buffer_len, uint64_t *out_bytes_read)
+{
+    if (resource == NULL || resource->type_state == NULL || buffer == NULL || out_bytes_read == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    (void) handle_state;
+    task_t *current = task_get_current();
+    _ipc_channel_t *channel = (_ipc_channel_t *) resource->type_state;
+    if (current == NULL)
+        return RSRC_ERROR;
+
+    _ipc_packet_queue_t *queue = _queue_for_task(channel, current);
+    if (queue == NULL)
+        return RSRC_ERROR_PERMISSION_DENIED;
+
+    int result = _receive_message(current, channel, queue, buffer, buffer_len);
+    if (result < 0)
+        return RSRC_ERROR_WOULD_BLOCK;
+
+    *out_bytes_read = (uint64_t) result;
+    return RSRC_STATUS_OK;
+}
+
+static rsrc_status_t _channel_write_op(
+    rsrc_t *resource,
+    void *handle_state,
+    const void *buffer,
+    uint64_t buffer_len,
+    uint64_t *out_bytes_written)
+{
+    if (resource == NULL || resource->type_state == NULL || buffer == NULL
+        || out_bytes_written == NULL) {
+        return RSRC_ERROR_INVALID_ARGUMENT;
+    }
+    (void) handle_state;
+
+    if (_send_channel(task_get_current(), (_ipc_channel_t *) resource->type_state, buffer, buffer_len)
+        != 0)
+        return RSRC_ERROR_IO;
+
+    *out_bytes_written = buffer_len;
+    return RSRC_STATUS_OK;
+}
+
+static rsrc_status_t _channel_describe_op(rsrc_t *resource, rsrc_info_t *out_info)
+{
+    if (resource == NULL || out_info == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    _ipc_channel_t *channel = (_ipc_channel_t *) resource->type_state;
+    if (channel == NULL)
+        return RSRC_STATUS_OK;
+
+    out_info->channel.channel_id = (uint64_t) channel->id;
+    out_info->channel.owner_task_id = channel->owner_task_id;
+    return RSRC_STATUS_OK;
+}
+
+static rsrc_status_t _channel_create_op(
+    rsrc_t *resource, void *handle_state, const char *name, rsrc_type_t type, rsrc_t **out_resource)
+{
+    (void) handle_state;
+    task_t *current = task_get_current();
+
+    if (resource == NULL || current == NULL || name == NULL || out_resource == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+    if (resource->header.type != RSRC_TYPE_COLLECTION || type != RSRC_TYPE_RESOURCE)
+        return RSRC_ERROR_NOT_SUPPORTED;
+
+    _ipc_channel_t *channel = _create_channel(current, name);
+    if (channel == NULL)
+        return RSRC_ERROR_NO_MEMORY;
+
+    *out_resource = channel->resource;
+    return RSRC_STATUS_OK;
+}
+
+static rsrc_status_t _channel_command_op(
+    rsrc_t *resource,
+    void *handle_state,
+    uint64_t command_id,
+    const void *in,
+    uint64_t in_len,
+    void *out,
+    uint64_t out_len,
+    uint64_t *out_bytes_written)
+{
+    task_t *current = task_get_current();
+    if (resource == NULL || current == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+    if (out_bytes_written != NULL)
+        *out_bytes_written = 0;
+    (void) handle_state;
+
+    _ipc_channel_t *channel = (_ipc_channel_t *) resource->type_state;
+    if (channel == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    switch (command_id) {
+    case IPC_CHANNEL_COMMAND_SEND_MESSAGE: {
+        const ipc_channel_send_message_in_t *request = (const ipc_channel_send_message_in_t *) in;
+        if (request == NULL || in_len < sizeof(*request)
+            || in_len < sizeof(*request) + request->payload_len) {
+            return RSRC_ERROR_INVALID_ARGUMENT;
+        }
+
+        if (channel->owner_task_id == current->id) {
+            return _send_channel_to(
+                       current,
+                       channel,
+                       request->connection_id,
+                       request->payload,
+                       request->payload_len)
+                           == 0
+                       ? RSRC_STATUS_OK
+                       : RSRC_ERROR_IO;
+        }
+        return _send_channel(current, channel, request->payload, request->payload_len) == 0
+                   ? RSRC_STATUS_OK
+                   : RSRC_ERROR_IO;
+    }
+    case IPC_CHANNEL_COMMAND_SEND_OBJECT: {
+        const ipc_channel_send_object_in_t *request = (const ipc_channel_send_object_in_t *) in;
+        if (request == NULL || in_len < sizeof(*request))
+            return RSRC_ERROR_INVALID_ARGUMENT;
+        return _send_channel_resource(
+                   current, channel, request->connection_id, request->resource, request->flags)
+                       == 0
+                   ? RSRC_STATUS_OK
+                   : RSRC_ERROR_IO;
+    }
+    case IPC_CHANNEL_COMMAND_RECV: {
+        if (out == NULL || out_len < sizeof(ipc_channel_packet_header_t))
+            return RSRC_ERROR_INVALID_ARGUMENT;
+
+        _ipc_packet_queue_t *queue = _queue_for_task(channel, current);
+        if (queue == NULL)
+            return RSRC_ERROR_PERMISSION_DENIED;
+
+        int result = _receive_packet(current, channel, queue, out, out_len);
+        if (result < 0)
+            return RSRC_ERROR_WOULD_BLOCK;
+        if (out_bytes_written != NULL)
+            *out_bytes_written = (uint64_t) result;
+        return RSRC_STATUS_OK;
+    }
+    case IPC_CHANNEL_COMMAND_POLL_CONNECTION:
+        if (out == NULL || out_len < sizeof(connection_t))
+            return RSRC_ERROR_INVALID_ARGUMENT;
+        return _poll_channel_connection(current, channel, (connection_t *) out) == 0
+                   ? RSRC_STATUS_OK
+                   : RSRC_ERROR_WOULD_BLOCK;
+    case IPC_CHANNEL_COMMAND_WAIT_CONNECTION:
+        if (out == NULL || out_len < sizeof(connection_t))
+            return RSRC_ERROR_INVALID_ARGUMENT;
+        return _await_channel_connection(current, channel, (connection_t *) out) == 0
+                   ? RSRC_STATUS_OK
+                   : RSRC_ERROR_IO;
+    case IPC_CHANNEL_COMMAND_ACCEPT_CONNECTION:
+        if (out == NULL || out_len < sizeof(connection_t))
+            return RSRC_ERROR_INVALID_ARGUMENT;
+        return _accept_channel_connection(current, channel, (connection_t *) out) == 0
+                   ? RSRC_STATUS_OK
+                   : RSRC_ERROR_NOT_FOUND;
+    case IPC_CHANNEL_COMMAND_REJECT_CONNECTION:
+        if (out == NULL || out_len < sizeof(connection_t))
+            return RSRC_ERROR_INVALID_ARGUMENT;
+        return _reject_channel_connection(current, channel, (connection_t *) out) == 0
+                   ? RSRC_STATUS_OK
+                   : RSRC_ERROR_NOT_FOUND;
+    case IPC_CHANNEL_COMMAND_DISCONNECT:
+        return _disconnect_channel(current, channel) == 0 ? RSRC_STATUS_OK : RSRC_ERROR_NOT_FOUND;
+    default:
+        return RSRC_ERROR_NOT_SUPPORTED;
+    }
+}
+
+static const rsrc_ops_t _channel_resource_ops = {
+    .open = NULL,
+    .lookup = NULL,
+    .dup_handle = NULL,
+    .close_handle = NULL,
+    .destroy = NULL,
+    .describe = _channel_describe_op,
+    .seek = NULL,
+    .list = _channel_list_op,
+    .read = _channel_read_op,
+    .write = _channel_write_op,
+    .mmap = NULL,
+    .poll = NULL,
+    .create = _channel_create_op,
+    .remove = NULL,
+    .control = _channel_command_op,
+};
+
+bool ipc_init()
+{
+    if (_ipc_resource_initialized)
+        return true;
+    if (!rsmgr_init())
+        return false;
+
+    rsrc_ops_t domain_ops = {
+        .open = _channel_domain_open,
+        .lookup = _channel_domain_lookup,
+        .dup_handle = NULL,
+        .close_handle = NULL,
+        .destroy = NULL,
+        .describe = NULL,
+        .seek = NULL,
+        .list = NULL,
+        .read = NULL,
+        .write = NULL,
+        .mmap = NULL,
+        .poll = NULL,
+        .remove = NULL,
+        .control = NULL,
+    };
+    if (!rsmgr_init_domain(RSRC_DOMAIN_CHANNEL, "channel", &domain_ops))
+        return false;
+
+    rsrc_t *root = rsmgr_new_resource(RSRC_DOMAIN_CHANNEL, "/");
+    if (root == NULL)
+        return false;
+    root->header.type = RSRC_TYPE_COLLECTION;
+    root->ops = &_channel_resource_ops;
+    root->type_state = NULL;
+    if (rsmgr_set_domain_root(RSRC_DOMAIN_CHANNEL, root) == NULL)
+        return false;
+
+    _ipc_resource_initialized = true;
+    return true;
 }
 
 void ipc_task_cleanup(task_t *task)
 {
-    if (!task)
+    if (task == NULL)
         return;
 
     for (size_t i = 0; i < _channels_capacity; i++) {
         _ipc_channel_t *channel = _channels[i];
-        if (!channel)
+        if (channel == NULL)
             continue;
 
         if (channel->owner_task_id == task->id) {
-            _destroy_channel(i);
+            _disconnect_channel(task, channel);
             continue;
         }
 
-        _release_shared_regions_for_task(channel, task->id);
-
-        _ipc_connection_t *conn = _get_connection_by_task_id(channel, task->id);
-        if (conn) {
-            ipc_message_t owner_msg;
-            memset(&owner_msg, 0, sizeof(owner_msg));
-            owner_msg.type = IPC_OWNER_MSG_TYPE_DISCONNECT;
-            owner_msg.sender_task_id = task->id;
-            if (channel->owner_task_id != 0)
-                _enqueue_owner_message(channel, task, &owner_msg, sizeof(owner_msg));
-            _remove_connection(channel, task->id);
-        }
+        if (_get_connection_by_task_id(channel, task->id) != NULL)
+            _disconnect_channel(task, channel);
     }
 }

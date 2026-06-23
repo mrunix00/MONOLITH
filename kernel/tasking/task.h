@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <kernel/fs/vfs.h>
+#include <kernel/rsmgr/rsmgr.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -68,21 +68,21 @@ struct task
     task_t *next_sibling;
     task_t *prev_sibling;
     uint64_t id;
-    char *name;
+    char path[256];
+    char name[256];
     task_state_t state;
     task_mem_t memory;
-    file_t *fd_table;
-    size_t fd_count;
-    size_t fd_capacity;
+    rsrc_handle_table_t handle_table;
     uintptr_t stack_bottom;
     unsigned int quantum;
     unsigned int quantum_remaining;
     bool user_mode;
     bool exiting;
+    rsrc_node_t *resource_node;
 };
 
 void task_switching_init();
-task_t *task_create(void *entry_point, const char *name, task_mode_t mode);
+task_t *task_create(void *entry_point, const char *path, task_mode_t mode);
 task_t *task_get_current();
 void task_set_parent(task_t *task, task_t *parent);
 uintptr_t task_find_free_vaddr(task_t *task, size_t num_pages);

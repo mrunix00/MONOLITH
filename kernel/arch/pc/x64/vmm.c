@@ -6,7 +6,7 @@
 #include <kernel/arch/pc/asm.h>
 #include <kernel/mmap.h>
 #include <kernel/arch/pc/x64/paging.h>
-#include <kernel/debug.h>
+#include <kernel/devices/debug.h>
 #include <kernel/klibc/memory.h>
 #include <kernel/klibc/string.h>
 #include <kernel/memory/pmm.h>

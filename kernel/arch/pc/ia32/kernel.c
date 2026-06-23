@@ -10,26 +10,26 @@
 #include <kernel/arch/pc/idt.h>
 #include <kernel/arch/pc/pic.h>
 #include <kernel/arch/pc/sse.h>
-#include <kernel/debug.h>
-#include <kernel/framebuffer.h>
+#include <kernel/devices/debug.h>
+#include <kernel/devices/device_domain.h>
+#include <kernel/devices/framebuffer.h>
+#include <kernel/devices/input/input_device.h>
 #include <kernel/fs/tmpfs.h>
 #include <kernel/fs/ustar.h>
-#include <kernel/fs/vfs.h>
-#include <kernel/input/input_events.h>
-#include <kernel/input/ps2_keyboard.h>
-#include <kernel/input/ps2_mouse.h>
 #include <kernel/kargs.h>
 #include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
+#include <kernel/memory/shm.h>
 #include <kernel/memory/vmm.h>
 #include <kernel/mmap.h>
-#include <kernel/serial.h>
+#include <kernel/rsmgr/rsmgr.h>
+#include <kernel/tasking/ipc.h>
 #include <kernel/tasking/loader.h>
 #include <kernel/tasking/scheduler.h>
 #include <kernel/tasking/syscall.h>
+#include <kernel/tasking/task_domain.h>
 #include <kernel/timer.h>
-#include <libs/flanterm/src/flanterm_backends/fb.h>
-#include <stdint.h>
+#include <kernel/types.h>
 
 struct flanterm_context *_fb_ctx;
 
@@ -149,13 +149,13 @@ static void *_find_rsdp(multiboot_header *header)
     return NULL;
 }
 
-static void _setup_initrd(multiboot_header *header, vfs_drive_t *tmpfs_drive)
+static void _setup_initrd(multiboot_header *header, rsrc_node_t *tmpfs_root)
 {
     struct multiboot_tag *tag = header->tags;
     while (tag != NULL && tag->type != MULTIBOOT_TAG_TYPE_END) {
         if (tag->type == MULTIBOOT_TAG_TYPE_MODULE) {
             struct multiboot_tag_module *module = (struct multiboot_tag_module *) tag;
-            if (!tmpfs_populate_from_initrd(tmpfs_drive, (void *) (uintptr_t) module->mod_start))
+            if (!tmpfs_populate_from_initrd(tmpfs_root, (void *) (uintptr_t) module->mod_start))
                 debug_log_fmt("Loaded \"%s\" into tmpfs\n", module->cmdline);
             else
                 debug_log_fmt("Failed to load \"%s\" into tmpfs\n", module->cmdline);
@@ -192,14 +192,19 @@ void kmain(uint32_t magic, uintptr_t mbi_addr)
         apic_init(_rsdp);
     heap_init(10);
     syscalls_init();
+    device_domain_init();
+    debug_device_init();
+    serial_devices_init();
+    framebuffer_devices_init();
+    shm_domain_init();
+    ipc_init();
     task_switching_init();
+    task_domain_init();
 
-    vfs_drive_t *tmpfs_drive = tmpfs_new_drive("system");
-    _setup_initrd(multiboot2_header, tmpfs_drive);
+    rsrc_node_t *tmpfs_root = tmpfs_mount("system");
+    _setup_initrd(multiboot2_header, tmpfs_root);
 
-    input_events_init();
-    ps2_init_keyboard();
-    ps2_mouse_init();
+    input_devices_init();
 
     char init_path[PATH_MAX];
     if (!get_kernel_arg("init", init_path, sizeof(init_path))) {

@@ -7,33 +7,10 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <sys/syscall.h>
 
-#define O_RDONLY 0x0
-#define O_WRONLY 0x1
-#define O_RDWR 0x2
-#define O_ACCMODE 0x3
-#define O_CREAT 0x40
-#define O_TRUNC 0x200
-
-typedef enum {
-    SEEK_SET,
-    SEEK_CUR,
-    SEEK_END,
-} seek_mode_t;
-
-typedef enum {
-    TYPE_FILE,
-    TYPE_DIRECTORY,
-} file_type_t;
-
-typedef struct
-{
-    uint64_t size;
-    file_type_t type;
-} file_stats_t;
-
-int open(const char *path, int flags);
+int open(const char *path);
 
 int close(int fd);
 
@@ -41,17 +18,9 @@ int read(int fd, void *buffer, uint32_t size);
 
 int write(int fd, const void *buffer, uint32_t size);
 
-int lseek(int fd, uint32_t offset, seek_mode_t mode);
-
-int fstat(int fd, file_stats_t *stats);
-
 int getdents(int fd, void *buffer, uint32_t size);
 
-int unlink(const char *path);
-
-int mkdir(const char *path, int mode);
-
-int rmdir(const char *path);
+int lseek(int fd, int offset, int whence);
 
 #ifdef TEST_ENV
 typedef long (*fs_syscall0_fn)(long num);

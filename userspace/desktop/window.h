@@ -9,6 +9,7 @@
 
 #include <libgfx/types.h>
 #include <protocol.h>
+#include <resource.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -34,6 +35,7 @@ typedef struct
     char title[64];
     menubar_t *menubar;
     uint64_t owner_task_id;
+    rsrc_handle_t surface_handle;
     uint32_t *surface_pixels;
     uint16_t surface_width;
     uint16_t surface_height;
@@ -58,7 +60,7 @@ void draw_all_windows(gfx_context_t *context);
 bool update_windows_state(gfx_context_t *context);
 
 void window_set_remote_surface(
-    window_t *window, uint32_t *pixels, uint16_t width, uint16_t height, size_t size);
+    window_t *window, rsrc_handle_t handle, uint32_t *pixels, uint16_t width, uint16_t height, size_t size);
 
 uint16_t window_get_content_width(const window_t *window);
 

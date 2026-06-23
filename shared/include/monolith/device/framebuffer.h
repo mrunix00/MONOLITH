@@ -5,15 +5,15 @@
 
 #pragma once
 
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#define MAX_FRAMEBUFFERS 8
+typedef enum {
+    FRAMEBUFFER_DEVICE_COMMAND_GET_INFO = 1,
+} framebuffer_device_command_id_t;
 
 typedef struct
 {
-    uint32_t *address;
     size_t width;
     size_t height;
     size_t pitch;
@@ -25,7 +25,5 @@ typedef struct
     uint8_t green_mask_shift;
     uint8_t blue_mask_size;
     uint8_t blue_mask_shift;
-} framebuffer_t;
-
-void setup_framebuffer(framebuffer_t fb);
-framebuffer_t *get_framebuffer(uint8_t index);
+    size_t size;
+} framebuffer_device_info_t;

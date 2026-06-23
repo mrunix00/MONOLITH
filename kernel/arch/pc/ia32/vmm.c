@@ -1,16 +1,16 @@
 /* IA-32 two-level paging implementation. */
-#include "kernel/framebuffer.h"
+
 #include <kernel/arch/pc/asm.h>
-#include <kernel/mmap.h>
-#include <kernel/debug.h>
+#include <kernel/devices/debug.h>
 #include <kernel/klibc/memory.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
+#include <kernel/mmap.h>
 
 #define IA32_PTE_PRESENT 0x001
-#define IA32_PTE_RW      0x002
-#define IA32_PTE_USER    0x004
-#define IA32_PTE_FLAGS   0xFFF
+#define IA32_PTE_RW 0x002
+#define IA32_PTE_USER 0x004
+#define IA32_PTE_FLAGS 0xFFF
 
 static uintptr_t _kernel_cr3;
 static uint32_t *_kernel_pd;
@@ -34,9 +34,11 @@ static uint32_t *get_table(uint32_t *pd, uintptr_t virt, bool create)
 {
     size_t pd_i = virt >> 22;
     if (!(pd[pd_i] & IA32_PTE_PRESENT)) {
-        if (!create) return NULL;
+        if (!create)
+            return NULL;
         uint32_t *pt_phys = pmm_alloc(1);
-        if (pt_phys == NULL) return NULL;
+        if (pt_phys == NULL)
+            return NULL;
         memset(pt_phys, 0, PAGE_SIZE);
         pd[pd_i] = (uintptr_t) pt_phys | IA32_PTE_PRESENT | IA32_PTE_RW | IA32_PTE_USER;
     }
@@ -73,7 +75,8 @@ void vmm_init(void)
     _kernel_pd = pmm_alloc(1);
     if (_kernel_pd == NULL) {
         debug_log("Failed to allocate IA-32 page directory\n");
-        while (1) asm_hlt();
+        while (1)
+            asm_hlt();
     }
     memset(_kernel_pd, 0, PAGE_SIZE);
     _kernel_cr3 = (uintptr_t) _kernel_pd;
@@ -88,9 +91,7 @@ void vmm_init(void)
         size_t fb_size = framebuffer->pitch * framebuffer->height;
         uintptr_t fb_page = fb_addr & ~(PAGE_SIZE - 1);
         debug_log_fmt(
-            "Mapping framebuffer 0x%x - 0x%x\n",
-            fb_page,
-            fb_page + fb_size + (fb_addr - fb_page));
+            "Mapping framebuffer 0x%x - 0x%x\n", fb_page, fb_page + fb_size + (fb_addr - fb_page));
         vmm_map_range(
             _kernel_cr3,
             fb_page,
@@ -136,11 +137,13 @@ void vmm_map(uintptr_t cr3, uintptr_t virt, uintptr_t phys, size_t flags, bool f
     pt[pt_i] = (phys & ~IA32_PTE_FLAGS) | (flags & IA32_PTE_FLAGS) | IA32_PTE_PRESENT;
     if (flush) {
         debug_log_fmt("Mapped phys 0x%x to virt 0x%x\n", phys, virt);
-        if (asm_read_cr3() == cr3) asm_invlpg((void *) virt);
+        if (asm_read_cr3() == cr3)
+            asm_invlpg((void *) virt);
     }
 }
 
-void vmm_map_range(uintptr_t cr3, uintptr_t virt_addr, uintptr_t phys_addr, size_t size, size_t flags, bool flush)
+void vmm_map_range(
+    uintptr_t cr3, uintptr_t virt_addr, uintptr_t phys_addr, size_t size, size_t flags, bool flush)
 {
     debug_log_fmt(
         "Mapping 0x%x - 0x%x to 0x%x - 0x%x in address space 0x%x\n",
@@ -152,16 +155,19 @@ void vmm_map_range(uintptr_t cr3, uintptr_t virt_addr, uintptr_t phys_addr, size
     size_t num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
     for (size_t i = 0; i < num_pages; i++)
         vmm_map(cr3, virt_addr + i * PAGE_SIZE, phys_addr + i * PAGE_SIZE, flags, false);
-    if (flush && asm_read_cr3() == cr3) asm_write_cr3(cr3);
+    if (flush && asm_read_cr3() == cr3)
+        asm_write_cr3(cr3);
 }
 
 void vmm_unmap(uintptr_t cr3, uintptr_t virt_addr, bool flush)
 {
     uint32_t *pd = (uint32_t *) cr3;
     uint32_t *pt = get_table(pd, virt_addr, false);
-    if (pt == NULL) return;
+    if (pt == NULL)
+        return;
     pt[(virt_addr >> 12) & 0x3FF] = 0;
-    if (flush && asm_read_cr3() == cr3) asm_invlpg((void *) virt_addr);
+    if (flush && asm_read_cr3() == cr3)
+        asm_invlpg((void *) virt_addr);
 }
 
 void vmm_unmap_range(uintptr_t cr3, uintptr_t virt_addr, size_t size, bool flush)
@@ -170,7 +176,8 @@ void vmm_unmap_range(uintptr_t cr3, uintptr_t virt_addr, size_t size, bool flush
     size_t num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
     for (size_t i = 0; i < num_pages; i++)
         vmm_unmap(cr3, virt_addr + i * PAGE_SIZE, false);
-    if (flush && asm_read_cr3() == cr3) asm_write_cr3(cr3);
+    if (flush && asm_read_cr3() == cr3)
+        asm_write_cr3(cr3);
 }
 
 uintptr_t vmm_create_address_space(void)
@@ -187,7 +194,8 @@ uintptr_t vmm_create_address_space(void)
 
 void vmm_destroy_address_space(uintptr_t cr3)
 {
-    if (cr3 == 0 || cr3 == _kernel_cr3) return;
+    if (cr3 == 0 || cr3 == _kernel_cr3)
+        return;
     pmm_free((void *) cr3, 1);
     debug_log_fmt("Destroyed address space at 0x%x\n", cr3);
 }

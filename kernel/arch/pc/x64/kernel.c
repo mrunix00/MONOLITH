@@ -9,27 +9,26 @@
 #include <kernel/arch/pc/idt.h>
 #include <kernel/arch/pc/pic.h>
 #include <kernel/arch/pc/sse.h>
-#include <kernel/debug.h>
-#include <kernel/framebuffer.h>
+#include <kernel/devices/debug.h>
+#include <kernel/devices/device_domain.h>
+#include <kernel/devices/framebuffer.h>
+#include <kernel/devices/input/input_device.h>
 #include <kernel/fs/tmpfs.h>
 #include <kernel/fs/ustar.h>
-#include <kernel/fs/vfs.h>
-#include <kernel/input/input_events.h>
-#include <kernel/input/ps2_keyboard.h>
-#include <kernel/input/ps2_mouse.h>
 #include <kernel/kargs.h>
 #include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
+#include <kernel/memory/shm.h>
 #include <kernel/memory/vmm.h>
 #include <kernel/mmap.h>
-#include <kernel/serial.h>
+#include <kernel/tasking/ipc.h>
 #include <kernel/tasking/loader.h>
 #include <kernel/tasking/scheduler.h>
 #include <kernel/tasking/syscall.h>
+#include <kernel/tasking/task_domain.h>
 #include <kernel/timer.h>
-#include <libs/flanterm/src/flanterm_backends/fb.h>
+#include <kernel/types.h>
 #include <libs/limine-protocol/include/limine.h>
-#include <stdint.h>
 
 struct flanterm_context *_fb_ctx;
 
@@ -81,24 +80,24 @@ static void _setup_all_framebuffers()
 static mmap_type_t _map_type_from_limine_type(uint64_t type)
 {
     switch (type) {
-        case LIMINE_MEMMAP_USABLE:
-            return MMAP_USABLE;
-        case LIMINE_MEMMAP_RESERVED:
-            return MMAP_RESERVED;
-        case LIMINE_MEMMAP_ACPI_RECLAIMABLE:
-            return MMAP_ACPI_RECLAIMABLE;
-        case LIMINE_MEMMAP_ACPI_NVS:
-            return MMAP_ACPI_NVS;
-        case LIMINE_MEMMAP_BAD_MEMORY:
-            return MMAP_BAD_MEMORY;
-        case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
-            return MMAP_BOOTLOADER_RECLAIMABLE;
-        case LIMINE_MEMMAP_EXECUTABLE_AND_MODULES:
-            return MMAP_EXECUTABLE_AND_MODULES;
-        case LIMINE_MEMMAP_FRAMEBUFFER:
-            return MMAP_FRAMEBUFFER;
-        default:
-            return MMAP_USABLE;
+    case LIMINE_MEMMAP_USABLE:
+        return MMAP_USABLE;
+    case LIMINE_MEMMAP_RESERVED:
+        return MMAP_RESERVED;
+    case LIMINE_MEMMAP_ACPI_RECLAIMABLE:
+        return MMAP_ACPI_RECLAIMABLE;
+    case LIMINE_MEMMAP_ACPI_NVS:
+        return MMAP_ACPI_NVS;
+    case LIMINE_MEMMAP_BAD_MEMORY:
+        return MMAP_BAD_MEMORY;
+    case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
+        return MMAP_BOOTLOADER_RECLAIMABLE;
+    case LIMINE_MEMMAP_EXECUTABLE_AND_MODULES:
+        return MMAP_EXECUTABLE_AND_MODULES;
+    case LIMINE_MEMMAP_FRAMEBUFFER:
+        return MMAP_FRAMEBUFFER;
+    default:
+        return MMAP_USABLE;
     }
 }
 
@@ -130,14 +129,21 @@ void kmain()
     apic_init(limine_rsdp_request.response->address);
     heap_init(10);
     syscalls_init();
+    device_domain_init();
+    debug_device_init();
+    serial_devices_init();
+    framebuffer_devices_init();
+    shm_domain_init();
+    ipc_init();
     task_switching_init();
+    task_domain_init();
 
-    vfs_drive_t *tmpfs_drive = tmpfs_new_drive("system");
+    rsrc_node_t *tmpfs_root = tmpfs_mount("system");
     if (limine_module_request.response != NULL && limine_module_request.response->module_count > 0) {
         debug_log("Loading initrd into tmpfs...\n");
         for (size_t i = 0; i < limine_module_request.response->module_count; i++) {
             struct limine_file *module = limine_module_request.response->modules[i];
-            if (tmpfs_populate_from_initrd(tmpfs_drive, module->address) == 0) {
+            if (tmpfs_populate_from_initrd(tmpfs_root, module->address) == 0) {
                 debug_log_fmt("Loaded \"%s\" into tmpfs\n", module->path);
             } else {
                 debug_log_fmt("Failed to load \"%s\" into tmpfs\n", module->path);
@@ -145,9 +151,7 @@ void kmain()
         }
     }
 
-    input_events_init();
-    ps2_init_keyboard();
-    ps2_mouse_init();
+    input_devices_init();
 
     char init_path[PATH_MAX];
     if (!get_kernel_arg("init", init_path, sizeof(init_path))) {

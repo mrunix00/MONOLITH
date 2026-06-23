@@ -70,8 +70,6 @@ USERSPACE_MAKEFLAGS := \
 
 export PROJECT_ROOT ARCH ARCH_CPU TOOLCHAIN_BIN TOOLCHAIN_DIR TOOLCHAIN_BASE_DIR TOOLCHAIN_TARGET CROSS_PREFIX SHARED_INCLUDE_DIR NASM_FORMAT ARCH_CFLAGS CFLAGS
 
--include $(FLANTERM_DEPS)
-
 .PHONY: all clean toolchain limine iso run run-headless run-debug run-debug-headless kernel flanterm initrd userspace FORCE rebuild-toolchain debug-toolchain
 
 all: | $(BUILD_DIR)

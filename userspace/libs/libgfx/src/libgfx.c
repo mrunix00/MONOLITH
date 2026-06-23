@@ -3,12 +3,11 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include <device/framebuffer.h>
 #include <libgfx.h>
-#include <stdint.h>
-#include <stdio.h>
+#include <resource.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/syscall.h>
 #include <unistd.h>
 
 #define abs(x) ((x) < 0 ? -(x) : (x))
@@ -68,26 +67,24 @@ static inline void _blend_pixel(uint32_t *dst_ptr, uint32_t src)
                  | (uint32_t) _out_b;
 }
 
-typedef struct
-{
-    uint32_t *framebuffer;
-    size_t width;
-    size_t height;
-    size_t pitch;
-    size_t bpp;
-    uint8_t memory_model;
-    uint8_t red_mask_size;
-    uint8_t red_mask_shift;
-    uint8_t green_mask_size;
-    uint8_t green_mask_shift;
-    uint8_t blue_mask_size;
-    uint8_t blue_mask_shift;
-} _framebuffer_t;
-
 gfx_context_t gfx_init_screen()
 {
-    _framebuffer_t fb;
-    syscall1(SYSCALL_REQUEST_FB, (long) &fb);
+    rsrc_handle_t framebuffer_handle = rsmgr_open("device:/display/framebuffer0");
+    if (framebuffer_handle < 0)
+        return (gfx_context_t){0};
+
+    framebuffer_device_info_t fb = {0};
+    long command_result
+        = rsmgr_control(framebuffer_handle, FRAMEBUFFER_DEVICE_COMMAND_GET_INFO, &fb, sizeof(fb));
+    if (command_result < 0 || fb.width == 0 || fb.height == 0 || fb.size == 0) {
+        rsmgr_close(framebuffer_handle);
+        return (gfx_context_t){0};
+    }
+
+    void *mapped_framebuffer = rsmgr_mmap(framebuffer_handle, 0, fb.size, ALLOC_PAGES_FLAG_RW);
+    rsmgr_close(framebuffer_handle);
+    if (mapped_framebuffer == NULL)
+        return (gfx_context_t){0};
 
     uint16_t bpp = fb.bpp ? fb.bpp : 32;
     uint8_t memory_model = fb.memory_model ? fb.memory_model : 1;
@@ -111,7 +108,7 @@ gfx_context_t gfx_init_screen()
     uint64_t pitch = fb.pitch ? fb.pitch : (uint64_t) fb.width * ((bpp + 7) / 8);
 
     gfx_context_t ctx = {
-        .framebuffer = fb.framebuffer,
+        .framebuffer = (uint32_t *) mapped_framebuffer,
         .width = fb.width,
         .height = fb.height,
         .pitch = pitch,

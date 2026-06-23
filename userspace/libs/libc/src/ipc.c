@@ -4,139 +4,174 @@
  */
 
 #include <ipc.h>
+#include <resource.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/syscall.h>
-#include <unistd.h>
 
-typedef struct
+static int _channel_command(channel_id_t channel_id, uint64_t command_id, void *buffer, size_t size)
 {
-    size_t size;
-    uint64_t sender_task_id;
-} _ipc_batch_entry_t;
-
-typedef struct
-{
-    char *data;
-    size_t capacity;
-    size_t length;
-    size_t offset;
-    channel_id_t channel_id;
-} ipc_receive_cache_t;
-
-static ipc_receive_cache_t _ipc_cache;
-
-#ifdef TEST_ENV
-typedef int (*ipc_syscall4_fn)(long num, long arg1, long arg2, long arg3, long arg4);
-ipc_syscall4_fn ipc_test_syscall4;
-#endif
-
-static int _ipc_syscall4(long num, long arg1, long arg2, long arg3, long arg4)
-{
-#ifdef TEST_ENV
-    if (ipc_test_syscall4)
-        return ipc_test_syscall4(num, arg1, arg2, arg3, arg4);
-#endif
-    return (int) syscall4(num, arg1, arg2, arg3, arg4);
+    return (int) rsmgr_control(channel_id, command_id, buffer, (uint32_t) size);
 }
 
-static void _ipc_cache_reset(void)
+static int _connection_command(channel_id_t channel_id, uint64_t command_id, connection_t *connection)
 {
-    _ipc_cache.length = 0;
-    _ipc_cache.offset = 0;
+    if (connection == NULL)
+        return -1;
+    return _channel_command(channel_id, command_id, connection, sizeof(*connection));
 }
 
-#ifdef TEST_ENV
-void ipc_test_reset_cache(void)
+channel_id_t ipc_new_channel(const char *name)
 {
-    _ipc_cache_reset();
-    _ipc_cache.channel_id = -1;
-}
-#endif
-
-static void _ipc_cache_set_channel(channel_id_t channel_id)
-{
-    _ipc_cache.channel_id = channel_id;
-}
-
-static int _ipc_cache_matches_channel(channel_id_t channel_id)
-{
-    return _ipc_cache.channel_id == channel_id;
-}
-
-static int _ipc_cache_ensure_capacity(size_t min_capacity)
-{
-    if (_ipc_cache.capacity >= min_capacity)
-        return 0;
-
-    size_t new_capacity = _ipc_cache.capacity == 0 ? min_capacity : _ipc_cache.capacity;
-    while (new_capacity < min_capacity)
-        new_capacity *= 2;
-
-    char *new_data = (char *) realloc(_ipc_cache.data, new_capacity);
-    if (!new_data)
+    if (name == NULL)
         return -1;
 
-    _ipc_cache.data = new_data;
-    _ipc_cache.capacity = new_capacity;
-    return 0;
+    size_t name_len = strlen(name);
+    if (name_len == 0 || name_len >= IPC_CHANNEL_NAME_MAX)
+        return -1;
+
+    char path[IPC_CHANNEL_NAME_MAX + 10];
+    memcpy(path, "channel:/", 9);
+    memcpy(path + 9, name, name_len + 1);
+    return (channel_id_t) rsmgr_create(path, RSRC_TYPE_RESOURCE);
+}
+
+channel_id_t ipc_connect(const char *name)
+{
+    if (name == NULL)
+        return -1;
+
+    char path[IPC_CHANNEL_NAME_MAX + 10];
+    size_t name_len = strlen(name);
+    if (name_len == 0 || name_len >= IPC_CHANNEL_NAME_MAX)
+        return -1;
+
+    memcpy(path, "channel:/", 9);
+    memcpy(path + 9, name, name_len + 1);
+    return (channel_id_t) rsmgr_open(path);
+}
+
+int ipc_await_connection(channel_id_t channel_id, connection_t *connection)
+{
+    return _connection_command(channel_id, IPC_CHANNEL_COMMAND_WAIT_CONNECTION, connection);
+}
+
+int ipc_poll_connection(channel_id_t channel_id, connection_t *connection)
+{
+    return _connection_command(channel_id, IPC_CHANNEL_COMMAND_POLL_CONNECTION, connection);
+}
+
+int ipc_accept_connection(channel_id_t channel_id, connection_t *connection)
+{
+    return _connection_command(channel_id, IPC_CHANNEL_COMMAND_ACCEPT_CONNECTION, connection);
+}
+
+int ipc_reject_connection(channel_id_t channel_id, connection_t *connection)
+{
+    return _connection_command(channel_id, IPC_CHANNEL_COMMAND_REJECT_CONNECTION, connection);
+}
+
+int ipc_send_to(channel_id_t channel_id, connection_t *connection, void *data, size_t size)
+{
+    if (connection == NULL || data == NULL || size == 0)
+        return -1;
+
+    size_t request_size = sizeof(ipc_channel_send_message_in_t) + size;
+    ipc_channel_send_message_in_t *request = malloc(request_size);
+    if (request == NULL)
+        return -1;
+
+    request->connection_id = connection->task_id;
+    request->flags = 0;
+    request->payload_len = size;
+    memcpy(request->payload, data, size);
+    int result
+        = _channel_command(channel_id, IPC_CHANNEL_COMMAND_SEND_MESSAGE, request, request_size);
+    free(request);
+    return result;
+}
+
+int ipc_send(channel_id_t channel_id, void *data, size_t size)
+{
+    if (data == NULL || size == 0)
+        return -1;
+    return rsmgr_write(channel_id, data, (uint32_t) size) < 0 ? -1 : 0;
+}
+
+int ipc_send_resource(channel_id_t channel_id, connection_t *connection, rsrc_handle_t resource)
+{
+    if (connection == NULL || resource < 0)
+        return -1;
+
+    ipc_channel_send_object_in_t request = {
+        .connection_id = connection->task_id,
+        .resource = resource,
+        .rights_mask = 0,
+        .flags = 0,
+    };
+    return _channel_command(channel_id, IPC_CHANNEL_COMMAND_SEND_OBJECT, &request, sizeof(request));
+}
+
+int ipc_receive_packet(channel_id_t channel_id, void *buffer, size_t size)
+{
+    if (channel_id < 0 || buffer == NULL || size < sizeof(ipc_channel_packet_header_t))
+        return -1;
+    return _channel_command(channel_id, IPC_CHANNEL_COMMAND_RECV, buffer, size);
 }
 
 int ipc_receive(channel_id_t channel_id, connection_t *sender, void *data, size_t size)
 {
-    if (channel_id < 0 || !data || size == 0)
+    if (channel_id < 0 || data == NULL || size == 0)
         return -1;
 
-    if (!_ipc_cache_matches_channel(channel_id)) {
-        _ipc_cache_reset();
-        _ipc_cache_set_channel(channel_id);
+    size_t packet_size = sizeof(ipc_channel_recv_out_t) + size;
+    ipc_channel_recv_out_t *packet = malloc(packet_size);
+    if (packet == NULL)
+        return -1;
+
+    int result = ipc_receive_packet(channel_id, packet, packet_size);
+    if (result <= 0) {
+        free(packet);
+        return result;
     }
 
-    if (_ipc_cache.offset >= _ipc_cache.length) {
-        _ipc_cache_reset();
-        size_t min_capacity = size + sizeof(_ipc_batch_entry_t);
-        if (_ipc_cache_ensure_capacity(min_capacity) != 0)
-            return -1;
-
-        connection_t dummy_sender = {0};
-        connection_t *sender_ptr = sender ? sender : &dummy_sender;
-
-        int result = _ipc_syscall4(
-            SYSCALL_IPC_RECEIVE_ALL,
-            (long) channel_id,
-            (long) sender_ptr,
-            (long) _ipc_cache.data,
-            (long) _ipc_cache.capacity);
-
-        if (result == 0)
-            return 0;
-        if (result < 0)
-            return -1;
-
-        _ipc_cache.length = (size_t) result;
-        _ipc_cache.offset = 0;
+    if (packet->header.type != IPC_CHANNEL_PACKET_MESSAGE || packet->header.payload_len > size) {
+        free(packet);
+        return -1;
     }
 
-    if (_ipc_cache.length - _ipc_cache.offset < sizeof(_ipc_batch_entry_t))
+    if (sender != NULL)
+        sender->task_id = packet->header.sender_task_id;
+    memcpy(data, packet->payload, packet->header.payload_len);
+    result = (int) packet->header.payload_len;
+    free(packet);
+    return result;
+}
+
+int ipc_receive_resource(channel_id_t channel_id, connection_t *sender, rsrc_handle_t *resource)
+{
+    unsigned char
+        packet_buffer[sizeof(ipc_channel_recv_out_t) + sizeof(ipc_channel_object_payload_t)];
+    int result = ipc_receive_packet(channel_id, packet_buffer, sizeof(packet_buffer));
+    if (result <= 0)
+        return result;
+
+    ipc_channel_recv_out_t *packet = (ipc_channel_recv_out_t *) packet_buffer;
+    if (packet->header.type != IPC_CHANNEL_PACKET_OBJECT
+        || packet->header.payload_len < sizeof(ipc_channel_object_payload_t)) {
         return -1;
+    }
 
-    _ipc_batch_entry_t *entry = (_ipc_batch_entry_t *) (_ipc_cache.data + _ipc_cache.offset);
-    size_t entry_total = sizeof(_ipc_batch_entry_t) + entry->size;
+    ipc_channel_object_payload_t *payload = (ipc_channel_object_payload_t *) packet->payload;
+    if (sender != NULL)
+        sender->task_id = packet->header.sender_task_id;
+    if (resource != NULL)
+        *resource = (rsrc_handle_t) payload->resource;
+    return 0;
+}
 
-    if (_ipc_cache.length - _ipc_cache.offset < entry_total)
-        return -1;
-
-    if (entry->size > size)
-        return -1;
-
-    if (sender)
-        sender->task_id = entry->sender_task_id;
-
-    memcpy(data, entry + 1, entry->size);
-
-    _ipc_cache.offset += entry_total;
-    if (_ipc_cache.offset >= _ipc_cache.length)
-        _ipc_cache_reset();
-
-    return (int) entry->size;
+int ipc_disconnect(channel_id_t channel_id)
+{
+    int result = _channel_command(channel_id, IPC_CHANNEL_COMMAND_DISCONNECT, NULL, 0);
+    rsmgr_close(channel_id);
+    return result;
 }

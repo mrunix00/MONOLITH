@@ -8,7 +8,7 @@
 #include <kernel/arch/pc/interrupts.h>
 #include <kernel/arch/pc/panic.h>
 #include <kernel/arch/pc/pic.h>
-#include <kernel/debug.h>
+#include <kernel/devices/debug.h>
 #include <kernel/klibc/memory.h>
 #include <kernel/klibc/string.h>
 #include <kernel/tasking/task.h>

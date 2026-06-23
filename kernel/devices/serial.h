@@ -57,3 +57,8 @@ char read_serial(serial_port_t port);
  * Returns the number of bytes read from the port.
  */
 size_t read_bytes(serial_port_t port, char *buffer, size_t size);
+
+/*
+ * Register serial ports as device resources (device:/serial1 .. serial4).
+ */
+void serial_devices_init(void);
