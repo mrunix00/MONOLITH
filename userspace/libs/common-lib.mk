@@ -23,7 +23,7 @@ DEPS := $(OBJECTS:.o=.d)
 
 CC := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc
 AR := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)ar
-LIB_CFLAGS := -ffreestanding -Wall -Wextra $(addprefix -I,$(LIB_INCLUDE_DIRS)) $(LIB_OPTFLAGS) $(LIB_EXTRA_CFLAGS)
+LIB_CFLAGS := -ffreestanding -Wall -Wextra -fmacro-prefix-map=$(PROJECT_ROOT)/= $(addprefix -I,$(LIB_INCLUDE_DIRS)) $(LIB_OPTFLAGS) $(LIB_EXTRA_CFLAGS)
 
 .PHONY: all clean
 
@@ -35,7 +35,7 @@ $(LIB_TARGET): $(OBJECTS)
 	@mkdir -p $(LIB_OUTPUT_DIR)
 	$(AR) $(ARFLAGS) $@ $(OBJECTS)
 
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
+$(OBJ_DIR)/%.o: $(CURDIR)/$(SRC_DIR)/%.c | $(OBJ_DIR)
 	@mkdir -p $(dir $@)
 	$(CC) $(LIB_CFLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 

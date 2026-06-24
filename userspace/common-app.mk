@@ -18,7 +18,7 @@ APP_LIB_TARGETS := $(addprefix $(BUILD_DIR)/libs/,$(addsuffix .a,$(APP_LIB_DEPS)
 APP_INCLUDE_DIRS := $(addprefix ../libs/,$(addsuffix /include,$(APP_LIB_DEPS))) $(SHARED_INCLUDE_DIR) $(STB_DIR) $(EXTRA_INCLUDE_DIRS)
 
 CC := $(TOOLCHAIN_BIN)/$(CROSS_PREFIX)gcc
-CFLAGS += $(APP_OPTFLAGS) $(addprefix -I,$(APP_INCLUDE_DIRS)) -Wall -Wextra
+CFLAGS += $(APP_OPTFLAGS) $(addprefix -I,$(APP_INCLUDE_DIRS)) -Wall -Wextra -fmacro-prefix-map=$(PROJECT_ROOT)/=
 LDFLAGS := -B$(BUILD_DIR)/libs -nodefaultlibs
 LIBS ?= $(APP_LIB_TARGETS)
 LIBGCC := $(shell $(CC) -print-libgcc-file-name)
@@ -37,7 +37,7 @@ $(TARGET): $(OBJ) $(APP_LIB_TARGETS)
 	$(POST_INSTALL_CMD)
 	@echo "Installed $(TARGET) to $(INITRD_DIR)"
 
-$(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
+$(OBJ_DIR)/%.o: $(CURDIR)/%.c | $(OBJ_DIR)
 	@echo "Compiling $<"
 	$(CC) $(CFLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 

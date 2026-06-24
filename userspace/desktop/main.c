@@ -8,6 +8,7 @@
 #include "./protocol_server.h"
 #include "./window.h"
 
+#include <debug.h>
 #include <libgfx.h>
 #include <libgfx/images.h>
 #include <resource.h>
@@ -76,8 +77,10 @@ static gfx_colored_bitmap_t _load_wallpaper(const char *wallpaper, uint32_t widt
 
 int main()
 {
-    if (protocol_server_init() != 0)
+    if (protocol_server_init() != 0) {
+        debug_log("failed to initialize protocol server\n");
         return 1;
+    }
 
     gfx_context_t context = gfx_init_screen();
     if (FRAME_RATE > 0)

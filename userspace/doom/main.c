@@ -7,6 +7,7 @@
 #define DOOM_IMPLEMENTATION
 #include <PureDOOM.h>
 
+#include <debug.h>
 #include <libdesktop.h>
 #include <libgfx.h>
 #include <string.h>
@@ -49,7 +50,7 @@ static int doom_ensure_size(doom_file_t *file)
 
 static void doom_print_override(const char *str)
 {
-    (void) str;
+    debug_log("%s", str);
 }
 
 static void *doom_malloc_override(int size)
@@ -495,8 +496,10 @@ int main(int argc, char *argv[])
     doom_set_exit(doom_exit_override);
     doom_set_getenv(doom_getenv_override);
 
-    if (argc < 2 || argv[1] == NULL)
+    if (argc < 2 || argv[1] == NULL) {
+        debug_log("doom: missing WAD file argument\n");
         return 1;
+    }
 
     doom_init(
         argc,
@@ -514,8 +517,10 @@ int main(int argc, char *argv[])
 
     gfx_context_t framebuffer = {0};
 
-    if (desktop_connect() != 0)
+    if (desktop_connect() != 0) {
+        debug_log("doom: failed to connect to desktop\n");
         return 1;
+    }
 
     while (1) {
         if (!created && !create_pending) {

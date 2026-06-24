@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include <debug.h>
 #include <libdesktop.h>
 #include <libgfx.h>
 #include <unistd.h>
@@ -75,8 +76,14 @@ int main()
     gfx_font_t _about_font
         = gfx_load_font_from_file("file:/system/assets/IBMPlexSans_Condensed-Medium.ttf", 18);
 
-    if (_about_font.data == NULL || desktop_connect() != 0)
+    if (_about_font.data == NULL) {
+        debug_log("failed to load font\n");
         return 1;
+    }
+    if (desktop_connect() != 0) {
+        debug_log("failed to connect to desktop\n");
+        return 1;
+    }
 
     while (1) {
         if (!created) {

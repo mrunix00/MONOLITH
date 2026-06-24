@@ -22,6 +22,19 @@ static serial_port_t _debug_port = 0;
  */
 extern struct flanterm_context *_fb_ctx;
 
+static volatile int _debug_lock = 0;
+
+static inline void _debug_lock_acquire()
+{
+    while (__sync_lock_test_and_set(&_debug_lock, 1))
+        __asm__ volatile("pause");
+}
+
+static inline void _debug_lock_release()
+{
+    __sync_lock_release(&_debug_lock);
+}
+
 static inline void _debug_write_char(char c)
 {
     if (_debug_port)
@@ -132,8 +145,10 @@ void stop_debug_console(void)
 
 void _debug_log(const char *message)
 {
+    _debug_lock_acquire();
     _debug_log_timestamp();
     _debug_write_string(message);
+    _debug_lock_release();
 }
 
 static inline void _debug_logd(int d)
@@ -166,7 +181,6 @@ static inline void _debug_logd(int d)
     }
 
     buffer[i] = '\0';
-
     _debug_write_string(buffer);
 }
 
@@ -196,7 +210,6 @@ static inline void _debug_logx(uintptr_t x)
     }
 
     buffer[i] = '\0';
-
     _debug_write_string(buffer);
 }
 
@@ -207,6 +220,7 @@ void _debug_log_fmt(const char *format, ...)
     if (!_debug_port)
         return;
 
+    _debug_lock_acquire();
     va_start(args, format);
     _debug_log_timestamp();
     while (*format != '\0') {
@@ -239,6 +253,7 @@ void _debug_log_fmt(const char *format, ...)
     }
 
     va_end(args);
+    _debug_lock_release();
 }
 
 bool _debug_assert(bool expr, const char *line, const char *expr_str)

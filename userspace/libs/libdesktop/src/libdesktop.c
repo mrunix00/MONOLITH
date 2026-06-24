@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include <debug.h>
 #include <ipc.h>
 #include <libdesktop.h>
 #include <resource.h>
@@ -39,6 +40,7 @@ static int _protocol_send_request(const desktop_request_t *request)
 {
     if (ipc_send(_protocol_channel_id, (void *) request, sizeof(*request)) == 0)
         return 0;
+    debug_log("failed to send protocol request\n");
     _last_error = DESKTOP_ERROR_SEND_FAILED;
     return -1;
 }
@@ -120,6 +122,7 @@ static int _ensure_backbuffer(_desktop_framebuffer_state_t *state)
     if (!state->backbuffer || state->backbuffer_size < backbuffer_size) {
         uint32_t *new_backbuffer = malloc(backbuffer_size);
         if (!new_backbuffer) {
+            debug_log("failed to allocate backbuffer\n");
             _last_error = DESKTOP_ERROR_ALLOC_FAILED;
             return -1;
         }
@@ -153,12 +156,14 @@ int desktop_connect(void)
 {
     _protocol_channel_id = ipc_connect(DESKTOP_CHANNEL_NAME);
     if (_protocol_channel_id < 0) {
+        debug_log("failed to connect to desktop channel\n");
         _last_error = DESKTOP_ERROR_CONNECT_FAILED;
         return -1;
     }
 
     connection_t connection = {0};
     if (ipc_await_connection(_protocol_channel_id, &connection) != 0) {
+        debug_log("failed to await desktop connection\n");
         _last_error = DESKTOP_ERROR_CONNECT_FAILED;
         return -1;
     }
@@ -291,6 +296,7 @@ int desktop_handle_framebuffer_event(const desktop_event_t *event, gfx_context_t
     rsrc_handle_t framebuffer_handle = RSRC_INVALID_HANDLE;
     if (ipc_receive_resource(_protocol_channel_id, NULL, &framebuffer_handle) != 0
         || framebuffer_handle < 0) {
+        debug_log("failed to receive framebuffer resource\n");
         _last_error = DESKTOP_ERROR_SHM_FAILED;
         return -1;
     }
@@ -298,6 +304,7 @@ int desktop_handle_framebuffer_event(const desktop_event_t *event, gfx_context_t
     void *new_pixels
         = rsmgr_mmap(framebuffer_handle, 0, event->data.framebuffer_ready.size, ALLOC_PAGES_FLAG_RW);
     if (!new_pixels) {
+        debug_log("failed to mmap framebuffer\n");
         rsmgr_close(framebuffer_handle);
         _last_error = DESKTOP_ERROR_SHM_FAILED;
         return -1;

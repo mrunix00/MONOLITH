@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
+#include <debug.h>
 #include <libdesktop.h>
 #include <libgfx.h>
 #include <unistd.h>
@@ -195,8 +196,10 @@ int main()
     float angle = 0.0f;
     gfx_context_t framebuffer = {0};
 
-    if (desktop_connect() != 0)
+    if (desktop_connect() != 0) {
+        debug_log("failed to connect to desktop\n");
         return 1;
+    }
 
     while (1) {
         if (!created && !create_pending) {
