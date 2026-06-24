@@ -7,9 +7,4 @@
 
 #include <kernel/tasking/task.h>
 
-/*
- * Load and execute an executable file into memory.
- * Returns 0 on success, -1 on failure.
- */
-task_t *load_elf(const char *path);
-task_t *load_elf_for_parent(const char *path, task_t *parent);
+task_t *load_exec(const char *path, task_t *parent, int argc, const char **argv);

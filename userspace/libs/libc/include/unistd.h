@@ -22,6 +22,8 @@ int getdents(int fd, void *buffer, uint32_t size);
 
 int lseek(int fd, int offset, int whence);
 
+int spawn(int argc, const char **argv);
+
 #ifdef TEST_ENV
 typedef long (*fs_syscall0_fn)(long num);
 typedef long (*fs_syscall1_fn)(long num, long arg1);

@@ -1,23 +1,89 @@
-/*
- * Copyright (c) 2025, Ibrahim KAIKAA <ibrahimkaikaa@gmail.com>
+/* Copyright (c) 2025, Ibrahim KAIKAA <ibrahimkaikaa@gmail.com>
  * SPDX-License-Identifier: GPL-3.0
  */
-
 #include <kernel/arch/pc/interrupts.h>
 #include <kernel/devices/debug.h>
 #include <kernel/klibc/memory.h>
+#include <kernel/klibc/string.h>
+#include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
 #include <kernel/tasking/elf.h>
 #include <kernel/tasking/loader.h>
 #include <shared/include/monolith/stdio.h>
 
-task_t *load_elf(const char *path)
+static void _setup_user_stack_args(
+    task_t *task,
+    void *stack_phys,
+    uintptr_t stack_base,
+    uintptr_t stack_top,
+    int argc,
+    const char **argv)
 {
-    return load_elf_for_parent(path, NULL);
+    if (argc <= 0 || argv == NULL) {
+        argc = 1;
+        const char *default_argv[] = {""};
+        argv = default_argv;
+    }
+
+    uint8_t *stack_hddm = (uint8_t *) vmm_get_hhdm_addr(stack_phys);
+
+    size_t total_str_len = 0;
+    for (int i = 0; i < argc; i++)
+        total_str_len += strlen(argv[i]) + 1;
+    total_str_len = (total_str_len + 7) & ~((size_t) 7);
+
+    uintptr_t str_area_top = stack_top - total_str_len;
+
+    /* Temporarily hold the user-virtual address of each argument string */
+    uintptr_t *str_addrs = (uintptr_t *) kmalloc(sizeof(uintptr_t) * argc);
+    if (!str_addrs)
+        return;
+
+    {
+        uintptr_t p = str_area_top;
+        for (int i = 0; i < argc; i++) {
+            size_t len = strlen(argv[i]) + 1;
+            str_addrs[i] = p;
+            memcpy(stack_hddm + (p - stack_base), argv[i], len);
+            p += len;
+        }
+    }
+
+    size_t frame_size = 8 + 8 * argc + 16;
+    uintptr_t sp = str_area_top - frame_size;
+    if ((sp & 0xF) == 0)
+        sp -= 8;
+    uintptr_t wp = sp;
+
+    /* argc */
+    *(uint64_t *) (stack_hddm + (wp - stack_base)) = (uint64_t) argc;
+    wp += 8;
+
+    /* argv pointers */
+    for (int i = 0; i < argc; i++) {
+        *(uint64_t *) (stack_hddm + (wp - stack_base)) = str_addrs[i];
+        wp += 8;
+    }
+
+    /* NULL terminator for argv */
+    *(uint64_t *) (stack_hddm + (wp - stack_base)) = 0;
+    wp += 8;
+
+    /* NULL terminator for envp */
+    *(uint64_t *) (stack_hddm + (wp - stack_base)) = 0;
+    wp += 8;
+
+    /* Set task state registers per System V AMD64 ABI */
+    task->state.rsp = sp;
+    task->state.rdi = argc;
+    task->state.rsi = sp + 8;
+    task->state.rdx = 0;
+
+    kfree(str_addrs);
 }
 
-task_t *load_elf_for_parent(const char *path, task_t *parent)
+static task_t *_load_elf_impl(const char *path, task_t *parent, int argc, const char **argv)
 {
     rsrc_t *file = rsmgr_open(path);
     if (file == NULL)
@@ -118,13 +184,16 @@ task_t *load_elf_for_parent(const char *path, task_t *parent)
     uintptr_t stack_top = stack_base + 10 * PAGE_SIZE;
     task_map(task, stack_base, (uintptr_t) stack, 10, PTFLAG_US | PTFLAG_RW | PTFLAG_P, true);
 
-    /*
-     * According to System V AMD64 ABI: RSP must be 16-byte aligned before CALL,
-     * which means RSP % 16 == 8 at function entry (after return address is pushed).
-     */
-    task->state.rsp = stack_top - 8;
+    /* Set up argc/argv on the user stack per System V AMD64 ABI */
+    _setup_user_stack_args(task, stack, stack_base, stack_top, argc, argv);
+
     task_set_parent(task, parent);
 
     interrupts_enable();
     return task;
+}
+
+task_t *load_exec(const char *path, task_t *parent, int argc, const char **argv)
+{
+    return _load_elf_impl(path, parent, argc, argv);
 }

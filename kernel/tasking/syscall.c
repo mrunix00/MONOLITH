@@ -5,6 +5,7 @@
 
 #include <kernel/devices/debug.h>
 #include <kernel/klibc/memory.h>
+#include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/vmm.h>
 #include <kernel/tasking/loader.h>
@@ -335,12 +336,60 @@ void *sys_alloc_pages(size_t num_pages, uint64_t flags)
     return (void *) virt_addr;
 }
 
-void sys_spawn_task(const char *path)
+void sys_spawn_task(int argc, const char **argv)
 {
-    if (!syscall_user_ptr_range(path, 1))
+    if (argc < 1 || !syscall_user_ptr_range(argv, argc * sizeof(const char *)))
         return;
-    if (load_elf_for_parent(path, task_get_current()) == NULL)
-        debug_log_fmt("Failed to load %s!", path);
+
+    task_t *current = task_get_current();
+    if (current == NULL)
+        return;
+
+    if (argc > 256)
+        argc = 256;
+
+    const char **k_argv = (const char **) kmalloc(sizeof(const char *) * argc);
+    if (!k_argv)
+        return;
+
+    for (int i = 0; i < argc; i++) {
+        const char *user_str = argv[i];
+        if (!syscall_user_ptr_range(user_str, 1))
+            return;
+
+        /* Copy the string: read up to 256 bytes to find the null terminator */
+        size_t max_len = 256;
+        const char *base = user_str;
+        size_t len = 0;
+        while (len < max_len) {
+            uint8_t byte;
+            if (!syscall_user_ptr_range(user_str + len, 1))
+                break;
+            byte = *((const uint8_t *) user_str + len);
+            if (byte == 0)
+                break;
+            len++;
+        }
+
+        char *k_str = (char *) kmalloc(len + 1);
+        if (!k_str) {
+            k_argv[i] = "";
+            continue;
+        }
+        memcpy(k_str, base, len);
+        k_str[len] = '\0';
+        k_argv[i] = k_str;
+    }
+
+    if (load_exec(k_argv[0], current, argc, k_argv) == NULL)
+        debug_log_fmt("Failed to load %s!\n", k_argv[0]);
+
+    /* Free the kernel copies of the argument strings */
+    for (int i = 0; i < argc; i++) {
+        if (k_argv[i] && k_argv[i][0] != '\0')
+            kfree((void *) k_argv[i]);
+    }
+    kfree(k_argv);
 }
 
 void syscalls_task_cleanup(task_t *task)
@@ -400,7 +449,7 @@ long syscall_dispatch(uintptr_t num, uintptr_t arg1, uintptr_t arg2, uintptr_t a
     case SYSCALL_ALLOC_PAGES:
         return (long) sys_alloc_pages((size_t) arg1, (uint64_t) arg2);
     case SYSCALL_SPAWN_TASK:
-        sys_spawn_task((const char *) arg1);
+        sys_spawn_task((int) arg1, (const char **) arg2);
         return 0;
     case SYSCALL_UNMAP_PAGES:
         return sys_unmap_pages((void *) arg1, (size_t) arg2);

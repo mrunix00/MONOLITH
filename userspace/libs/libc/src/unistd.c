@@ -35,3 +35,8 @@ int lseek(int fd, int offset, int whence)
 {
     return rsmgr_seek(fd, offset, whence);
 }
+
+int spawn(int argc, const char **argv)
+{
+    return (int) syscall2(SYSCALL_SPAWN_TASK, (long) argc, (long) argv);
+}

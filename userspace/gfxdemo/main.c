@@ -181,7 +181,7 @@ static void _draw_cube_frame(gfx_context_t *ctx, uint32_t target_w, uint32_t tar
     gfx_end_frame(ctx);
 }
 
-int main(void)
+int main()
 {
     bool created = false;
     bool create_pending = false;

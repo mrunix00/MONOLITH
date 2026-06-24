@@ -161,7 +161,7 @@ void kmain()
     }
 
     debug_log_fmt("Launching init process: %s\n", init_path);
-    task_t *task = load_elf(init_path);
+    task_t *task = load_exec(init_path, NULL, 1, (const char *[]){init_path});
     if (task == NULL) {
         debug_log_fmt("Failed to load init ELF: %s\n", init_path);
         while (1)

@@ -63,7 +63,7 @@ static void _draw_about_view(uint16_t width, uint16_t height, gfx_font_t *font, 
     gfx_end_frame(ctx);
 }
 
-int main(void)
+int main()
 {
     bool created = false;
     bool create_pending = false;

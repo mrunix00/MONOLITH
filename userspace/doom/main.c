@@ -479,7 +479,7 @@ static void blit_doom_frame(gfx_context_t *ctx, uint32_t win_w, uint32_t win_h)
     }
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
     doom_set_print(doom_print_override);
     doom_set_malloc(doom_malloc_override, doom_free_override);
@@ -495,9 +495,11 @@ int main(void)
     doom_set_exit(doom_exit_override);
     doom_set_getenv(doom_getenv_override);
 
-    char *argv[32] = {"file:/system/doom", "file:/system/assets/doom1.wad"};
+    if (argc < 2 || argv[1] == NULL)
+        return 1;
+
     doom_init(
-        2,
+        argc,
         argv,
         DOOM_FLAG_MENU_DARKEN_BG | DOOM_FLAG_HIDE_MUSIC_OPTIONS | DOOM_FLAG_HIDE_SOUND_OPTIONS);
 

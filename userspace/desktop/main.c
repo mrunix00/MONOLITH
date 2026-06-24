@@ -18,17 +18,17 @@ gfx_font_t default_font;
 
 static void _menu_action_about(void)
 {
-    syscall1(SYSCALL_SPAWN_TASK, (long) "file:/system/about");
+    spawn(1, (const char *[]) {"file:/system/about"});
 }
 
 static void _menu_action_gfxdemo(void)
 {
-    syscall1(SYSCALL_SPAWN_TASK, (long) "file:/system/gfxdemo");
+    spawn(1, (const char *[]) {"file:/system/gfxdemo"});
 }
 
 static void _menu_action_doom(void)
 {
-    syscall1(SYSCALL_SPAWN_TASK, (long) "file:/system/doom");
+    spawn(2, (const char *[]) {"file:/system/doom", "file:/system/assets/doom1.wad"});
 }
 
 static gfx_colored_bitmap_t _load_wallpaper(const char *wallpaper, uint32_t width, uint32_t height)
