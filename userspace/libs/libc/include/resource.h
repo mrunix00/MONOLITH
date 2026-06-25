@@ -75,7 +75,6 @@ typedef struct
 } rsrc_info_t;
 
 rsrc_handle_t rsmgr_open(const char *path);
-rsrc_handle_t rsmgr_create(const char *name, rsrc_type_t type);
 int rsmgr_close(rsrc_handle_t handle);
 int rsmgr_describe(rsrc_handle_t handle, rsrc_info_t *info);
 int rsmgr_read(rsrc_handle_t handle, void *buffer, uint32_t size);

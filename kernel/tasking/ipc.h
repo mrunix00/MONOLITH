@@ -10,18 +10,12 @@
 
 #define IPC_CHANNEL_NAME_MAX 64
 
-typedef struct
-{
-    uint64_t task_id;
-} connection_t;
-
-typedef int64_t channel_id_t;
+typedef uint64_t connection_t;
 
 typedef enum {
     IPC_CHANNEL_COMMAND_SEND_MESSAGE = 1,
     IPC_CHANNEL_COMMAND_SEND_OBJECT = 2,
     IPC_CHANNEL_COMMAND_RECV = 3,
-    IPC_CHANNEL_COMMAND_CREATE = 4,
     IPC_CHANNEL_COMMAND_POLL_CONNECTION = 5,
     IPC_CHANNEL_COMMAND_WAIT_CONNECTION = 6,
     IPC_CHANNEL_COMMAND_ACCEPT_CONNECTION = 7,
@@ -75,4 +69,5 @@ typedef struct
 } ipc_channel_recv_out_t;
 
 bool ipc_init();
+rsrc_status_t ipc_channel_create(const char *name, rsrc_t **out_resource);
 void ipc_task_cleanup(task_t *task);

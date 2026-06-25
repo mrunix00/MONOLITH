@@ -31,14 +31,14 @@ typedef struct
     gfx_context_t *bound_context;
 } _desktop_framebuffer_state_t;
 
-static channel_id_t _protocol_channel_id = -1;
+static rsrc_handle_t _protocol_channel = -1;
 static uint32_t _sequence = 0;
 static desktop_error_t _last_error = DESKTOP_ERROR_NONE;
 static _desktop_framebuffer_state_t _framebuffer_states[DESKTOP_MAX_FRAMEBUFFERS];
 
 static int _protocol_send_request(const desktop_request_t *request)
 {
-    if (ipc_send(_protocol_channel_id, (void *) request, sizeof(*request)) == 0)
+    if (ipc_send(_protocol_channel, (void *) request, sizeof(*request)) == 0)
         return 0;
     debug_log("failed to send protocol request\n");
     _last_error = DESKTOP_ERROR_SEND_FAILED;
@@ -154,15 +154,15 @@ static int _request_window_framebuffer(
 
 int desktop_connect(void)
 {
-    _protocol_channel_id = ipc_connect(DESKTOP_CHANNEL_NAME);
-    if (_protocol_channel_id < 0) {
+    _protocol_channel = ipc_connect(DESKTOP_CHANNEL_NAME);
+    if (_protocol_channel < 0) {
         debug_log("failed to connect to desktop channel\n");
         _last_error = DESKTOP_ERROR_CONNECT_FAILED;
         return -1;
     }
 
-    connection_t connection = {0};
-    if (ipc_await_connection(_protocol_channel_id, &connection) != 0) {
+    connection_t connection = 0;
+    if (ipc_await_connection(_protocol_channel, &connection) != 0) {
         debug_log("failed to await desktop connection\n");
         _last_error = DESKTOP_ERROR_CONNECT_FAILED;
         return -1;
@@ -294,7 +294,7 @@ int desktop_handle_framebuffer_event(const desktop_event_t *event, gfx_context_t
         return 0;
 
     rsrc_handle_t framebuffer_handle = RSRC_INVALID_HANDLE;
-    if (ipc_receive_resource(_protocol_channel_id, NULL, &framebuffer_handle) != 0
+    if (ipc_receive_resource(_protocol_channel, NULL, &framebuffer_handle) != 0
         || framebuffer_handle < 0) {
         debug_log("failed to receive framebuffer resource\n");
         _last_error = DESKTOP_ERROR_SHM_FAILED;
@@ -361,8 +361,8 @@ int desktop_poll_event(desktop_event_t *event)
     unsigned char recv_buffer[DESKTOP_EVENT_RECV_BUFFER_SIZE];
     memset(recv_buffer, 0, sizeof(recv_buffer));
 
-    connection_t sender = {0};
-    int result = ipc_receive(_protocol_channel_id, &sender, recv_buffer, sizeof(recv_buffer));
+    connection_t sender = 0;
+    int result = ipc_receive(_protocol_channel, &sender, recv_buffer, sizeof(recv_buffer));
     if (result == 0)
         return 1;
     if (result < 0)
@@ -381,10 +381,10 @@ int desktop_disconnect()
         _clear_framebuffer_state(&_framebuffer_states[i]);
     }
 
-    if (_protocol_channel_id < 0)
+    if (_protocol_channel < 0)
         return 0;
 
-    int result = ipc_disconnect(_protocol_channel_id);
-    _protocol_channel_id = -1;
+    int result = ipc_disconnect(_protocol_channel);
+    _protocol_channel = -1;
     return result;
 }

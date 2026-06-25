@@ -245,6 +245,27 @@ rsrc_node_t *rsmgr_set_domain_root(rsrc_domain_id_t domain_id, rsrc_t *resource)
 rsrc_node_t *rsmgr_attach_resource(rsrc_node_t *parent, rsrc_t *resource);
 
 /*
+ * Attaches a resource under a domain root at a relative path, creating intermediate
+ * collections when needed.
+ */
+rsrc_status_t rsmgr_attach_resource_at_path(
+    rsrc_domain_id_t domain_id,
+    const char *path,
+    rsrc_t *resource,
+    const rsrc_ops_t *collection_ops);
+
+/*
+ * Lists the child names of a collection using the directory entry format.
+ */
+rsrc_status_t rsmgr_list_collection_entries(
+    rsrc_t *resource,
+    uint64_t cursor,
+    void *buffer,
+    uint64_t buffer_len,
+    uint64_t *out_next_cursor,
+    uint64_t *out_bytes_written);
+
+/*
  * Returns the resource domain with the given name, or `NULL` if not found.
  */
 rsrc_domain_t *rsmgr_get_domain(const char *name);
@@ -310,10 +331,10 @@ rsrc_t *rsmgr_open(const char *path);
 rsrc_t *rsmgr_lookup(rsrc_t *collection, const char *path);
 
 /*
- * Creates a resource by global path (e.g., "file:/path/to/resource").
+ * Creates a file resource by global path (e.g., "file:/path/to/resource").
  * Returns `RSRC_STATUS_OK` on success.
  */
-rsrc_status_t rsmgr_create(const char *path, rsrc_type_t type, rsrc_t **out_resource);
+rsrc_status_t rsmgr_create_file(const char *path, rsrc_t **out_resource);
 
 /*
  * Describes a resource.

@@ -79,7 +79,7 @@ static int doom_create_file(const char *filename)
     if (!filename)
         return -1;
 
-    return rsmgr_create(filename, RSRC_TYPE_RESOURCE);
+    return file_create(filename);
 }
 
 static void *doom_open_override(const char *filename, const char *mode)

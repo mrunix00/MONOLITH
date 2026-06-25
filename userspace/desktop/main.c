@@ -19,17 +19,17 @@ gfx_font_t default_font;
 
 static void _menu_action_about(void)
 {
-    spawn_task(1, (const char *[]) {"file:/system/about"}, NULL, 0);
+    task_create(1, (const char *[]) {"file:/system/about"}, NULL, 0);
 }
 
 static void _menu_action_gfxdemo(void)
 {
-    spawn_task(1, (const char *[]) {"file:/system/gfxdemo"}, NULL, 0);
+    task_create(1, (const char *[]) {"file:/system/gfxdemo"}, NULL, 0);
 }
 
 static void _menu_action_doom(void)
 {
-    spawn_task(2, (const char *[]) {"file:/system/doom", "file:/system/assets/doom1.wad"}, NULL, 0);
+    task_create(2, (const char *[]) {"file:/system/doom", "file:/system/assets/doom1.wad"}, NULL, 0);
 }
 
 static gfx_colored_bitmap_t _load_wallpaper(const char *wallpaper, uint32_t width, uint32_t height)

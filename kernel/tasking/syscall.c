@@ -7,16 +7,18 @@
 #include <kernel/klibc/memory.h>
 #include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
+#include <kernel/memory/shm.h>
 #include <kernel/memory/vmm.h>
+#include <kernel/tasking/ipc.h>
 #include <kernel/tasking/loader.h>
 #include <kernel/tasking/syscall.h>
 #include <kernel/timer.h>
 #include <shared/include/monolith/sys/syscall.h>
 
-#define SPAWN_MAX_ARGS 256
-#define SPAWN_MAX_INHERITED_DESCRIPTORS 256
+#define TASK_CREATE_MAX_ARGS 256
+#define TASK_CREATE_MAX_INHERITED_RDS 256
 
-static void _free_spawn_argv(const char **argv, int argc)
+static void _free_task_create_argv(const char **argv, int argc)
 {
     if (argv == NULL)
         return;
@@ -26,6 +28,17 @@ static void _free_spawn_argv(const char **argv, int argc)
             kfree((void *) argv[i]);
     }
     kfree(argv);
+}
+
+static rsrc_status_t _alloc_task_handle(task_t *task, rsrc_t *resource)
+{
+    if (task == NULL)
+        return RSRC_ERROR;
+    if (resource == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    int handle = rsmgr_handle_table_alloc(&task->handle_table, resource);
+    return handle < 0 ? RSRC_ERROR_NO_MEMORY : (rsrc_status_t) handle;
 }
 
 rsrc_status_t sys_rsrc_open(const char *path)
@@ -41,8 +54,7 @@ rsrc_status_t sys_rsrc_open(const char *path)
     if (resource == NULL)
         return RSRC_ERROR_NOT_FOUND;
 
-    int handle = rsmgr_handle_table_alloc(&current->handle_table, resource);
-    return handle < 0 ? RSRC_ERROR_NO_MEMORY : (rsrc_status_t) handle;
+    return _alloc_task_handle(current, resource);
 }
 
 rsrc_status_t sys_rsrc_close(int fd)
@@ -176,13 +188,12 @@ rsrc_status_t sys_rsrc_lookup(int parent_fd, const char *path)
     rsrc_t *child = rsmgr_lookup(entry->resource, path);
     if (child == NULL)
         return RSRC_ERROR_NOT_FOUND;
-    int handle = rsmgr_handle_table_alloc(&current->handle_table, child);
-    return handle < 0 ? RSRC_ERROR_NO_MEMORY : (rsrc_status_t) handle;
+    return _alloc_task_handle(current, child);
 }
 
-rsrc_status_t sys_rsrc_create(const char *name, uint64_t type)
+rsrc_status_t sys_file_create(const char *path)
 {
-    if (!syscall_user_ptr_range(name, 1))
+    if (!syscall_user_ptr_range(path, 1))
         return RSRC_ERROR_INVALID_ARGUMENT;
 
     task_t *current = task_get_current();
@@ -190,14 +201,51 @@ rsrc_status_t sys_rsrc_create(const char *name, uint64_t type)
         return RSRC_ERROR;
 
     rsrc_t *resource = NULL;
-    rsrc_status_t result = rsmgr_create(name, (rsrc_type_t) type, &resource);
+    rsrc_status_t result = rsmgr_create_file(path, &resource);
     if (result != RSRC_STATUS_OK)
         return result;
     if (resource == NULL)
         return RSRC_ERROR;
 
-    int handle = rsmgr_handle_table_alloc(&current->handle_table, resource);
-    return handle < 0 ? RSRC_ERROR_NO_MEMORY : (rsrc_status_t) handle;
+    return _alloc_task_handle(current, resource);
+}
+
+rsrc_status_t sys_ipc_channel_create(const char *name)
+{
+    if (name != NULL && !syscall_user_ptr_range(name, 1))
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    task_t *current = task_get_current();
+    if (current == NULL)
+        return RSRC_ERROR;
+
+    rsrc_t *resource = NULL;
+    rsrc_status_t result = ipc_channel_create(name, &resource);
+    if (result != RSRC_STATUS_OK)
+        return result;
+    if (resource == NULL)
+        return RSRC_ERROR;
+
+    return _alloc_task_handle(current, resource);
+}
+
+rsrc_status_t sys_shm_create(const char *name, size_t size)
+{
+    if (name != NULL && !syscall_user_ptr_range(name, 1))
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    task_t *current = task_get_current();
+    if (current == NULL)
+        return RSRC_ERROR;
+
+    rsrc_t *resource = NULL;
+    rsrc_status_t result = shm_create(name, size, &resource);
+    if (result != RSRC_STATUS_OK)
+        return result;
+    if (resource == NULL)
+        return RSRC_ERROR;
+
+    return _alloc_task_handle(current, resource);
 }
 
 rsrc_status_t sys_rsrc_describe(int fd, rsrc_info_t *out_info)
@@ -347,11 +395,11 @@ void *sys_alloc_pages(size_t num_pages, uint64_t flags)
     return (void *) virt_addr;
 }
 
-int sys_spawn_task(int argc, const char **argv, const int *inherit_rds, int inherit_rd_count)
+int sys_task_create(int argc, const char **argv, const int *inherit_rds, int inherit_rd_count)
 {
     if (argc < 1 || !syscall_user_ptr_range(argv, argc * sizeof(const char *)))
         return -1;
-    if (inherit_rd_count < 0 || inherit_rd_count > SPAWN_MAX_INHERITED_DESCRIPTORS)
+    if (inherit_rd_count < 0 || inherit_rd_count > TASK_CREATE_MAX_INHERITED_RDS)
         return -1;
     if (inherit_rd_count > 0
         && !syscall_user_ptr_range(inherit_rds, inherit_rd_count * sizeof(int)))
@@ -361,8 +409,8 @@ int sys_spawn_task(int argc, const char **argv, const int *inherit_rds, int inhe
     if (current == NULL)
         return -1;
 
-    if (argc > SPAWN_MAX_ARGS)
-        argc = SPAWN_MAX_ARGS;
+    if (argc > TASK_CREATE_MAX_ARGS)
+        argc = TASK_CREATE_MAX_ARGS;
 
     for (int i = 0; i < inherit_rd_count; i++) {
         int rd = inherit_rds[i];
@@ -378,7 +426,7 @@ int sys_spawn_task(int argc, const char **argv, const int *inherit_rds, int inhe
     for (int i = 0; i < argc; i++) {
         const char *user_str = argv[i];
         if (!syscall_user_ptr_range(user_str, 1)) {
-            _free_spawn_argv(k_argv, argc);
+            _free_task_create_argv(k_argv, argc);
             return -1;
         }
 
@@ -398,7 +446,7 @@ int sys_spawn_task(int argc, const char **argv, const int *inherit_rds, int inhe
 
         char *k_str = (char *) kmalloc(len + 1);
         if (!k_str) {
-            _free_spawn_argv(k_argv, argc);
+            _free_task_create_argv(k_argv, argc);
             return -1;
         }
         memcpy(k_str, base, len);
@@ -409,7 +457,7 @@ int sys_spawn_task(int argc, const char **argv, const int *inherit_rds, int inhe
     task_t *child = load_exec(k_argv[0], current, argc, k_argv);
     if (child == NULL) {
         debug_log_fmt("Failed to load %s!\n", k_argv[0]);
-        _free_spawn_argv(k_argv, argc);
+        _free_task_create_argv(k_argv, argc);
         return -1;
     }
 
@@ -421,13 +469,27 @@ int sys_spawn_task(int argc, const char **argv, const int *inherit_rds, int inhe
         if (entry == NULL
             || rsmgr_handle_table_inherit(&child->handle_table, rd, entry) != RSRC_STATUS_OK) {
             task_remove(child);
-            _free_spawn_argv(k_argv, argc);
+            _free_task_create_argv(k_argv, argc);
             return -1;
         }
     }
 
-    _free_spawn_argv(k_argv, argc);
-    return 0;
+    rsrc_t *task_resource = child->resource_node == NULL ? NULL : child->resource_node->resource;
+    if (task_resource == NULL) {
+        task_remove(child);
+        _free_task_create_argv(k_argv, argc);
+        return -1;
+    }
+
+    int handle = _alloc_task_handle(current, task_resource);
+    if (handle < 0) {
+        task_remove(child);
+        _free_task_create_argv(k_argv, argc);
+        return -1;
+    }
+
+    _free_task_create_argv(k_argv, argc);
+    return handle;
 }
 
 void syscalls_task_cleanup(task_t *task)
@@ -453,6 +515,15 @@ long syscall_dispatch(uintptr_t num, uintptr_t arg1, uintptr_t arg2, uintptr_t a
     switch (num) {
     case SYSCALL_EXIT:
         return sys_exit();
+    case SYSCALL_SLEEP:
+        sys_sleep((uint64_t) arg1);
+        return 0;
+    case SYSCALL_GET_TICKS:
+        return (long) sys_get_ticks();
+    case SYSCALL_ALLOC_PAGES:
+        return (long) sys_alloc_pages((size_t) arg1, (uint64_t) arg2);
+    case SYSCALL_UNMAP_PAGES:
+        return sys_unmap_pages((void *) arg1, (size_t) arg2);
     case SYSCALL_RSRC_OPEN:
         return sys_rsrc_open((const char *) arg1);
     case SYSCALL_RSRC_CLOSE:
@@ -469,8 +540,6 @@ long syscall_dispatch(uintptr_t num, uintptr_t arg1, uintptr_t arg2, uintptr_t a
         return sys_rsrc_remove((int) arg1, (const char *) arg2);
     case SYSCALL_RSRC_LOOKUP:
         return sys_rsrc_lookup((int) arg1, (const char *) arg2);
-    case SYSCALL_RSRC_CREATE:
-        return sys_rsrc_create((const char *) arg1, (uint64_t) arg2);
     case SYSCALL_RSRC_DESCRIBE:
         return sys_rsrc_describe((int) arg1, (rsrc_info_t *) arg2);
     case SYSCALL_RSRC_SEEK:
@@ -479,17 +548,14 @@ long syscall_dispatch(uintptr_t num, uintptr_t arg1, uintptr_t arg2, uintptr_t a
         return sys_rsrc_control((int) arg1, (uint64_t) arg2, (void *) arg3, (uint64_t) arg4);
     case SYSCALL_RSRC_MMAP:
         return sys_rsrc_mmap((int) arg1, (uint64_t) arg2, (uint64_t) arg3, (uint64_t) arg4);
-    case SYSCALL_SLEEP:
-        sys_sleep((uint64_t) arg1);
-        return 0;
-    case SYSCALL_GET_TICKS:
-        return (long) sys_get_ticks();
-    case SYSCALL_ALLOC_PAGES:
-        return (long) sys_alloc_pages((size_t) arg1, (uint64_t) arg2);
-    case SYSCALL_SPAWN_TASK:
-        return sys_spawn_task((int) arg1, (const char **) arg2, (const int *) arg3, (int) arg4);
-    case SYSCALL_UNMAP_PAGES:
-        return sys_unmap_pages((void *) arg1, (size_t) arg2);
+    case SYSCALL_FILE_CREATE:
+        return sys_file_create((const char *) arg1);
+    case SYSCALL_IPC_CHANNEL_CREATE:
+        return sys_ipc_channel_create((const char *) arg1);
+    case SYSCALL_SHM_CREATE:
+        return sys_shm_create((const char *) arg1, (size_t) arg2);
+    case SYSCALL_TASK_CREATE:
+        return sys_task_create((int) arg1, (const char **) arg2, (const int *) arg3, (int) arg4);
     default:
         return -1;
     }

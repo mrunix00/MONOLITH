@@ -4,17 +4,11 @@
  */
 
 #include <resource.h>
-#include <sys/syscall.h>
 #include <unistd.h>
 
 rsrc_handle_t rsmgr_open(const char *path)
 {
     return (rsrc_handle_t) syscall1(SYSCALL_RSRC_OPEN, (long) path);
-}
-
-rsrc_handle_t rsmgr_create(const char *name, rsrc_type_t type)
-{
-    return (rsrc_handle_t) syscall2(SYSCALL_RSRC_CREATE, (long) name, (long) type);
 }
 
 int rsmgr_close(rsrc_handle_t handle)

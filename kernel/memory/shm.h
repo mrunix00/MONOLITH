@@ -6,15 +6,10 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
-typedef enum {
-    SHM_COMMAND_CREATE_PRIVATE = 1,
-} shm_command_id_t;
-
-typedef struct
-{
-    uint64_t size;
-} shm_create_private_in_t;
+#include <kernel/rsmgr/rsmgr.h>
 
 bool shm_domain_init(void);
+rsrc_status_t shm_create(const char *name, size_t size, rsrc_t **out_resource);

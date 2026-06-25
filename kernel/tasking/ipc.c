@@ -39,7 +39,7 @@ typedef struct
 typedef struct
 {
     char name[IPC_CHANNEL_NAME_MAX];
-    channel_id_t id;
+    uint64_t id;
     rsrc_t *resource;
     _ipc_connection_t *connections;
     size_t max_connections;
@@ -49,7 +49,7 @@ typedef struct
 
 static _ipc_channel_t **_channels;
 static size_t _channels_capacity;
-static channel_id_t _next_channel_id = 1;
+static uint64_t _next_channel_id = 1;
 static bool _ipc_resource_initialized = false;
 static const rsrc_ops_t _channel_resource_ops;
 
@@ -66,45 +66,6 @@ static _ipc_packet_queue_t *_queue_for_task(_ipc_channel_t *channel, task_t *tas
     if (connection == NULL || connection->state != IPC_CONN_ACCEPTED)
         return NULL;
     return &connection->queue;
-}
-
-static int _list_collection_entries(
-    rsrc_t *resource, uint64_t cursor, void *buffer, uint64_t buffer_len)
-{
-    if (resource == NULL || resource->header.type != RSRC_TYPE_COLLECTION || resource->node == NULL
-        || buffer == NULL) {
-        return -1;
-    }
-
-    rsrc_node_t *current = resource->node->first_child;
-    uint32_t buffer_offset = 0;
-    size_t current_offset = 0;
-
-    while (current != NULL) {
-        size_t name_len = strlen(current->resource->header.name);
-        size_t entry_size = sizeof(uint32_t) + name_len + 1;
-
-        if (current_offset + entry_size <= cursor) {
-            current_offset += entry_size;
-            current = current->next_sibling;
-            continue;
-        }
-
-        if (buffer_offset + entry_size > buffer_len)
-            break;
-
-        memcpy((uint8_t *) buffer + buffer_offset, &entry_size, sizeof(uint32_t));
-        memcpy(
-            (uint8_t *) buffer + buffer_offset + sizeof(uint32_t),
-            current->resource->header.name,
-            name_len + 1);
-
-        buffer_offset += (uint32_t) entry_size;
-        current_offset += entry_size;
-        current = current->next_sibling;
-    }
-
-    return (int) buffer_offset;
 }
 
 static void _channel_detach_resource(rsrc_t *resource)
@@ -128,17 +89,7 @@ static void _channel_detach_resource(rsrc_t *resource)
     kfree(node);
 }
 
-static _ipc_channel_t *_find_channel(const char *name)
-{
-    for (size_t i = 0; i < _channels_capacity; i++) {
-        _ipc_channel_t *channel = _channels[i];
-        if (channel != NULL && strcmp(channel->name, name) == 0)
-            return channel;
-    }
-    return NULL;
-}
-
-static int _ensure_channel_capacity(channel_id_t required_id)
+static int _ensure_channel_capacity(uint64_t required_id)
 {
     if (required_id <= 0)
         return -1;
@@ -313,7 +264,7 @@ static void _remove_connection(_ipc_channel_t *channel, uint64_t task_id)
 
 static _ipc_channel_t *_create_channel(task_t *task, const char *name)
 {
-    if (task == NULL || name == NULL || !ipc_init() || _find_channel(name) != NULL)
+    if (task == NULL || !ipc_init())
         return NULL;
     if (_ensure_channel_capacity(_next_channel_id) != 0)
         return NULL;
@@ -323,12 +274,12 @@ static _ipc_channel_t *_create_channel(task_t *task, const char *name)
         return NULL;
 
     memset(channel, 0, sizeof(*channel));
-    strncpy(channel->name, name, IPC_CHANNEL_NAME_MAX);
+    strncpy(channel->name, name == NULL ? "anon" : name, IPC_CHANNEL_NAME_MAX);
     channel->name[IPC_CHANNEL_NAME_MAX - 1] = '\0';
     channel->id = _next_channel_id++;
     channel->owner_task_id = task->id;
 
-    channel->resource = rsmgr_new_resource(RSRC_DOMAIN_CHANNEL, name);
+    channel->resource = rsmgr_new_resource(RSRC_DOMAIN_CHANNEL, channel->name);
     if (channel->resource == NULL) {
         kfree(channel);
         return NULL;
@@ -337,12 +288,15 @@ static _ipc_channel_t *_create_channel(task_t *task, const char *name)
     channel->resource->header.type = RSRC_TYPE_RESOURCE;
     channel->resource->ops = &_channel_resource_ops;
     channel->resource->type_state = channel;
-    rsrc_domain_t *domain = rsmgr_get_domain("channel");
-    if (domain == NULL || domain->root_node == NULL
-        || rsmgr_attach_resource(domain->root_node, channel->resource) == NULL) {
-        kfree(channel->resource);
-        kfree(channel);
-        return NULL;
+
+    if (name != NULL) {
+        rsrc_status_t result = rsmgr_attach_resource_at_path(
+            RSRC_DOMAIN_CHANNEL, name, channel->resource, &_channel_resource_ops);
+        if (result != RSRC_STATUS_OK) {
+            kfree(channel->resource);
+            kfree(channel);
+            return NULL;
+        }
     }
 
     _channels[channel->id] = channel;
@@ -387,7 +341,7 @@ static int _poll_channel_connection(task_t *task, _ipc_channel_t *channel, conne
         _ipc_connection_t *candidate = &channel->connections[i];
         if (candidate->task_id == 0 || candidate->state != IPC_CONN_PENDING)
             continue;
-        connection->task_id = candidate->task_id;
+        *connection = candidate->task_id;
         return 0;
     }
 
@@ -414,7 +368,7 @@ static int _await_channel_connection(task_t *task, _ipc_channel_t *channel, conn
 
     while (true) {
         if (candidate->state == IPC_CONN_ACCEPTED) {
-            connection->task_id = task->id;
+            *connection = task->id;
             return 0;
         }
         if (candidate->state == IPC_CONN_REJECTED)
@@ -431,7 +385,7 @@ static int _accept_channel_connection(task_t *task, _ipc_channel_t *channel, con
     if (task == NULL || channel == NULL || connection == NULL || channel->owner_task_id != task->id)
         return -1;
 
-    _ipc_connection_t *candidate = _get_connection_by_task_id(channel, connection->task_id);
+    _ipc_connection_t *candidate = _get_connection_by_task_id(channel, *connection);
     if (candidate == NULL)
         return -1;
 
@@ -444,12 +398,12 @@ static int _reject_channel_connection(task_t *task, _ipc_channel_t *channel, con
     if (task == NULL || channel == NULL || connection == NULL || channel->owner_task_id != task->id)
         return -1;
 
-    _ipc_connection_t *candidate = _get_connection_by_task_id(channel, connection->task_id);
+    _ipc_connection_t *candidate = _get_connection_by_task_id(channel, *connection);
     if (candidate == NULL)
         return -1;
 
     candidate->state = IPC_CONN_REJECTED;
-    _remove_connection(channel, connection->task_id);
+    _remove_connection(channel, *connection);
     return 0;
 }
 
@@ -629,7 +583,7 @@ static int _disconnect_channel(task_t *task, _ipc_channel_t *channel)
         return -1;
 
     if (channel->owner_task_id == task->id) {
-        channel_id_t id = channel->id;
+        uint64_t id = channel->id;
         if (channel->resource != NULL) {
             _channel_detach_resource(channel->resource);
             channel->resource->type_state = NULL;
@@ -717,16 +671,8 @@ static rsrc_status_t _channel_list_op(
     uint64_t *out_bytes_written)
 {
     (void) handle_state;
-    if (resource == NULL || out_bytes_written == NULL)
-        return RSRC_ERROR_INVALID_ARGUMENT;
-
-    int result = _list_collection_entries(resource, cursor, buffer, buffer_len);
-    if (result < 0)
-        return RSRC_ERROR_IO;
-    *out_bytes_written = (uint64_t) result;
-    if (out_next_cursor != NULL)
-        *out_next_cursor = cursor + (uint64_t) result;
-    return RSRC_STATUS_OK;
+    return rsmgr_list_collection_entries(
+        resource, cursor, buffer, buffer_len, out_next_cursor, out_bytes_written);
 }
 
 static rsrc_status_t _channel_read_op(
@@ -788,16 +734,12 @@ static rsrc_status_t _channel_describe_op(rsrc_t *resource, rsrc_info_t *out_inf
     return RSRC_STATUS_OK;
 }
 
-static rsrc_status_t _channel_create_op(
-    rsrc_t *resource, void *handle_state, const char *name, rsrc_type_t type, rsrc_t **out_resource)
+rsrc_status_t ipc_channel_create(const char *name, rsrc_t **out_resource)
 {
-    (void) handle_state;
     task_t *current = task_get_current();
 
-    if (resource == NULL || current == NULL || name == NULL || out_resource == NULL)
+    if (current == NULL || out_resource == NULL)
         return RSRC_ERROR_INVALID_ARGUMENT;
-    if (resource->header.type != RSRC_TYPE_COLLECTION || type != RSRC_TYPE_RESOURCE)
-        return RSRC_ERROR_NOT_SUPPORTED;
 
     _ipc_channel_t *channel = _create_channel(current, name);
     if (channel == NULL)
@@ -920,7 +862,7 @@ static const rsrc_ops_t _channel_resource_ops = {
     .write = _channel_write_op,
     .mmap = NULL,
     .poll = NULL,
-    .create = _channel_create_op,
+    .create = NULL,
     .remove = NULL,
     .control = _channel_command_op,
 };

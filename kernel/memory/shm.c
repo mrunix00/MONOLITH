@@ -4,6 +4,7 @@
  */
 
 #include <kernel/klibc/memory.h>
+#include <kernel/klibc/string.h>
 #include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/shm.h>
@@ -19,6 +20,7 @@ typedef struct
 } _shm_object_t;
 
 static bool _shm_initialized = false;
+static const rsrc_ops_t _shm_ops;
 
 static rsrc_status_t _shm_domain_open(
     rsrc_domain_t *domain, const char *path, rsrc_t **out_resource, void **out_handle_state)
@@ -27,10 +29,13 @@ static rsrc_status_t _shm_domain_open(
         || domain->root_node == NULL)
         return RSRC_ERROR_INVALID_ARGUMENT;
 
-    if (path[0] != '\0' && !(path[0] == '/' && path[1] == '\0'))
+    rsrc_node_t *node = path[0] == '\0' || strcmp(path, "/") == 0
+                            ? domain->root_node
+                            : rsmgr_get_relative_path(domain->root_node, path);
+    if (node == NULL)
         return RSRC_ERROR_NOT_FOUND;
 
-    *out_resource = domain->root_node->resource;
+    *out_resource = node->resource;
     *out_handle_state = NULL;
     return RSRC_STATUS_OK;
 }
@@ -40,7 +45,28 @@ static rsrc_status_t _shm_domain_lookup(
 {
     if (parent == NULL || path == NULL || out_resource == NULL || out_handle_state == NULL)
         return RSRC_ERROR_INVALID_ARGUMENT;
-    return RSRC_ERROR_NOT_FOUND;
+
+    rsrc_node_t *node = rsmgr_get_relative_path(parent, path);
+    if (node == NULL)
+        return RSRC_ERROR_NOT_FOUND;
+
+    *out_resource = node->resource;
+    *out_handle_state = NULL;
+    return RSRC_STATUS_OK;
+}
+
+static rsrc_status_t _shm_list_op(
+    rsrc_t *resource,
+    void *handle_state,
+    uint64_t cursor,
+    void *buffer,
+    uint64_t buffer_len,
+    uint64_t *out_next_cursor,
+    uint64_t *out_bytes_written)
+{
+    (void) handle_state;
+    return rsmgr_list_collection_entries(
+        resource, cursor, buffer, buffer_len, out_next_cursor, out_bytes_written);
 }
 
 static rsrc_status_t _shm_read_op(
@@ -174,29 +200,12 @@ static rsrc_status_t _shm_describe_op(rsrc_t *resource, rsrc_info_t *out_info)
     return RSRC_STATUS_OK;
 }
 
-static rsrc_status_t _shm_command_op(
-    rsrc_t *resource,
-    void *handle_state,
-    uint64_t command_id,
-    const void *in,
-    uint64_t in_len,
-    void *out,
-    uint64_t out_len,
-    uint64_t *out_bytes_written)
+rsrc_status_t shm_create(const char *name, size_t size, rsrc_t **out_resource)
 {
-    if (resource == NULL || resource->header.type != RSRC_TYPE_COLLECTION
-        || command_id != SHM_COMMAND_CREATE_PRIVATE || in == NULL
-        || in_len < sizeof(shm_create_private_in_t))
+    if (size == 0 || out_resource == NULL)
         return RSRC_ERROR_INVALID_ARGUMENT;
-    (void) handle_state;
-    (void) out;
-    (void) out_len;
 
-    if (out_bytes_written != NULL)
-        *out_bytes_written = 0;
-
-    const shm_create_private_in_t *request = (const shm_create_private_in_t *) in;
-    size_t page_count = PAGE_UP(request->size) / PAGE_SIZE;
+    size_t page_count = PAGE_UP(size) / PAGE_SIZE;
     if (page_count == 0)
         return RSRC_ERROR_INVALID_ARGUMENT;
 
@@ -221,22 +230,25 @@ static rsrc_status_t _shm_command_op(
 
     memset(object, 0, sizeof(*object));
     object->phys_addr = (uintptr_t) phys_mem;
-    object->size = request->size;
+    object->size = size;
     object->page_count = page_count;
 
     shm->header.type = RSRC_TYPE_RESOURCE;
-    shm->ops = resource->ops;
+    shm->ops = &_shm_ops;
     shm->type_state = object;
 
-    task_t *current = task_get_current();
-    if (current == NULL)
-        return RSRC_ERROR;
+    if (name != NULL) {
+        rsrc_status_t result
+            = rsmgr_attach_resource_at_path(RSRC_DOMAIN_SHM, name, shm, &_shm_ops);
+        if (result != RSRC_STATUS_OK) {
+            pmm_free(phys_mem, page_count);
+            kfree(object);
+            kfree(shm);
+            return result;
+        }
+    }
 
-    int handle = rsmgr_handle_table_alloc(&current->handle_table, shm);
-    if (handle < 0)
-        return RSRC_ERROR_NO_MEMORY;
-    if (out_bytes_written != NULL)
-        *out_bytes_written = (uint64_t) handle;
+    *out_resource = shm;
     return RSRC_STATUS_OK;
 }
 
@@ -248,13 +260,13 @@ static const rsrc_ops_t _shm_ops = {
     .destroy = NULL,
     .describe = _shm_describe_op,
     .seek = _shm_seek_op,
-    .list = NULL,
+    .list = _shm_list_op,
     .read = _shm_read_op,
     .write = _shm_write_op,
     .mmap = _shm_mmap_op,
     .poll = NULL,
     .remove = NULL,
-    .control = _shm_command_op,
+    .control = NULL,
 };
 
 bool shm_domain_init(void)

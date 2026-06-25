@@ -155,6 +155,139 @@ rsrc_node_t *rsmgr_attach_resource(rsrc_node_t *parent, rsrc_t *child)
     return child_node;
 }
 
+rsrc_status_t rsmgr_list_collection_entries(
+    rsrc_t *resource,
+    uint64_t cursor,
+    void *buffer,
+    uint64_t buffer_len,
+    uint64_t *out_next_cursor,
+    uint64_t *out_bytes_written)
+{
+    if (resource == NULL || resource->header.type != RSRC_TYPE_COLLECTION || resource->node == NULL
+        || buffer == NULL || out_bytes_written == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    rsrc_node_t *current = resource->node->first_child;
+    uint32_t buffer_offset = 0;
+    size_t current_offset = 0;
+
+    while (current != NULL) {
+        size_t name_len = strlen(current->resource->header.name);
+        size_t entry_size = sizeof(uint32_t) + name_len + 1;
+
+        if (current_offset + entry_size <= cursor) {
+            current_offset += entry_size;
+            current = current->next_sibling;
+            continue;
+        }
+
+        if (buffer_offset + entry_size > buffer_len)
+            break;
+
+        memcpy((uint8_t *) buffer + buffer_offset, &entry_size, sizeof(uint32_t));
+        memcpy(
+            (uint8_t *) buffer + buffer_offset + sizeof(uint32_t),
+            current->resource->header.name,
+            name_len + 1);
+
+        buffer_offset += (uint32_t) entry_size;
+        current_offset += entry_size;
+        current = current->next_sibling;
+    }
+
+    *out_bytes_written = (uint64_t) buffer_offset;
+    if (out_next_cursor != NULL)
+        *out_next_cursor = cursor + (uint64_t) buffer_offset;
+    return RSRC_STATUS_OK;
+}
+
+static rsrc_node_t *_find_child_by_name(rsrc_node_t *parent, const char *name, size_t name_len)
+{
+    if (parent == NULL || name == NULL)
+        return NULL;
+
+    for (rsrc_node_t *child = parent->first_child; child != NULL; child = child->next_sibling) {
+        if (strlen(child->resource->header.name) == name_len
+            && memcmp(child->resource->header.name, name, name_len) == 0)
+            return child;
+    }
+
+    return NULL;
+}
+
+rsrc_status_t rsmgr_attach_resource_at_path(
+    rsrc_domain_id_t domain_id,
+    const char *path,
+    rsrc_t *resource,
+    const rsrc_ops_t *collection_ops)
+{
+    if (domain_id <= RSRC_DOMAIN_NULL || domain_id >= RSRC_DOMAIN_END || path == NULL
+        || resource == NULL || collection_ops == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    rsrc_domain_t *domain = &_rsrc_domains[domain_id];
+    if (domain->id != domain_id || domain->root_node == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    rsrc_node_t *parent = domain->root_node;
+    const char *component = path;
+    while (*component == '/')
+        component++;
+
+    if (*component == '\0')
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    while (*component != '\0') {
+        const char *end = component;
+        while (*end != '\0' && *end != '/')
+            end++;
+
+        size_t component_len = end - component;
+        if (component_len == 0 || component_len >= RSRC_NAME_MAX_LEN)
+            return RSRC_ERROR_INVALID_ARGUMENT;
+
+        const char *next = end;
+        while (*next == '/')
+            next++;
+
+        if (*next == '\0') {
+            if (_find_child_by_name(parent, component, component_len) != NULL)
+                return RSRC_ERROR_ALREADY_EXISTS;
+            strncpy(resource->header.name, component, component_len);
+            resource->header.name[component_len] = '\0';
+            return rsmgr_attach_resource(parent, resource) == NULL ? RSRC_ERROR_NO_MEMORY
+                                                                   : RSRC_STATUS_OK;
+        }
+
+        rsrc_node_t *child = _find_child_by_name(parent, component, component_len);
+        if (child == NULL) {
+            char name[RSRC_NAME_MAX_LEN];
+            strncpy(name, component, component_len);
+            name[component_len] = '\0';
+
+            rsrc_t *collection = rsmgr_new_resource(domain_id, name);
+            if (collection == NULL)
+                return RSRC_ERROR_NO_MEMORY;
+
+            collection->header.type = RSRC_TYPE_COLLECTION;
+            collection->ops = collection_ops;
+            collection->type_state = NULL;
+            child = rsmgr_attach_resource(parent, collection);
+            if (child == NULL) {
+                kfree(collection);
+                return RSRC_ERROR_NO_MEMORY;
+            }
+        } else if (child->resource->header.type != RSRC_TYPE_COLLECTION) {
+            return RSRC_ERROR_ALREADY_EXISTS;
+        }
+
+        parent = child;
+        component = next;
+    }
+
+    return RSRC_ERROR_INVALID_ARGUMENT;
+}
+
 rsrc_domain_t *rsmgr_get_domain(const char *name)
 {
     for (size_t i = 0; i < sizeof(_rsrc_domains) / sizeof(_rsrc_domains[0]); i++) {
@@ -501,7 +634,8 @@ rsrc_t *rsmgr_lookup(rsrc_t *collection, const char *path)
     return resource;
 }
 
-rsrc_status_t rsmgr_create(const char *path, rsrc_type_t type, rsrc_t **out_resource)
+static rsrc_status_t _rsmgr_create_in_domain(
+    const char *path, rsrc_domain_id_t domain_id, rsrc_type_t type, rsrc_t **out_resource)
 {
     if (path == NULL || out_resource == NULL
         || (type != RSRC_TYPE_COLLECTION && type != RSRC_TYPE_RESOURCE))
@@ -533,10 +667,17 @@ rsrc_status_t rsmgr_create(const char *path, rsrc_type_t type, rsrc_t **out_reso
     rsrc_t *collection = rsmgr_open(parent_path);
     if (collection == NULL)
         return RSRC_ERROR_NOT_FOUND;
+    if (collection->header.domain_id != domain_id)
+        return RSRC_ERROR_INVALID_ARGUMENT;
     if (collection->ops == NULL || collection->ops->create == NULL)
         return RSRC_ERROR_NOT_SUPPORTED;
 
     return collection->ops->create(collection, NULL, name, type, out_resource);
+}
+
+rsrc_status_t rsmgr_create_file(const char *path, rsrc_t **out_resource)
+{
+    return _rsmgr_create_in_domain(path, RSRC_DOMAIN_FILE, RSRC_TYPE_RESOURCE, out_resource);
 }
 
 rsrc_status_t rsmgr_describe(rsrc_t *resource, rsrc_info_t *out_info)

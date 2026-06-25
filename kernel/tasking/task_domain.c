@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-#include <kernel/klibc/memory.h>
 #include <kernel/klibc/string.h>
 #include <kernel/memory/heap.h>
 #include <kernel/rsmgr/rsmgr.h>
@@ -33,44 +32,6 @@ static void _task_domain_detach_node(rsrc_node_t *node)
     node->next_sibling = NULL;
 }
 
-static int _list_task_entries(rsrc_t *resource, uint64_t cursor, void *buffer, uint64_t buffer_len)
-{
-    if (resource == NULL || resource->header.type != RSRC_TYPE_COLLECTION || resource->node == NULL
-        || buffer == NULL) {
-        return RSRC_ERROR_INVALID_ARGUMENT;
-    }
-
-    rsrc_node_t *current = resource->node->first_child;
-    uint32_t buffer_offset = 0;
-    size_t current_offset = 0;
-
-    while (current != NULL) {
-        size_t name_len = strlen(current->resource->header.name);
-        size_t entry_size = sizeof(uint32_t) + name_len + 1;
-
-        if (current_offset + entry_size <= cursor) {
-            current_offset += entry_size;
-            current = current->next_sibling;
-            continue;
-        }
-
-        if (buffer_offset + entry_size > buffer_len)
-            break;
-
-        memcpy((uint8_t *) buffer + buffer_offset, &entry_size, sizeof(uint32_t));
-        memcpy(
-            (uint8_t *) buffer + buffer_offset + sizeof(uint32_t),
-            current->resource->header.name,
-            name_len + 1);
-
-        buffer_offset += (uint32_t) entry_size;
-        current_offset += entry_size;
-        current = current->next_sibling;
-    }
-
-    return (int) buffer_offset;
-}
-
 static rsrc_status_t _task_collection_list_op(
     rsrc_t *resource,
     void *handle_state,
@@ -83,14 +44,8 @@ static rsrc_status_t _task_collection_list_op(
     if (resource == NULL || handle_state != NULL || out_bytes_written == NULL)
         return RSRC_ERROR_INVALID_ARGUMENT;
 
-    int result = _list_task_entries(resource, cursor, buffer, buffer_len);
-    if (result < 0)
-        return RSRC_ERROR_IO;
-
-    *out_bytes_written = (uint64_t) result;
-    if (out_next_cursor != NULL)
-        *out_next_cursor = cursor + (uint64_t) result;
-    return RSRC_STATUS_OK;
+    return rsmgr_list_collection_entries(
+        resource, cursor, buffer, buffer_len, out_next_cursor, out_bytes_written);
 }
 
 static rsrc_status_t _task_collection_describe_op(rsrc_t *resource, rsrc_info_t *out_info)

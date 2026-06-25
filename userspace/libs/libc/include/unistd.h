@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <resource.h>
 #include <sys/syscall.h>
 
 int open(const char *path);
@@ -22,7 +23,8 @@ int getdents(int fd, void *buffer, uint32_t size);
 
 int lseek(int fd, int offset, int whence);
 
-int spawn_task(int argc, const char **argv, const int *inherit_rds, int inherit_rd_count);
+rsrc_handle_t file_create(const char *path);
+rsrc_handle_t task_create(int argc, const char **argv, const int *inherit_rds, int inherit_rd_count);
 
 #ifdef TEST_ENV
 typedef long (*fs_syscall0_fn)(long num);

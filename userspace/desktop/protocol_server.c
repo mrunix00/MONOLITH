@@ -18,7 +18,7 @@
 #define WINDOW_CONTENT_MARGIN_X 5
 #define WINDOW_CONTENT_TOP_OFFSET (WINDOW_TITLE_BAR_HEIGHT - BORDER_THICKNESS)
 
-static channel_id_t _channel_id = -1;
+static rsrc_handle_t _channel = -1;
 static rsrc_handle_t _keyboard_fd = -1;
 static rsrc_handle_t _mouse_fd = -1;
 
@@ -128,7 +128,7 @@ static void _handle_request_framebuffer(uint64_t task_id, const desktop_request_
     uint16_t old_height = window->surface_height;
     size_t old_size = window->surface_size;
 
-    rsrc_handle_t surface_handle = shm_create(pages * PAGE_SIZE);
+    rsrc_handle_t surface_handle = shm_create(NULL, pages * PAGE_SIZE);
     if (surface_handle < 0)
         return protocol_send_error(task_id, request->sequence, 5, "framebuffer allocation failed");
 
@@ -150,9 +150,7 @@ static void _handle_request_framebuffer(uint64_t task_id, const desktop_request_
         }
     }
 
-    connection_t client = {
-        .task_id = task_id,
-    };
+    connection_t client = task_id;
     if (protocol_send_event(
             task_id,
             (desktop_event_t){
@@ -165,7 +163,7 @@ static void _handle_request_framebuffer(uint64_t task_id, const desktop_request_
                 .data.framebuffer_ready.stride = (uint32_t) width * sizeof(uint32_t),
                 .data.framebuffer_ready.size = effective_size,
             }) != 0
-        || ipc_send_resource(_channel_id, &client, surface_handle) != 0) {
+        || ipc_send_resource(_channel, &client, surface_handle) != 0) {
         unmap_pages(owner_pixels, pages);
         rsmgr_close(surface_handle);
         return protocol_send_error(task_id, request->sequence, 4, "framebuffer share failed");
@@ -333,17 +331,17 @@ static void _accept_pending_connections()
     connection_t connection;
     int result;
 
-    while ((result = ipc_poll_connection(_channel_id, &connection)) == 0)
-        ipc_accept_connection(_channel_id, &connection);
+    while ((result = ipc_poll_connection(_channel, &connection)) == 0)
+        ipc_accept_connection(_channel, &connection);
 }
 
 int protocol_server_init()
 {
-    if (_channel_id >= 0)
+    if (_channel >= 0)
         return 0;
 
-    _channel_id = ipc_new_channel(DESKTOP_CHANNEL_NAME);
-    if (_channel_id < 0)
+    _channel = ipc_channel_create(DESKTOP_CHANNEL_NAME);
+    if (_channel < 0)
         return -1;
 
     _keyboard_fd = open_keyboard_device();
@@ -354,7 +352,7 @@ int protocol_server_init()
 
 bool protocol_server_pump()
 {
-    if (_channel_id < 0)
+    if (_channel < 0)
         return false;
 
     bool had_activity = false;
@@ -362,7 +360,7 @@ bool protocol_server_pump()
     _accept_pending_connections();
     unsigned char raw_packet[PROTOCOL_SERVER_RECV_BUFFER_SIZE] = {0};
 
-    while (ipc_receive_packet(_channel_id, raw_packet, sizeof(raw_packet)) > 0) {
+    while (ipc_receive_packet(_channel, raw_packet, sizeof(raw_packet)) > 0) {
         had_activity = true;
         ipc_channel_recv_out_t *packet = (ipc_channel_recv_out_t *) raw_packet;
 
@@ -393,8 +391,8 @@ bool protocol_server_pump()
 
 int protocol_send_event(uint64_t task_id, desktop_event_t event)
 {
-    connection_t connection = {.task_id = task_id};
-    return ipc_send_to(_channel_id, &connection, (void *) &event, sizeof(event));
+    connection_t connection = task_id;
+    return ipc_send_to(_channel, &connection, (void *) &event, sizeof(event));
 }
 
 void protocol_send_error(uint64_t task_id, uint32_t sequence, uint32_t code, const char *message)
