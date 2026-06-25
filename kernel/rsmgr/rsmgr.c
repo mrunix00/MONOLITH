@@ -388,6 +388,27 @@ int rsmgr_handle_table_alloc(rsrc_handle_table_t *table, rsrc_t *resource)
     return (int) new_index;
 }
 
+rsrc_status_t rsmgr_handle_table_inherit(
+    rsrc_handle_table_t *table, int fd, const rsrc_handle_entry_t *source)
+{
+    if (table == NULL || source == NULL || source->resource == NULL || fd < 0)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    if (_handle_table_ensure_capacity(table, (size_t) fd + 1) < 0)
+        return RSRC_ERROR_NO_MEMORY;
+
+    if (table->entries[fd].resource != NULL)
+        return RSRC_ERROR_ALREADY_EXISTS;
+
+    table->entries[fd].resource = source->resource;
+    table->entries[fd].offset = source->offset;
+    source->resource->refcount++;
+    if ((size_t) fd >= table->count)
+        table->count = (size_t) fd + 1;
+
+    return RSRC_STATUS_OK;
+}
+
 rsrc_handle_entry_t *rsmgr_handle_table_get(rsrc_handle_table_t *table, int fd)
 {
     if (table == NULL || fd < 0 || (size_t) fd >= table->capacity)

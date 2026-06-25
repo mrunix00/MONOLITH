@@ -274,6 +274,13 @@ rsrc_status_t rsmgr_handle_table_init(rsrc_handle_table_t *table);
 int rsmgr_handle_table_alloc(rsrc_handle_table_t *table, rsrc_t *resource);
 
 /*
+ * Inherits an existing handle entry into a specific fd slot.
+ * Returns `RSRC_STATUS_OK` on success.
+ */
+rsrc_status_t rsmgr_handle_table_inherit(
+    rsrc_handle_table_t *table, int fd, const rsrc_handle_entry_t *source);
+
+/*
  * Gets the handle entry for the given fd.
  * Returns the entry pointer on success, NULL if invalid.
  */

@@ -22,7 +22,7 @@ int getdents(int fd, void *buffer, uint32_t size);
 
 int lseek(int fd, int offset, int whence);
 
-int spawn(int argc, const char **argv);
+int spawn_task(int argc, const char **argv, const int *inherit_rds, int inherit_rd_count);
 
 #ifdef TEST_ENV
 typedef long (*fs_syscall0_fn)(long num);

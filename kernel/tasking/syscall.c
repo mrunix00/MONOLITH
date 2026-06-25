@@ -13,6 +13,21 @@
 #include <kernel/timer.h>
 #include <shared/include/monolith/sys/syscall.h>
 
+#define SPAWN_MAX_ARGS 256
+#define SPAWN_MAX_INHERITED_DESCRIPTORS 256
+
+static void _free_spawn_argv(const char **argv, int argc)
+{
+    if (argv == NULL)
+        return;
+
+    for (int i = 0; i < argc; i++) {
+        if (argv[i] != NULL)
+            kfree((void *) argv[i]);
+    }
+    kfree(argv);
+}
+
 rsrc_status_t sys_rsrc_open(const char *path)
 {
     if (!syscall_user_ptr_range(path, 1))
@@ -332,26 +347,40 @@ void *sys_alloc_pages(size_t num_pages, uint64_t flags)
     return (void *) virt_addr;
 }
 
-int sys_spawn_task(int argc, const char **argv)
+int sys_spawn_task(int argc, const char **argv, const int *inherit_rds, int inherit_rd_count)
 {
     if (argc < 1 || !syscall_user_ptr_range(argv, argc * sizeof(const char *)))
+        return -1;
+    if (inherit_rd_count < 0 || inherit_rd_count > SPAWN_MAX_INHERITED_DESCRIPTORS)
+        return -1;
+    if (inherit_rd_count > 0
+        && !syscall_user_ptr_range(inherit_rds, inherit_rd_count * sizeof(int)))
         return -1;
 
     task_t *current = task_get_current();
     if (current == NULL)
         return -1;
 
-    if (argc > 256)
-        argc = 256;
+    if (argc > SPAWN_MAX_ARGS)
+        argc = SPAWN_MAX_ARGS;
+
+    for (int i = 0; i < inherit_rd_count; i++) {
+        int rd = inherit_rds[i];
+        if (rsmgr_handle_table_get(&current->handle_table, rd) == NULL)
+            return -1;
+    }
 
     const char **k_argv = (const char **) kmalloc(sizeof(const char *) * argc);
     if (!k_argv)
         return -1;
+    memset(k_argv, 0, sizeof(const char *) * argc);
 
     for (int i = 0; i < argc; i++) {
         const char *user_str = argv[i];
-        if (!syscall_user_ptr_range(user_str, 1))
+        if (!syscall_user_ptr_range(user_str, 1)) {
+            _free_spawn_argv(k_argv, argc);
             return -1;
+        }
 
         /* Copy the string: read up to 256 bytes to find the null terminator */
         size_t max_len = 256;
@@ -369,26 +398,35 @@ int sys_spawn_task(int argc, const char **argv)
 
         char *k_str = (char *) kmalloc(len + 1);
         if (!k_str) {
-            k_argv[i] = "";
-            continue;
+            _free_spawn_argv(k_argv, argc);
+            return -1;
         }
         memcpy(k_str, base, len);
         k_str[len] = '\0';
         k_argv[i] = k_str;
     }
 
-    if (load_exec(k_argv[0], current, argc, k_argv) == NULL) {
+    task_t *child = load_exec(k_argv[0], current, argc, k_argv);
+    if (child == NULL) {
         debug_log_fmt("Failed to load %s!\n", k_argv[0]);
-        kfree(k_argv);
+        _free_spawn_argv(k_argv, argc);
         return -1;
     }
 
-    /* Free the kernel copies of the argument strings */
-    for (int i = 0; i < argc; i++) {
-        if (k_argv[i] && k_argv[i][0] != '\0')
-            kfree((void *) k_argv[i]);
+    for (int i = 0; i < inherit_rd_count; i++) {
+        int rd = inherit_rds[i];
+        rsrc_handle_entry_t *entry = rsmgr_handle_table_get(&current->handle_table, rd);
+        if (rsmgr_handle_table_get(&child->handle_table, rd) != NULL)
+            continue;
+        if (entry == NULL
+            || rsmgr_handle_table_inherit(&child->handle_table, rd, entry) != RSRC_STATUS_OK) {
+            task_remove(child);
+            _free_spawn_argv(k_argv, argc);
+            return -1;
+        }
     }
-    kfree(k_argv);
+
+    _free_spawn_argv(k_argv, argc);
     return 0;
 }
 
@@ -449,7 +487,7 @@ long syscall_dispatch(uintptr_t num, uintptr_t arg1, uintptr_t arg2, uintptr_t a
     case SYSCALL_ALLOC_PAGES:
         return (long) sys_alloc_pages((size_t) arg1, (uint64_t) arg2);
     case SYSCALL_SPAWN_TASK:
-        return sys_spawn_task((int) arg1, (const char **) arg2);
+        return sys_spawn_task((int) arg1, (const char **) arg2, (const int *) arg3, (int) arg4);
     case SYSCALL_UNMAP_PAGES:
         return sys_unmap_pages((void *) arg1, (size_t) arg2);
     default:

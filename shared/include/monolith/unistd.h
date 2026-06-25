@@ -12,3 +12,4 @@ int execve(const char *path, char *const argv[], char *const envp[]);
 int getpid(void);
 int close(int fd);
 int access(const char *path, int mode);
+int spawn_task(int argc, const char **argv, const int *inherit_rds, int inherit_rd_count);

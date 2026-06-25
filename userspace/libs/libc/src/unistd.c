@@ -36,7 +36,8 @@ int lseek(int fd, int offset, int whence)
     return rsmgr_seek(fd, offset, whence);
 }
 
-int spawn(int argc, const char **argv)
+int spawn_task(int argc, const char **argv, const int *inherit_rds, int inherit_rd_count)
 {
-    return (int) syscall2(SYSCALL_SPAWN_TASK, (long) argc, (long) argv);
+    return (int) syscall4(
+        SYSCALL_SPAWN_TASK, (long) argc, (long) argv, (long) inherit_rds, (long) inherit_rd_count);
 }
