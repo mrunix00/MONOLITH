@@ -11,6 +11,7 @@
 #include <kernel/memory/vmm.h>
 #include <kernel/tasking/ipc.h>
 #include <kernel/tasking/loader.h>
+#include <kernel/tasking/pipe.h>
 #include <kernel/tasking/syscall.h>
 #include <kernel/timer.h>
 #include <shared/include/monolith/sys/syscall.h>
@@ -240,6 +241,25 @@ rsrc_status_t sys_shm_create(const char *name, size_t size)
 
     rsrc_t *resource = NULL;
     rsrc_status_t result = shm_create(name, size, &resource);
+    if (result != RSRC_STATUS_OK)
+        return result;
+    if (resource == NULL)
+        return RSRC_ERROR;
+
+    return _alloc_task_handle(current, resource);
+}
+
+rsrc_status_t sys_pipe_create(const char *name)
+{
+    if (name != NULL && !syscall_user_ptr_range(name, 1))
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    task_t *current = task_get_current();
+    if (current == NULL)
+        return RSRC_ERROR;
+
+    rsrc_t *resource = NULL;
+    rsrc_status_t result = pipe_create(name, &resource);
     if (result != RSRC_STATUS_OK)
         return result;
     if (resource == NULL)
@@ -556,6 +576,8 @@ long syscall_dispatch(uintptr_t num, uintptr_t arg1, uintptr_t arg2, uintptr_t a
         return sys_shm_create((const char *) arg1, (size_t) arg2);
     case SYSCALL_TASK_CREATE:
         return sys_task_create((int) arg1, (const char **) arg2, (const int *) arg3, (int) arg4);
+    case SYSCALL_PIPE_CREATE:
+        return sys_pipe_create((const char *) arg1);
     default:
         return -1;
     }

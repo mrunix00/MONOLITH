@@ -25,7 +25,7 @@ rsrc_handle_t ipc_channel_create(const char *name)
 {
     if (name != NULL) {
         size_t name_len = strlen(name);
-        if (name_len == 0 || name_len >= IPC_CHANNEL_NAME_MAX)
+        if (name_len == 0 || name_len >= RSRC_NAME_MAX_LEN)
             return -1;
     }
 
@@ -37,9 +37,9 @@ rsrc_handle_t ipc_connect(const char *name)
     if (name == NULL)
         return -1;
 
-    char path[IPC_CHANNEL_NAME_MAX + 10];
+    char path[RSRC_NAME_MAX_LEN + 10];
     size_t name_len = strlen(name);
-    if (name_len == 0 || name_len >= IPC_CHANNEL_NAME_MAX)
+    if (name_len == 0 || name_len >= RSRC_NAME_MAX_LEN)
         return -1;
 
     memcpy(path, "channel:/", 9);

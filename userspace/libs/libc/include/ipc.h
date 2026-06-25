@@ -9,8 +9,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define IPC_CHANNEL_NAME_MAX 64
-
 typedef uint64_t connection_t;
 
 typedef enum {

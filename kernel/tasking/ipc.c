@@ -38,7 +38,7 @@ typedef struct
 
 typedef struct
 {
-    char name[IPC_CHANNEL_NAME_MAX];
+    char name[RSRC_NAME_MAX_LEN];
     uint64_t id;
     rsrc_t *resource;
     _ipc_connection_t *connections;
@@ -274,8 +274,8 @@ static _ipc_channel_t *_create_channel(task_t *task, const char *name)
         return NULL;
 
     memset(channel, 0, sizeof(*channel));
-    strncpy(channel->name, name == NULL ? "anon" : name, IPC_CHANNEL_NAME_MAX);
-    channel->name[IPC_CHANNEL_NAME_MAX - 1] = '\0';
+    strncpy(channel->name, name == NULL ? "anon" : name, RSRC_NAME_MAX_LEN);
+    channel->name[RSRC_NAME_MAX_LEN - 1] = '\0';
     channel->id = _next_channel_id++;
     channel->owner_task_id = task->id;
 
@@ -740,6 +740,11 @@ rsrc_status_t ipc_channel_create(const char *name, rsrc_t **out_resource)
 
     if (current == NULL || out_resource == NULL)
         return RSRC_ERROR_INVALID_ARGUMENT;
+    if (name != NULL) {
+        size_t name_len = strlen(name);
+        if (name_len == 0 || name_len >= RSRC_NAME_MAX_LEN)
+            return RSRC_ERROR_INVALID_ARGUMENT;
+    }
 
     _ipc_channel_t *channel = _create_channel(current, name);
     if (channel == NULL)

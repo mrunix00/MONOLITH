@@ -23,6 +23,7 @@
 #include <kernel/mmap.h>
 #include <kernel/tasking/ipc.h>
 #include <kernel/tasking/loader.h>
+#include <kernel/tasking/pipe.h>
 #include <kernel/tasking/scheduler.h>
 #include <kernel/tasking/syscall.h>
 #include <kernel/tasking/task_domain.h>
@@ -135,6 +136,7 @@ void kmain()
     framebuffer_devices_init();
     shm_domain_init();
     ipc_init();
+    pipe_domain_init();
     task_switching_init();
     task_domain_init();
 

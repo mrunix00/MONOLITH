@@ -1,6 +1,7 @@
 ifndef LIB_NAME
 $(error LIB_NAME must be set before including common-lib.mk)
 endif
+.DEFAULT_GOAL := all
 
 SRC_DIR ?= src
 SHARED_INCLUDE_DIR ?= $(abspath ../../../shared/include/monolith)

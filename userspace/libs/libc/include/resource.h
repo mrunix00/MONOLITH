@@ -23,6 +23,7 @@ typedef enum {
     RSRC_DOMAIN_CHANNEL,
     RSRC_DOMAIN_SHM,
     RSRC_DOMAIN_TASK,
+    RSRC_DOMAIN_PIPE,
     RSRC_DOMAIN_END,
 } rsrc_domain_id_t;
 

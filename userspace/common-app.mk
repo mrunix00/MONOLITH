@@ -1,6 +1,7 @@
 ifndef TARGET
 $(error TARGET must be set before including common-app.mk)
 endif
+.DEFAULT_GOAL := all
 
 APP_OPTFLAGS ?= -O2
 APP_LIB_DEPS ?= libc

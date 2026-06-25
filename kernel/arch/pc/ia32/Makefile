@@ -1,4 +1,5 @@
 PROJECT_ROOT := $(abspath $(CURDIR)/../../..)
+.DEFAULT_GOAL := all
 
 include $(PROJECT_ROOT)/kernel/arch/pc/ia32/config.mk
 
