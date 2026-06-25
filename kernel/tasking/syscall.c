@@ -13,10 +13,6 @@
 #include <kernel/timer.h>
 #include <shared/include/monolith/sys/syscall.h>
 
-/*
- * Resource syscalls.
- */
-
 rsrc_status_t sys_rsrc_open(const char *path)
 {
     if (!syscall_user_ptr_range(path, 1))
@@ -336,26 +332,26 @@ void *sys_alloc_pages(size_t num_pages, uint64_t flags)
     return (void *) virt_addr;
 }
 
-void sys_spawn_task(int argc, const char **argv)
+int sys_spawn_task(int argc, const char **argv)
 {
     if (argc < 1 || !syscall_user_ptr_range(argv, argc * sizeof(const char *)))
-        return;
+        return -1;
 
     task_t *current = task_get_current();
     if (current == NULL)
-        return;
+        return -1;
 
     if (argc > 256)
         argc = 256;
 
     const char **k_argv = (const char **) kmalloc(sizeof(const char *) * argc);
     if (!k_argv)
-        return;
+        return -1;
 
     for (int i = 0; i < argc; i++) {
         const char *user_str = argv[i];
         if (!syscall_user_ptr_range(user_str, 1))
-            return;
+            return -1;
 
         /* Copy the string: read up to 256 bytes to find the null terminator */
         size_t max_len = 256;
@@ -381,8 +377,11 @@ void sys_spawn_task(int argc, const char **argv)
         k_argv[i] = k_str;
     }
 
-    if (load_exec(k_argv[0], current, argc, k_argv) == NULL)
+    if (load_exec(k_argv[0], current, argc, k_argv) == NULL) {
         debug_log_fmt("Failed to load %s!\n", k_argv[0]);
+        kfree(k_argv);
+        return -1;
+    }
 
     /* Free the kernel copies of the argument strings */
     for (int i = 0; i < argc; i++) {
@@ -390,6 +389,7 @@ void sys_spawn_task(int argc, const char **argv)
             kfree((void *) k_argv[i]);
     }
     kfree(k_argv);
+    return 0;
 }
 
 void syscalls_task_cleanup(task_t *task)
@@ -449,8 +449,7 @@ long syscall_dispatch(uintptr_t num, uintptr_t arg1, uintptr_t arg2, uintptr_t a
     case SYSCALL_ALLOC_PAGES:
         return (long) sys_alloc_pages((size_t) arg1, (uint64_t) arg2);
     case SYSCALL_SPAWN_TASK:
-        sys_spawn_task((int) arg1, (const char **) arg2);
-        return 0;
+        return sys_spawn_task((int) arg1, (const char **) arg2);
     case SYSCALL_UNMAP_PAGES:
         return sys_unmap_pages((void *) arg1, (size_t) arg2);
     default:
