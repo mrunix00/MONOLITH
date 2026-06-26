@@ -72,7 +72,7 @@ static void _setup_user_stack_args(
     *(uint32_t *) (stack_hddm + (wp - stack_base)) = 0;
     wp += 4;
 
-    task->state.rsp = sp;
+    task->regs.rsp = sp;
 
     kfree(str_addrs);
 }

@@ -13,6 +13,9 @@
 #define RSRC_NAME_MAX_LEN 256
 #define RSRC_HANDLE_TABLE_INITIAL_CAPACITY 16
 
+#define RSRC_POLL_READ 0x1
+#define RSRC_POLL_WRITE 0x2
+
 typedef enum {
     RSRC_DOMAIN_NULL = 0,
     RSRC_DOMAIN_FILE,
@@ -71,12 +74,18 @@ typedef struct
     uint64_t page_count;
 } rsrc_shm_info_t;
 
+typedef enum {
+    RSRC_TASK_STATE_RUNNABLE = 0,
+    RSRC_TASK_STATE_SLEEPING,
+    RSRC_TASK_STATE_EXITING,
+} rsrc_task_state_t;
+
 typedef struct
 {
     uint64_t task_id;
     uint64_t parent_task_id;
     uint64_t child_count;
-    bool exiting;
+    rsrc_task_state_t state;
     char path[RSRC_PATH_MAX_LEN];
     char name[RSRC_NAME_MAX_LEN];
 } rsrc_task_info_t;
@@ -396,6 +405,13 @@ rsrc_status_t rsmgr_mmap(
     uint64_t length,
     uint64_t prot,
     uint64_t *out_address);
+
+/*
+ * Polls a resource for readiness.
+ * Returns `RSRC_STATUS_OK` on success.
+ */
+rsrc_status_t rsmgr_poll(
+    rsrc_t *resource, void *handle_state, uint64_t requested_events, uint64_t *out_ready_events);
 
 /*
  * Removes a child entry from a collection resource.

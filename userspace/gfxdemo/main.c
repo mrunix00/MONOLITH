@@ -209,14 +209,14 @@ int main()
         }
 
         desktop_event_t event;
-        int poll_result = desktop_poll_event(&event);
+        int poll_result = (created && framebuffer_ready) ? desktop_poll_event(&event)
+                                                         : desktop_wait_event(&event);
 
         if (poll_result == 0) {
             if (event.type == DESKTOP_EVENT_WINDOW_CREATED && create_pending
                 && event.sequence == create_sequence) {
                 if (event.data.created.status != WINDOW_CREATED_SUCCESS) {
                     create_pending = false;
-                    usleep(1);
                     continue;
                 }
 
@@ -264,8 +264,6 @@ int main()
             angle += 0.03f;
             if (angle > 6.28318530717958647692f)
                 angle -= 6.28318530717958647692f;
-        } else {
-            usleep(1);
         }
     }
 

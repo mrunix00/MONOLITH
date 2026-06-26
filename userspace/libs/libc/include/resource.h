@@ -14,7 +14,16 @@ typedef int rsrc_handle_t;
 #define RSRC_PATH_MAX_LEN 4096
 #define RSRC_NAME_MAX_LEN 256
 
+#define RSRC_POLL_READ 0x1
+#define RSRC_POLL_WRITE 0x2
+
 typedef uint64_t rsrc_id_t;
+
+typedef struct
+{
+    rsrc_handle_t handle;
+    uint64_t events;
+} rsrc_poll_t;
 
 typedef enum {
     RSRC_DOMAIN_NULL = 0,
@@ -51,12 +60,18 @@ typedef struct
     uint64_t page_count;
 } rsrc_shm_info_t;
 
+typedef enum {
+    RSRC_TASK_STATE_RUNNABLE = 0,
+    RSRC_TASK_STATE_SLEEPING,
+    RSRC_TASK_STATE_EXITING,
+} rsrc_task_state_t;
+
 typedef struct
 {
     uint64_t task_id;
     uint64_t parent_task_id;
     uint64_t child_count;
-    bool exiting;
+    rsrc_task_state_t state;
     char path[RSRC_PATH_MAX_LEN];
     char name[RSRC_NAME_MAX_LEN];
 } rsrc_task_info_t;
@@ -84,3 +99,4 @@ int rsmgr_list(rsrc_handle_t handle, void *buffer, uint32_t size);
 int rsmgr_seek(rsrc_handle_t handle, int offset, int whence);
 long rsmgr_control(rsrc_handle_t handle, uint64_t command_id, void *buffer, uint32_t size);
 void *rsmgr_mmap(rsrc_handle_t handle, uint64_t offset, uint64_t length, uint64_t prot);
+int rsmgr_poll(const rsrc_poll_t *polls, uint32_t count);

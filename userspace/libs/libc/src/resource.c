@@ -52,3 +52,8 @@ void *rsmgr_mmap(rsrc_handle_t handle, uint64_t offset, uint64_t length, uint64_
         = syscall4(SYSCALL_RSRC_MMAP, (long) handle, (long) offset, (long) length, (long) prot);
     return result < 0 ? NULL : (void *) result;
 }
+
+int rsmgr_poll(const rsrc_poll_t *polls, uint32_t count)
+{
+    return (int) syscall2(SYSCALL_RSRC_POLL, (long) polls, (long) count);
+}

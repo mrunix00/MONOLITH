@@ -36,4 +36,6 @@ int desktop_release_window_framebuffer(void *framebuffer_addr);
 
 int desktop_poll_event(desktop_event_t *event);
 
+int desktop_wait_event(desktop_event_t *event);
+
 int desktop_disconnect();

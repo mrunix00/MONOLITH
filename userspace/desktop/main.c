@@ -137,7 +137,7 @@ int main()
         needs_redraw = needs_redraw || client_activity || menubar_changed || windows_changed;
 
         if (!needs_redraw) {
-            usleep(1);
+            protocol_server_wait();
             continue;
         }
 

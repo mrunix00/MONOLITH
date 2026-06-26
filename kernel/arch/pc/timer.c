@@ -8,6 +8,7 @@
 #include <kernel/arch/pc/pit.h>
 #include <kernel/devices/debug.h>
 #include <kernel/tasking/scheduler.h>
+#include <kernel/tasking/task.h>
 #include <kernel/timer.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -17,6 +18,7 @@ struct timer_block
 {
     struct timer_block *next;
     uint64_t countdown;
+    task_t *task;
 };
 
 static timer_block_t *_base;
@@ -35,6 +37,8 @@ static void _timer_irq()
 
         if (current->countdown == 0) {
             timer_block_t *next = current->next;
+            if (current->task != NULL && current->task->state == TASK_STATE_SLEEPING)
+                task_set_state(current->task, TASK_STATE_RUNNABLE);
             if (prev == NULL) {
                 _base = next;
             } else {
@@ -63,14 +67,17 @@ void sleep(uint64_t ms)
 {
     timer_block_t block;
     block.countdown = ms;
+    block.task = NULL;
 
     /* Mark task as sleeping */
     interrupts_disable();
 
     task_t *current = task_get_current();
     if (current) {
+        task_set_state(current, TASK_STATE_SLEEPING);
         current->quantum = 0;
         current->quantum_remaining = 0;
+        block.task = current;
     }
 
     block.next = _base;
@@ -82,7 +89,10 @@ void sleep(uint64_t ms)
     while (block.countdown > 0)
         asm_hlt();
 
-    current->quantum = DEFAULT_QUANTUM;
+    if (current) {
+        task_set_state(current, TASK_STATE_RUNNABLE);
+        current->quantum = DEFAULT_QUANTUM;
+    }
 }
 
 uint64_t timer_get_ticks()

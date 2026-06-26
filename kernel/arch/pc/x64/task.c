@@ -113,12 +113,12 @@ static void _task_destroy(task_t *task)
         task->memory.memblocks = NULL;
     }
 
-    if (task->user_mode && task->state.cr3 != 0) {
-        vmm_destroy_address_space(task->state.cr3);
-        task->state.cr3 = 0;
+    if (task->user_mode && task->regs.cr3 != 0) {
+        vmm_destroy_address_space(task->regs.cr3);
+        task->regs.cr3 = 0;
     }
 
-    kfree(task->state.fx_state);
+    kfree(task->regs.fx_state);
     kfree((void *) task->stack_bottom);
     kfree(task);
 }
@@ -160,33 +160,33 @@ static void _task_state_save(task_t *task, interrupt_registers_t *regs)
     if (!debug_assert(regs))
         return;
 
-    task->state.rax = regs->rax;
-    task->state.rbx = regs->rbx;
-    task->state.rcx = regs->rcx;
-    task->state.rdx = regs->rdx;
-    task->state.rsi = regs->rsi;
-    task->state.rdi = regs->rdi;
-    task->state.rbp = regs->rbp;
-    task->state.r8 = regs->r8;
-    task->state.r9 = regs->r9;
-    task->state.r10 = regs->r10;
-    task->state.r11 = regs->r11;
-    task->state.r12 = regs->r12;
-    task->state.r13 = regs->r13;
-    task->state.r14 = regs->r14;
-    task->state.r15 = regs->r15;
-    task->state.rip = regs->rip;
-    task->state.rsp = regs->rsp;
-    task->state.rflags = regs->rflags ? regs->rflags : DEFAULT_RFLAGS;
-    task->state.cr3 = asm_read_cr3();
+    task->regs.rax = regs->rax;
+    task->regs.rbx = regs->rbx;
+    task->regs.rcx = regs->rcx;
+    task->regs.rdx = regs->rdx;
+    task->regs.rsi = regs->rsi;
+    task->regs.rdi = regs->rdi;
+    task->regs.rbp = regs->rbp;
+    task->regs.r8 = regs->r8;
+    task->regs.r9 = regs->r9;
+    task->regs.r10 = regs->r10;
+    task->regs.r11 = regs->r11;
+    task->regs.r12 = regs->r12;
+    task->regs.r13 = regs->r13;
+    task->regs.r14 = regs->r14;
+    task->regs.r15 = regs->r15;
+    task->regs.rip = regs->rip;
+    task->regs.rsp = regs->rsp;
+    task->regs.rflags = regs->rflags ? regs->rflags : DEFAULT_RFLAGS;
+    task->regs.cr3 = asm_read_cr3();
 
     uint16_t cs = (uint16_t) regs->cs;
     uint16_t ss = (uint16_t) regs->ss;
-    task->state.cs = cs ? cs : (task->user_mode ? USER_CODE_SELECTOR : KERNEL_CODE_SELECTOR);
-    task->state.ss = ss ? ss : (task->user_mode ? USER_DATA_SELECTOR : KERNEL_DATA_SELECTOR);
+    task->regs.cs = cs ? cs : (task->user_mode ? USER_CODE_SELECTOR : KERNEL_CODE_SELECTOR);
+    task->regs.ss = ss ? ss : (task->user_mode ? USER_DATA_SELECTOR : KERNEL_DATA_SELECTOR);
 
-    if (task->state.fx_state_aligned)
-        sse_save(task->state.fx_state_aligned);
+    if (task->regs.fx_state_aligned)
+        sse_save(task->regs.fx_state_aligned);
 }
 
 static void _task_state_load(task_t *task, interrupt_registers_t *regs)
@@ -196,28 +196,28 @@ static void _task_state_load(task_t *task, interrupt_registers_t *regs)
     if (!debug_assert(regs))
         return;
 
-    regs->rax = task->state.rax;
-    regs->rbx = task->state.rbx;
-    regs->rcx = task->state.rcx;
-    regs->rdx = task->state.rdx;
-    regs->rsi = task->state.rsi;
-    regs->rdi = task->state.rdi;
-    regs->rbp = task->state.rbp;
-    regs->r8 = task->state.r8;
-    regs->r9 = task->state.r9;
-    regs->r10 = task->state.r10;
-    regs->r11 = task->state.r11;
-    regs->r12 = task->state.r12;
-    regs->r13 = task->state.r13;
-    regs->r14 = task->state.r14;
-    regs->r15 = task->state.r15;
-    regs->rip = task->state.rip;
-    regs->rsp = task->state.rsp;
-    regs->rflags = task->state.rflags ? task->state.rflags : DEFAULT_RFLAGS;
+    regs->rax = task->regs.rax;
+    regs->rbx = task->regs.rbx;
+    regs->rcx = task->regs.rcx;
+    regs->rdx = task->regs.rdx;
+    regs->rsi = task->regs.rsi;
+    regs->rdi = task->regs.rdi;
+    regs->rbp = task->regs.rbp;
+    regs->r8 = task->regs.r8;
+    regs->r9 = task->regs.r9;
+    regs->r10 = task->regs.r10;
+    regs->r11 = task->regs.r11;
+    regs->r12 = task->regs.r12;
+    regs->r13 = task->regs.r13;
+    regs->r14 = task->regs.r14;
+    regs->r15 = task->regs.r15;
+    regs->rip = task->regs.rip;
+    regs->rsp = task->regs.rsp;
+    regs->rflags = task->regs.rflags ? task->regs.rflags : DEFAULT_RFLAGS;
 
-    uint16_t cs = task->state.cs ? task->state.cs
+    uint16_t cs = task->regs.cs ? task->regs.cs
                                  : (task->user_mode ? USER_CODE_SELECTOR : KERNEL_CODE_SELECTOR);
-    uint16_t ss = task->state.ss ? task->state.ss
+    uint16_t ss = task->regs.ss ? task->regs.ss
                                  : (task->user_mode ? USER_DATA_SELECTOR : KERNEL_DATA_SELECTOR);
 
     /* Ensure SS.RPL matches the CPL from CS */
@@ -227,8 +227,8 @@ static void _task_state_load(task_t *task, interrupt_registers_t *regs)
     regs->cs = cs;
     regs->ss = ss;
 
-    if (task->state.fx_state_aligned)
-        sse_restore(task->state.fx_state_aligned);
+    if (task->regs.fx_state_aligned)
+        sse_restore(task->regs.fx_state_aligned);
 }
 
 task_t *task_create(void *entry_point, const char *path, task_mode_t mode)
@@ -244,56 +244,56 @@ task_t *task_create(void *entry_point, const char *path, task_mode_t mode)
     if (_next_task_id == 0)
         _next_task_id = 1;
     task->user_mode = (mode == TASK_MODE_USER);
-    task->state.rip = (uintptr_t) entry_point;
-    task->state.rflags = DEFAULT_RFLAGS;
-    task->state.cs = task->user_mode ? USER_CODE_SELECTOR : KERNEL_CODE_SELECTOR;
-    task->state.ss = task->user_mode ? USER_DATA_SELECTOR : KERNEL_DATA_SELECTOR;
+    task->regs.rip = (uintptr_t) entry_point;
+    task->regs.rflags = DEFAULT_RFLAGS;
+    task->regs.cs = task->user_mode ? USER_CODE_SELECTOR : KERNEL_CODE_SELECTOR;
+    task->regs.ss = task->user_mode ? USER_DATA_SELECTOR : KERNEL_DATA_SELECTOR;
     task->quantum = DEFAULT_QUANTUM;
 
-    task->state.fx_state = kmalloc(512 + 16);
-    if (!task->state.fx_state) {
+    task->regs.fx_state = kmalloc(512 + 16);
+    if (!task->regs.fx_state) {
         debug_log("Failed to create task: kmalloc failed\n");
         kfree(task);
         return NULL;
     }
-    uintptr_t fx_addr = (uintptr_t) task->state.fx_state;
-    task->state.fx_state_aligned = (void *) ((fx_addr + 15) & ~((uintptr_t) 0xF));
-    memset(task->state.fx_state_aligned, 0, 512);
+    uintptr_t fx_addr = (uintptr_t) task->regs.fx_state;
+    task->regs.fx_state_aligned = (void *) ((fx_addr + 15) & ~((uintptr_t) 0xF));
+    memset(task->regs.fx_state_aligned, 0, 512);
 
     /* Initialize FPU state with defaults */
-    uint8_t *fx_region = (uint8_t *) task->state.fx_state_aligned;
+    uint8_t *fx_region = (uint8_t *) task->regs.fx_state_aligned;
     *((uint16_t *) &fx_region[0]) = 0x037F;  /* FCW */
     *((uint32_t *) &fx_region[24]) = 0x1F80; /* MXCSR */
 
     task->stack_bottom = (uintptr_t) kmalloc(KERNEL_STACK_SIZE);
     if (!task->stack_bottom) {
         debug_log("Failed to create task: kmalloc failed\n");
-        kfree(task->state.fx_state);
+        kfree(task->regs.fx_state);
         kfree(task);
         return NULL;
     }
-    task->state.rsp0 = task->stack_bottom + KERNEL_STACK_SIZE;
+    task->regs.rsp0 = task->stack_bottom + KERNEL_STACK_SIZE;
 
     if (rsmgr_handle_table_init(&task->handle_table) != RSRC_STATUS_OK) {
         debug_log("Failed to create task: handle table init failed\n");
         kfree((void *) task->stack_bottom);
-        kfree(task->state.fx_state);
+        kfree(task->regs.fx_state);
         kfree(task);
         return NULL;
     }
 
     if (task->user_mode) {
-        task->state.cr3 = vmm_create_address_space();
-        if (task->state.cr3 == 0) {
+        task->regs.cr3 = vmm_create_address_space();
+        if (task->regs.cr3 == 0) {
             debug_log("Failed to create task: vmm_create_address_space failed\n");
             rsmgr_handle_table_destroy(&task->handle_table);
             kfree((void *) task->stack_bottom);
-            kfree(task->state.fx_state);
+            kfree(task->regs.fx_state);
             kfree(task);
             return NULL;
         }
     } else {
-        task->state.cr3 = vmm_get_kernel_cr3();
+        task->regs.cr3 = vmm_get_kernel_cr3();
     }
 
     const char *task_path = path == NULL ? "" : path;
@@ -326,7 +326,7 @@ void task_set_parent(task_t *child, task_t *parent)
     if (child->parent)
         _task_unlink_child(child);
 
-    if (!parent || parent->exiting)
+    if (!parent || parent->state == TASK_STATE_EXITING)
         return;
 
     child->parent = parent;
@@ -381,7 +381,7 @@ int task_map(
     memblock->release_on_exit = release_on_exit;
 
     /* Map into the task's own address space */
-    vmm_map_range(task->state.cr3, virt_addr, phys_addr, page_count * PAGE_SIZE, flags, true);
+    vmm_map_range(task->regs.cr3, virt_addr, phys_addr, page_count * PAGE_SIZE, flags, true);
 
     return 0;
 }
@@ -437,7 +437,7 @@ int task_unmap(task_t *task, uintptr_t virt_addr, size_t page_count, bool releas
     if (!debug_assert(page_count != 0))
         return -1;
 
-    vmm_unmap_range(task->state.cr3, virt_addr, page_count * PAGE_SIZE, true);
+    vmm_unmap_range(task->regs.cr3, virt_addr, page_count * PAGE_SIZE, true);
 
     if (!task->memory.memblocks || task->memory.memblocks_count == 0)
         return 0;
@@ -486,13 +486,13 @@ void _task_switch_gate(interrupt_registers_t *regs)
 
     _task_destroy_deferred();
 
-    if (!target || target->exiting)
+    if (!target || target->state != TASK_STATE_RUNNABLE)
         target = task_next(current);
 
     if (current)
         _task_state_save(current, regs);
 
-    if (current && current->exiting) {
+    if (current && current->state == TASK_STATE_EXITING) {
         _task_remove_children(current);
         _task_unlink(current);
         if (!target || target == current)
@@ -507,10 +507,10 @@ void _task_switch_gate(interrupt_registers_t *regs)
     _current_task = target ? target : &_task_list_head;
     _next_task = NULL;
 
-    gdt_tss_set_rsp0(_current_task->state.rsp0);
+    gdt_tss_set_rsp0(_current_task->regs.rsp0);
 
-    if (_current_task->state.cr3)
-        asm_write_cr3(_current_task->state.cr3);
+    if (_current_task->regs.cr3)
+        asm_write_cr3(_current_task->regs.cr3);
 
     _task_state_load(_current_task, regs);
 }
@@ -520,20 +520,20 @@ void task_switching_init()
     memset(&_task_list_head, 0, sizeof(_task_list_head));
     _task_list_head.next = &_task_list_head;
     _task_list_head.user_mode = false;
-    _task_list_head.exiting = false;
-    _task_list_head.state.cr3 = asm_read_cr3();
-    _task_list_head.state.cs = KERNEL_CODE_SELECTOR;
-    _task_list_head.state.ss = KERNEL_DATA_SELECTOR;
-    _task_list_head.state.rflags = DEFAULT_RFLAGS;
-    _task_list_head.state.rsp = asm_read_rsp();
-    _task_list_head.state.rsp0 = _task_list_head.state.rsp;
+    _task_list_head.state = TASK_STATE_RUNNABLE;
+    _task_list_head.regs.cr3 = asm_read_cr3();
+    _task_list_head.regs.cs = KERNEL_CODE_SELECTOR;
+    _task_list_head.regs.ss = KERNEL_DATA_SELECTOR;
+    _task_list_head.regs.rflags = DEFAULT_RFLAGS;
+    _task_list_head.regs.rsp = asm_read_rsp();
+    _task_list_head.regs.rsp0 = _task_list_head.regs.rsp;
 
-    _task_list_head.state.fx_state = kmalloc(512 + 16);
-    if (_task_list_head.state.fx_state) {
-        uintptr_t fx_addr = (uintptr_t) _task_list_head.state.fx_state;
-        _task_list_head.state.fx_state_aligned = (void *) ((fx_addr + 15) & ~((uintptr_t) 0xF));
-        memset(_task_list_head.state.fx_state_aligned, 0, 512);
-        uint8_t *fx_region = (uint8_t *) _task_list_head.state.fx_state_aligned;
+    _task_list_head.regs.fx_state = kmalloc(512 + 16);
+    if (_task_list_head.regs.fx_state) {
+        uintptr_t fx_addr = (uintptr_t) _task_list_head.regs.fx_state;
+        _task_list_head.regs.fx_state_aligned = (void *) ((fx_addr + 15) & ~((uintptr_t) 0xF));
+        memset(_task_list_head.regs.fx_state_aligned, 0, 512);
+        uint8_t *fx_region = (uint8_t *) _task_list_head.regs.fx_state_aligned;
         *((uint16_t *) &fx_region[0]) = 0x037F;  /* FCW */
         *((uint32_t *) &fx_region[24]) = 0x1F80; /* MXCSR */
     }
@@ -560,6 +560,14 @@ void task_switch(task_t *task)
     __asm__ volatile("int $0x30");
 }
 
+void task_set_state(task_t *task, task_lifecycle_state_t state)
+{
+    if (!debug_assert(task))
+        return;
+
+    task->state = state;
+}
+
 task_t *task_next(task_t *task)
 {
     task_t *start = task ? task : &_task_list_head;
@@ -567,7 +575,8 @@ task_t *task_next(task_t *task)
 
     do {
         cursor = cursor->next ? cursor->next : &_task_list_head;
-        if (cursor != &_task_list_head && cursor != start && !cursor->exiting)
+        if (cursor != &_task_list_head && cursor != start
+            && cursor->state == TASK_STATE_RUNNABLE)
             return cursor;
     } while (cursor != start);
 
@@ -582,7 +591,7 @@ void task_mark_exiting(task_t *task)
         return;
 
     _task_remove_children(task);
-    task->exiting = true;
+    task->state = TASK_STATE_EXITING;
 }
 
 task_t *task_idle()

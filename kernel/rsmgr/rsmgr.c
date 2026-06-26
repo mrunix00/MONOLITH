@@ -762,6 +762,16 @@ rsrc_status_t rsmgr_mmap(
     return resource->ops->mmap(resource, handle_state, offset, length, prot, out_address);
 }
 
+rsrc_status_t rsmgr_poll(
+    rsrc_t *resource, void *handle_state, uint64_t requested_events, uint64_t *out_ready_events)
+{
+    if (resource == NULL || out_ready_events == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+    if (resource->ops == NULL || resource->ops->poll == NULL)
+        return RSRC_ERROR_NOT_SUPPORTED;
+    return resource->ops->poll(resource, handle_state, requested_events, out_ready_events);
+}
+
 rsrc_status_t rsmgr_remove(rsrc_t *resource, void *handle_state, const char *name)
 {
     if (resource == NULL || name == NULL)

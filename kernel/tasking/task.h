@@ -10,38 +10,22 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __x86_64__
+#include <kernel/arch/pc/x64/task_regs.h>
+#elif defined(__i386__)
+#include <kernel/arch/pc/ia32/task_regs.h>
+#endif
+
 typedef enum task_mode {
     TASK_MODE_KERNEL = 0,
     TASK_MODE_USER = 1,
 } task_mode_t;
 
-typedef struct
-{
-    uintptr_t cr3;
-    uintptr_t rip;
-    uintptr_t rsp;
-    uintptr_t rsp0;
-    uintptr_t rflags;
-    uintptr_t rax;
-    uintptr_t rbx;
-    uintptr_t rcx;
-    uintptr_t rdx;
-    uintptr_t rsi;
-    uintptr_t rdi;
-    uintptr_t rbp;
-    uintptr_t r8;
-    uintptr_t r9;
-    uintptr_t r10;
-    uintptr_t r11;
-    uintptr_t r12;
-    uintptr_t r13;
-    uintptr_t r14;
-    uintptr_t r15;
-    uint16_t cs;
-    uint16_t ss;
-    void *fx_state;
-    void *fx_state_aligned;
-} task_state_t;
+typedef enum {
+    TASK_STATE_RUNNABLE = 0,
+    TASK_STATE_SLEEPING,
+    TASK_STATE_EXITING,
+} task_lifecycle_state_t;
 
 typedef struct
 {
@@ -70,14 +54,14 @@ struct task
     uint64_t id;
     char path[256];
     char name[256];
-    task_state_t state;
+    task_regs_t regs;
     task_mem_t memory;
     rsrc_handle_table_t handle_table;
     uintptr_t stack_bottom;
     unsigned int quantum;
     unsigned int quantum_remaining;
     bool user_mode;
-    bool exiting;
+    task_lifecycle_state_t state;
     rsrc_node_t *resource_node;
 };
 
@@ -97,6 +81,7 @@ int task_map(
 int task_unmap(task_t *task, uintptr_t virt_addr, size_t page_count, bool release_on_exit);
 void task_remove(task_t *task);
 void task_switch(task_t *task);
+void task_set_state(task_t *task, task_lifecycle_state_t state);
 void task_mark_exiting(task_t *task);
 task_t *task_next(task_t *task);
 task_t *task_idle();

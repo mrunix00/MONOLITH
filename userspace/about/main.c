@@ -104,11 +104,8 @@ int main()
         }
 
         desktop_event_t event;
-        int poll_result = desktop_poll_event(&event);
-        if (poll_result != 0) {
-            usleep(1);
+        if (desktop_wait_event(&event) != 0)
             continue;
-        }
 
         if (event.type == DESKTOP_EVENT_WINDOW_CREATED && create_pending
             && event.sequence == create_sequence) {

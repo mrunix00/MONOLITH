@@ -18,6 +18,13 @@
 
 #define TASK_CREATE_MAX_ARGS 256
 #define TASK_CREATE_MAX_INHERITED_RDS 256
+#define RSRC_POLL_MAX_HANDLES 64
+
+typedef struct
+{
+    int handle;
+    uint64_t events;
+} syscall_rsrc_poll_t;
 
 static void _free_task_create_argv(const char **argv, int argc)
 {
@@ -350,6 +357,41 @@ rsrc_status_t sys_rsrc_mmap(int fd, uint64_t offset, uint64_t length, uint64_t p
     return (rsrc_status_t) address;
 }
 
+rsrc_status_t sys_rsrc_poll(const syscall_rsrc_poll_t *polls, uint64_t count)
+{
+    if (count == 0 || count > RSRC_POLL_MAX_HANDLES)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+    if (!syscall_user_ptr_range(polls, count * sizeof(*polls)))
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    task_t *current = task_get_current();
+    if (current == NULL)
+        return RSRC_ERROR;
+
+    while (true) {
+        for (uint64_t i = 0; i < count; i++) {
+            uint64_t requested_events = polls[i].events;
+            if (requested_events == 0)
+                requested_events = RSRC_POLL_READ;
+
+            rsrc_handle_entry_t *entry
+                = rsmgr_handle_table_get(&current->handle_table, polls[i].handle);
+            if (entry == NULL || entry->resource == NULL)
+                return RSRC_ERROR_BAD_HANDLE;
+
+            uint64_t ready_events = 0;
+            rsrc_status_t result
+                = rsmgr_poll(entry->resource, &entry->offset, requested_events, &ready_events);
+            if (result != RSRC_STATUS_OK)
+                return result;
+            if ((ready_events & requested_events) != 0)
+                return (rsrc_status_t) i;
+        }
+
+        sleep(1);
+    }
+}
+
 int sys_exit()
 {
     task_t *current = task_get_current();
@@ -568,6 +610,8 @@ long syscall_dispatch(uintptr_t num, uintptr_t arg1, uintptr_t arg2, uintptr_t a
         return sys_rsrc_control((int) arg1, (uint64_t) arg2, (void *) arg3, (uint64_t) arg4);
     case SYSCALL_RSRC_MMAP:
         return sys_rsrc_mmap((int) arg1, (uint64_t) arg2, (uint64_t) arg3, (uint64_t) arg4);
+    case SYSCALL_RSRC_POLL:
+        return sys_rsrc_poll((const syscall_rsrc_poll_t *) arg1, (uint64_t) arg2);
     case SYSCALL_FILE_CREATE:
         return sys_file_create((const char *) arg1);
     case SYSCALL_IPC_CHANNEL_CREATE:

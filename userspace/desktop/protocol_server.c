@@ -384,6 +384,22 @@ bool protocol_server_pump()
     return had_activity;
 }
 
+void protocol_server_wait()
+{
+    rsrc_poll_t polls[3];
+    uint32_t count = 0;
+
+    if (_channel >= 0)
+        polls[count++] = (rsrc_poll_t) { .handle = _channel, .events = RSRC_POLL_READ };
+    if (_keyboard_fd >= 0)
+        polls[count++] = (rsrc_poll_t) { .handle = _keyboard_fd, .events = RSRC_POLL_READ };
+    if (_mouse_fd >= 0)
+        polls[count++] = (rsrc_poll_t) { .handle = _mouse_fd, .events = RSRC_POLL_READ };
+
+    if (count > 0)
+        rsmgr_poll(polls, count);
+}
+
 int protocol_send_event(uint64_t task_id, desktop_event_t event)
 {
     connection_t connection = task_id;

@@ -143,6 +143,35 @@ static rsrc_status_t _tmpfs_seek_op(
     return RSRC_STATUS_OK;
 }
 
+static rsrc_status_t _tmpfs_poll_op(
+    rsrc_t *resource, void *handle_state, uint64_t requested_events, uint64_t *out_ready_events)
+{
+    if (resource == NULL || resource->type_state == NULL || out_ready_events == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    _tmpfs_inode_t *inode = resource->type_state;
+    uint64_t ready = 0;
+
+    if ((requested_events & RSRC_POLL_READ) != 0) {
+        if (resource->header.type == RSRC_TYPE_COLLECTION) {
+            if (resource->node != NULL && resource->node->first_child != NULL)
+                ready |= RSRC_POLL_READ;
+        } else {
+            uint64_t offset = handle_state == NULL ? 0 : *(uint64_t *) handle_state;
+            if (inode->data != NULL && offset < inode->size)
+                ready |= RSRC_POLL_READ;
+        }
+    }
+
+    if ((requested_events & RSRC_POLL_WRITE) != 0
+        && resource->header.type == RSRC_TYPE_RESOURCE) {
+        ready |= RSRC_POLL_WRITE;
+    }
+
+    *out_ready_events = ready;
+    return RSRC_STATUS_OK;
+}
+
 static rsrc_status_t _tmpfs_create_op(
     rsrc_t *resource, void *handle_state, const char *name, rsrc_type_t type, rsrc_t **out_resource)
 {
@@ -177,7 +206,7 @@ static const rsrc_ops_t _tmpfs_resource_ops = {
     .read = _tmpfs_read_op,
     .write = _tmpfs_write_op,
     .mmap = NULL,
-    .poll = NULL,
+    .poll = _tmpfs_poll_op,
     .create = _tmpfs_create_op,
     .remove = NULL,
     .control = NULL,

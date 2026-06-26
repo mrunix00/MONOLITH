@@ -529,7 +529,8 @@ int main(int argc, char *argv[])
         }
 
         desktop_event_t event;
-        int poll_result = desktop_poll_event(&event);
+        int poll_result = (created && framebuffer_ready) ? desktop_poll_event(&event)
+                                                         : desktop_wait_event(&event);
 
         if (poll_result == 0) {
             if (event.type == DESKTOP_EVENT_WINDOW_CREATED && create_pending
@@ -584,8 +585,6 @@ int main(int argc, char *argv[])
             gfx_end_frame(&framebuffer);
 
             desktop_present_window((uint16_t) window_id);
-        } else {
-            usleep(1);
         }
     }
 

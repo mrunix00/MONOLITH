@@ -720,6 +720,32 @@ static rsrc_status_t _channel_write_op(
     return RSRC_STATUS_OK;
 }
 
+static rsrc_status_t _channel_poll_op(
+    rsrc_t *resource, void *handle_state, uint64_t requested_events, uint64_t *out_ready_events)
+{
+    if (resource == NULL || resource->type_state == NULL || out_ready_events == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+    (void) handle_state;
+
+    task_t *current = task_get_current();
+    if (current == NULL)
+        return RSRC_ERROR;
+
+    _ipc_channel_t *channel = (_ipc_channel_t *) resource->type_state;
+    _ipc_packet_queue_t *queue = _queue_for_task(channel, current);
+    if (queue == NULL)
+        return RSRC_ERROR_PERMISSION_DENIED;
+
+    uint64_t ready = 0;
+    if ((requested_events & RSRC_POLL_READ) != 0 && queue->count > 0)
+        ready |= RSRC_POLL_READ;
+    if ((requested_events & RSRC_POLL_WRITE) != 0)
+        ready |= RSRC_POLL_WRITE;
+
+    *out_ready_events = ready;
+    return RSRC_STATUS_OK;
+}
+
 static rsrc_status_t _channel_describe_op(rsrc_t *resource, rsrc_info_t *out_info)
 {
     if (resource == NULL || out_info == NULL)
@@ -866,7 +892,7 @@ static const rsrc_ops_t _channel_resource_ops = {
     .read = _channel_read_op,
     .write = _channel_write_op,
     .mmap = NULL,
-    .poll = NULL,
+    .poll = _channel_poll_op,
     .create = NULL,
     .remove = NULL,
     .control = _channel_command_op,

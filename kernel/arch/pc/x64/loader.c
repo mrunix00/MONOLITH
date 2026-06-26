@@ -75,10 +75,10 @@ static void _setup_user_stack_args(
     wp += 8;
 
     /* Set task state registers per System V AMD64 ABI */
-    task->state.rsp = sp;
-    task->state.rdi = argc;
-    task->state.rsi = sp + 8;
-    task->state.rdx = 0;
+    task->regs.rsp = sp;
+    task->regs.rdi = argc;
+    task->regs.rsi = sp + 8;
+    task->regs.rdx = 0;
 
     kfree(str_addrs);
 }

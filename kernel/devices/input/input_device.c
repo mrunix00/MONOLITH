@@ -104,6 +104,31 @@ static rsrc_status_t _input_device_read(
     return RSRC_STATUS_OK;
 }
 
+static rsrc_status_t _input_device_poll(
+    rsrc_t *resource, void *handle_state, uint64_t requested_events, uint64_t *out_ready_events)
+{
+    (void) handle_state;
+
+    if (resource == NULL || out_ready_events == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    uint64_t ready = 0;
+    if ((requested_events & RSRC_POLL_READ) != 0) {
+        if (strcmp(resource->header.name, "keyboard") == 0) {
+            if (_kb_head != _kb_tail)
+                ready |= RSRC_POLL_READ;
+        } else if (strcmp(resource->header.name, "mouse") == 0) {
+            if (_mouse_head != _mouse_tail)
+                ready |= RSRC_POLL_READ;
+        } else {
+            return RSRC_ERROR_NOT_SUPPORTED;
+        }
+    }
+
+    *out_ready_events = ready;
+    return RSRC_STATUS_OK;
+}
+
 static const rsrc_ops_t _input_device_ops = {
     .open = NULL,
     .lookup = NULL,
@@ -116,7 +141,7 @@ static const rsrc_ops_t _input_device_ops = {
     .read = _input_device_read,
     .write = NULL,
     .mmap = NULL,
-    .poll = NULL,
+    .poll = _input_device_poll,
     .remove = NULL,
     .control = NULL,
 };

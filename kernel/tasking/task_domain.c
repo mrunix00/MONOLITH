@@ -67,7 +67,7 @@ static rsrc_status_t _task_collection_describe_op(rsrc_t *resource, rsrc_info_t 
     out_info->task.task_id = task->id;
     out_info->task.parent_task_id = task->parent == NULL ? 0 : task->parent->id;
     out_info->task.child_count = child_count;
-    out_info->task.exiting = task->exiting;
+    out_info->task.state = (rsrc_task_state_t) task->state;
 
     strncpy(out_info->task.path, task->path, RSRC_PATH_MAX_LEN);
     out_info->task.path[RSRC_PATH_MAX_LEN - 1] = '\0';

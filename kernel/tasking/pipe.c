@@ -133,6 +133,25 @@ static rsrc_status_t _pipe_write_op(
     return RSRC_STATUS_OK;
 }
 
+static rsrc_status_t _pipe_poll_op(
+    rsrc_t *resource, void *handle_state, uint64_t requested_events, uint64_t *out_ready_events)
+{
+    if (resource == NULL || out_ready_events == NULL || resource->type_state == NULL
+        || resource->header.type != RSRC_TYPE_RESOURCE)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+    (void) handle_state;
+
+    _pipe_t *pipe = (_pipe_t *) resource->type_state;
+    uint64_t ready = 0;
+    if ((requested_events & RSRC_POLL_READ) != 0 && pipe->size > 0)
+        ready |= RSRC_POLL_READ;
+    if ((requested_events & RSRC_POLL_WRITE) != 0)
+        ready |= RSRC_POLL_WRITE;
+
+    *out_ready_events = ready;
+    return RSRC_STATUS_OK;
+}
+
 rsrc_status_t pipe_create(const char *name, rsrc_t **out_resource)
 {
     if (out_resource == NULL)
@@ -186,7 +205,7 @@ static const rsrc_ops_t _pipe_ops = {
     .read = _pipe_read_op,
     .write = _pipe_write_op,
     .mmap = NULL,
-    .poll = NULL,
+    .poll = _pipe_poll_op,
     .create = NULL,
     .remove = NULL,
     .control = NULL,

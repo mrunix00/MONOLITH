@@ -371,6 +371,26 @@ int desktop_poll_event(desktop_event_t *event)
     return 0;
 }
 
+int desktop_wait_event(desktop_event_t *event)
+{
+    if (_protocol_channel < 0 || event == NULL) {
+        _last_error = DESKTOP_ERROR_INVALID_ARGUMENT;
+        return -1;
+    }
+
+    while (1) {
+        rsrc_poll_t poll = { .handle = _protocol_channel, .events = RSRC_POLL_READ };
+        if (rsmgr_poll(&poll, 1) < 0)
+            return -1;
+
+        int result = desktop_poll_event(event);
+        if (result == 0)
+            return 0;
+        if (result < 0)
+            return result;
+    }
+}
+
 int desktop_disconnect()
 {
     for (size_t i = 0; i < DESKTOP_MAX_FRAMEBUFFERS; i++) {
