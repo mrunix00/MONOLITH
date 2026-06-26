@@ -267,7 +267,6 @@ int desktop_request_window_framebuffer(uint16_t window_id, uint16_t w, uint16_t 
         }
         if (state->bound_context)
             _populate_context(state, state->bound_context);
-        desktop_present_window(window_id);
         return 1;
     }
 
@@ -335,7 +334,6 @@ int desktop_handle_framebuffer_event(const desktop_event_t *event, gfx_context_t
 
     state->bound_context = out_context;
     _populate_context(state, out_context);
-    desktop_present_window(state->window_id);
 
     return 1;
 }

@@ -40,6 +40,10 @@ typedef struct
     uint16_t surface_width;
     uint16_t surface_height;
     size_t surface_size;
+    uint32_t *presented_pixels;
+    uint16_t presented_width;
+    uint16_t presented_height;
+    size_t presented_size;
     uint16_t notified_content_width;
     uint16_t notified_content_height;
     uint32_t pending_width;
@@ -69,6 +73,8 @@ uint16_t window_get_content_height(const window_t *window);
 bool window_get_resize_target(const window_t *window, uint16_t *width, uint16_t *height);
 
 bool window_commit_resize(window_t *window, uint16_t content_width, uint16_t content_height);
+
+bool window_present_surface(window_t *window, uint16_t content_width, uint16_t content_height);
 
 bool window_contains_content_point(const window_t *window, uint32_t x, uint32_t y);
 

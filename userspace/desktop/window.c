@@ -394,9 +394,9 @@ static void draw_window(gfx_context_t *context, window_t *window)
     gfx_area_t prev_clip = context->clip_rect;
     gfx_set_clip(context, content_rect);
     gfx_colored_bitmap_t bitmap = {
-        .width = window->surface_width,
-        .height = window->surface_height,
-        .data = window->surface_pixels,
+        .width = window->presented_pixels ? window->presented_width : window->surface_width,
+        .height = window->presented_pixels ? window->presented_height : window->surface_height,
+        .data = window->presented_pixels ? window->presented_pixels : window->surface_pixels,
     };
     gfx_draw_colored_bitmap(context, &bitmap, (gfx_pos_t){.x = content_rect.x, .y = content_rect.y});
     context->clip_rect = prev_clip;
@@ -728,6 +728,14 @@ void window_set_remote_surface(
     if (!window)
         return;
 
+    if (!pixels) {
+        free(window->presented_pixels);
+        window->presented_pixels = NULL;
+        window->presented_width = 0;
+        window->presented_height = 0;
+        window->presented_size = 0;
+    }
+
     window->surface_handle = handle;
     window->surface_pixels = pixels;
     window->surface_width = width;
@@ -823,6 +831,44 @@ bool window_commit_resize(window_t *window, uint16_t content_width, uint16_t con
         window->pending_width = 0;
         window->pending_height = 0;
     }
+    return true;
+}
+
+bool window_present_surface(window_t *window, uint16_t content_width, uint16_t content_height)
+{
+    if (!window || !window->surface_pixels)
+        return false;
+    if (content_width == 0 || content_height == 0 || content_width > window->surface_width
+        || content_height > window->surface_height) {
+        return false;
+    }
+    if (window->resize_in_flight
+        && (content_width != window->notified_content_width
+            || content_height != window->notified_content_height)) {
+        return false;
+    }
+
+    size_t presented_size = (size_t) content_width * (size_t) content_height * sizeof(uint32_t);
+    if (!window->presented_pixels || window->presented_size < presented_size) {
+        uint32_t *new_pixels = realloc(window->presented_pixels, presented_size);
+        if (!new_pixels)
+            return false;
+        window->presented_pixels = new_pixels;
+        window->presented_size = presented_size;
+    }
+
+    for (uint16_t y = 0; y < content_height; y++) {
+        memcpy(
+            window->presented_pixels + ((size_t) y * content_width),
+            window->surface_pixels + ((size_t) y * window->surface_width),
+            (size_t) content_width * sizeof(uint32_t));
+    }
+
+    window->presented_width = content_width;
+    window->presented_height = content_height;
+
+    if (window->resize_in_flight)
+        return window_commit_resize(window, content_width, content_height);
     return true;
 }
 

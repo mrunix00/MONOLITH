@@ -43,7 +43,7 @@ static void _release_surface_mapping(rsrc_handle_t handle, uint32_t *pixels, siz
 
 void protocol_release_window_surface(window_t *window)
 {
-    if (!window || !window->surface_pixels || window->surface_size == 0)
+    if (!window)
         return;
 
     _release_surface_mapping(window->surface_handle, window->surface_pixels, window->surface_size);
@@ -181,12 +181,7 @@ static void _handle_present_window(uint64_t task_id, const desktop_request_t *re
 
     uint16_t width = request->data.present_window.width;
     uint16_t height = request->data.present_window.height;
-    if (width == 0 || height == 0 || width > window->surface_width
-        || height > window->surface_height) {
-        return;
-    }
-
-    window_commit_resize(window, width, height);
+    window_present_surface(window, width, height);
 }
 
 static void _handle_client_request(uint64_t task_id, const desktop_request_t *request)
