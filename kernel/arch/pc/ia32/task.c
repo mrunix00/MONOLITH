@@ -446,7 +446,7 @@ int task_unmap(task_t *task, uintptr_t virt_addr, size_t page_count, bool releas
         task_memblock_t *memblock = &task->memory.memblocks[i];
         if (memblock->virt_addr != virt_addr || memblock->page_count != page_count)
             continue;
-        if (release_on_exit && memblock->phys_addr)
+        if (release_on_exit && memblock->release_on_exit && memblock->phys_addr)
             pmm_free((void *) memblock->phys_addr, memblock->page_count);
 
         /* Shift remaining entries down */

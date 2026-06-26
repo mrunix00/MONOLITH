@@ -176,7 +176,7 @@ static rsrc_status_t _shm_mmap_op(
     if (!(prot & ALLOC_PAGES_FLAG_EXEC))
         pt_flags |= PTFLAG_XD;
 
-    if (task_map(current, virt_addr, object->phys_addr, object->page_count, pt_flags, true) < 0)
+    if (task_map(current, virt_addr, object->phys_addr, object->page_count, pt_flags, false) < 0)
         return RSRC_ERROR_NO_MEMORY;
 
     *out_address = virt_addr;
