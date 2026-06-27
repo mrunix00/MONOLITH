@@ -118,18 +118,12 @@ static void _task_destroy(task_t *task)
         task->regs.cr3 = 0;
     }
 
+    rsmgr_unref(task->cwd_resource);
+    rsmgr_unref(task->path_resource);
+
     kfree(task->regs.fx_state);
     kfree((void *) task->stack_bottom);
     kfree(task);
-}
-
-static const char *_task_basename(const char *path)
-{
-    if (path == NULL)
-        return "";
-
-    const char *name = strrchr(path, '/');
-    return name == NULL ? path : name + 1;
 }
 
 static void _task_defer_destroy(task_t *task)
@@ -215,7 +209,7 @@ static void _task_state_load(task_t *task, interrupt_registers_t *regs)
         sse_restore(task->regs.fx_state_aligned);
 }
 
-task_t *task_create(void *entry_point, const char *path, task_mode_t mode)
+task_t *task_create(void *entry_point, rsrc_t *path_resource, task_mode_t mode)
 {
     task_t *task = (task_t *) kmalloc(sizeof(task_t));
     if (!task) {
@@ -280,12 +274,21 @@ task_t *task_create(void *entry_point, const char *path, task_mode_t mode)
         task->regs.cr3 = vmm_get_kernel_cr3();
     }
 
-    const char *task_path = path == NULL ? "" : path;
-    strncpy(task->path, task_path, sizeof(task->path) - 1);
-    task->path[sizeof(task->path) - 1] = '\0';
-    const char *task_name = _task_basename(task_path);
-    strncpy(task->name, task_name, sizeof(task->name) - 1);
-    task->name[sizeof(task->name) - 1] = '\0';
+    task->path_resource = path_resource;
+    rsmgr_ref(task->path_resource);
+
+    task->cwd_resource = rsmgr_open("file:/");
+    if (task->cwd_resource == NULL || task->cwd_resource->header.type != RSRC_TYPE_COLLECTION) {
+        rsmgr_unref(task->path_resource);
+        rsmgr_handle_table_destroy(&task->handle_table);
+        if (task->user_mode && task->regs.cr3 != 0)
+            vmm_destroy_address_space(task->regs.cr3);
+        kfree((void *) task->stack_bottom);
+        kfree(task->regs.fx_state);
+        kfree(task);
+        return NULL;
+    }
+    rsmgr_ref(task->cwd_resource);
 
     task->next = &_task_list_head;
     _task_list_tail->next = task;
@@ -312,6 +315,10 @@ void task_set_parent(task_t *child, task_t *parent)
 
     if (!parent || parent->state == TASK_STATE_EXITING)
         return;
+
+    rsmgr_unref(child->cwd_resource);
+    child->cwd_resource = parent->cwd_resource;
+    rsmgr_ref(child->cwd_resource);
 
     child->parent = parent;
     child->prev_sibling = NULL;

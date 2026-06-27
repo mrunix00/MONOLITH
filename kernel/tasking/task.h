@@ -52,8 +52,8 @@ struct task
     task_t *next_sibling;
     task_t *prev_sibling;
     uint64_t id;
-    char path[256];
-    char name[256];
+    rsrc_t *path_resource;
+    rsrc_t *cwd_resource;
     task_regs_t regs;
     task_mem_t memory;
     rsrc_handle_table_t handle_table;
@@ -66,7 +66,7 @@ struct task
 };
 
 void task_switching_init();
-task_t *task_create(void *entry_point, const char *path, task_mode_t mode);
+task_t *task_create(void *entry_point, rsrc_t *path_resource, task_mode_t mode);
 task_t *task_get_current();
 void task_set_parent(task_t *task, task_t *parent);
 uintptr_t task_find_free_vaddr(task_t *task, size_t num_pages);

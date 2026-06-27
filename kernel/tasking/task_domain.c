@@ -69,9 +69,15 @@ static rsrc_status_t _task_collection_describe_op(rsrc_t *resource, rsrc_info_t 
     out_info->task.child_count = child_count;
     out_info->task.state = (rsrc_task_state_t) task->state;
 
-    strncpy(out_info->task.path, task->path, RSRC_PATH_MAX_LEN);
-    out_info->task.path[RSRC_PATH_MAX_LEN - 1] = '\0';
-    strcpy(out_info->task.name, task->name);
+    if (task->path_resource == NULL
+        || rsmgr_get_resource_path(task->path_resource, out_info->task.path, RSRC_PATH_MAX_LEN)
+               != RSRC_STATUS_OK)
+        out_info->task.path[0] = '\0';
+    if (task->path_resource != NULL) {
+        strncpy(out_info->task.name, task->path_resource->header.name, RSRC_NAME_MAX_LEN - 1);
+        out_info->task.name[RSRC_NAME_MAX_LEN - 1] = '\0';
+    } else
+        out_info->task.name[0] = '\0';
     return RSRC_STATUS_OK;
 }
 

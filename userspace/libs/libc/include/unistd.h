@@ -22,6 +22,7 @@ int write(int fd, const void *buffer, uint32_t size);
 int getdents(int fd, void *buffer, uint32_t size);
 
 int lseek(int fd, int offset, int whence);
+int chcwd(const char *path);
 
 rsrc_handle_t file_create(const char *path);
 rsrc_handle_t pipe_create(const char *name);

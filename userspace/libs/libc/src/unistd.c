@@ -36,6 +36,11 @@ int lseek(int fd, int offset, int whence)
     return rsmgr_seek(fd, offset, whence);
 }
 
+int chcwd(const char *path)
+{
+    return (int) syscall1(SYSCALL_CHCWD, (long) path);
+}
+
 rsrc_handle_t file_create(const char *path)
 {
     return (rsrc_handle_t) syscall1(SYSCALL_FILE_CREATE, (long) path);

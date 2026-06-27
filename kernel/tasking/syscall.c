@@ -5,6 +5,7 @@
 
 #include <kernel/devices/debug.h>
 #include <kernel/klibc/memory.h>
+#include <kernel/klibc/string.h>
 #include <kernel/memory/heap.h>
 #include <kernel/memory/pmm.h>
 #include <kernel/memory/shm.h>
@@ -25,6 +26,66 @@ typedef struct
     int handle;
     uint64_t events;
 } syscall_rsrc_poll_t;
+
+static bool _path_has_domain(const char *path)
+{
+    if (path == NULL)
+        return false;
+
+    const char *colon = strchr(path, ':');
+    return colon != NULL && colon != path && colon[1] == '/';
+}
+
+static rsrc_status_t _resolve_task_path(
+    const task_t *task, const char *path, char *out_path, size_t out_path_size)
+{
+    if (path == NULL || out_path == NULL || out_path_size == 0)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    if (_path_has_domain(path))
+        return rsmgr_normalize_global_path(path, out_path, out_path_size);
+
+    char base_path[RSRC_PATH_MAX_LEN];
+    if (task != NULL && task->cwd_resource != NULL) {
+        rsrc_status_t path_result
+            = rsmgr_get_resource_path(task->cwd_resource, base_path, sizeof(base_path));
+        if (path_result != RSRC_STATUS_OK)
+            return path_result;
+    } else {
+        memcpy(base_path, "file:/", sizeof("file:/"));
+    }
+
+    const char *base = base_path;
+    char combined[RSRC_PATH_MAX_LEN];
+
+    if (path[0] == '/') {
+        const char *colon = strchr(base, ':');
+        if (colon == NULL || colon == base)
+            return RSRC_ERROR_INVALID_ARGUMENT;
+
+        size_t prefix_len = (size_t) (colon - base) + 1;
+        size_t path_len = strlen(path);
+        if (prefix_len + path_len + 1 > sizeof(combined))
+            return RSRC_ERROR_OUT_OF_RANGE;
+
+        memcpy(combined, base, prefix_len);
+        memcpy(combined + prefix_len, path, path_len + 1);
+    } else {
+        size_t base_len = strlen(base);
+        size_t path_len = strlen(path);
+        bool needs_separator = base_len == 0 || base[base_len - 1] != '/';
+        if (base_len + (needs_separator ? 1 : 0) + path_len + 1 > sizeof(combined))
+            return RSRC_ERROR_OUT_OF_RANGE;
+
+        memcpy(combined, base, base_len);
+        size_t pos = base_len;
+        if (needs_separator)
+            combined[pos++] = '/';
+        memcpy(combined + pos, path, path_len + 1);
+    }
+
+    return rsmgr_normalize_global_path(combined, out_path, out_path_size);
+}
 
 static void _free_task_create_argv(const char **argv, int argc)
 {
@@ -58,7 +119,13 @@ rsrc_status_t sys_rsrc_open(const char *path)
     if (current == NULL)
         return RSRC_ERROR;
 
-    rsrc_t *resource = rsmgr_open(path);
+    char resolved_path[RSRC_PATH_MAX_LEN];
+    rsrc_status_t resolve_result
+        = _resolve_task_path(current, path, resolved_path, sizeof(resolved_path));
+    if (resolve_result != RSRC_STATUS_OK)
+        return resolve_result;
+
+    rsrc_t *resource = rsmgr_open(resolved_path);
     if (resource == NULL)
         return RSRC_ERROR_NOT_FOUND;
 
@@ -208,8 +275,14 @@ rsrc_status_t sys_file_create(const char *path)
     if (current == NULL)
         return RSRC_ERROR;
 
+    char resolved_path[RSRC_PATH_MAX_LEN];
+    rsrc_status_t resolve_result
+        = _resolve_task_path(current, path, resolved_path, sizeof(resolved_path));
+    if (resolve_result != RSRC_STATUS_OK)
+        return resolve_result;
+
     rsrc_t *resource = NULL;
-    rsrc_status_t result = rsmgr_create_file(path, &resource);
+    rsrc_status_t result = rsmgr_create_file(resolved_path, &resource);
     if (result != RSRC_STATUS_OK)
         return result;
     if (resource == NULL)
@@ -457,14 +530,40 @@ void *sys_alloc_pages(size_t num_pages, uint64_t flags)
     return (void *) virt_addr;
 }
 
+rsrc_status_t sys_chcwd(const char *path)
+{
+    if (!syscall_user_ptr_range(path, 1))
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    task_t *current = task_get_current();
+    if (current == NULL)
+        return RSRC_ERROR;
+
+    char resolved_path[RSRC_PATH_MAX_LEN];
+    rsrc_status_t resolve_result
+        = _resolve_task_path(current, path, resolved_path, sizeof(resolved_path));
+    if (resolve_result != RSRC_STATUS_OK)
+        return resolve_result;
+
+    rsrc_t *resource = rsmgr_open(resolved_path);
+    if (resource == NULL)
+        return RSRC_ERROR_NOT_FOUND;
+    if (resource->header.type != RSRC_TYPE_COLLECTION)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    rsmgr_unref(current->cwd_resource);
+    current->cwd_resource = resource;
+    rsmgr_ref(current->cwd_resource);
+    return RSRC_STATUS_OK;
+}
+
 int sys_task_create(int argc, const char **argv, const int *inherit_rds, int inherit_rd_count)
 {
     if (argc < 1 || !syscall_user_ptr_range(argv, argc * sizeof(const char *)))
         return -1;
     if (inherit_rd_count < 0 || inherit_rd_count > TASK_CREATE_MAX_INHERITED_RDS)
         return -1;
-    if (inherit_rd_count > 0
-        && !syscall_user_ptr_range(inherit_rds, inherit_rd_count * sizeof(int)))
+    if (inherit_rd_count > 0 && !syscall_user_ptr_range(inherit_rds, inherit_rd_count * sizeof(int)))
         return -1;
 
     task_t *current = task_get_current();
@@ -515,6 +614,29 @@ int sys_task_create(int argc, const char **argv, const int *inherit_rds, int inh
         k_str[len] = '\0';
         k_argv[i] = k_str;
     }
+
+    char *resolved_exec_path = kmalloc(RSRC_PATH_MAX_LEN);
+    if (resolved_exec_path == NULL) {
+        _free_task_create_argv(k_argv, argc);
+        return -1;
+    }
+
+    rsrc_status_t resolve_result
+        = _resolve_task_path(current, k_argv[0], resolved_exec_path, RSRC_PATH_MAX_LEN);
+    if (resolve_result != RSRC_STATUS_OK) {
+        kfree(resolved_exec_path);
+        _free_task_create_argv(k_argv, argc);
+        return -1;
+    }
+
+    char *exec_path = strdup(resolved_exec_path);
+    kfree(resolved_exec_path);
+    if (exec_path == NULL) {
+        _free_task_create_argv(k_argv, argc);
+        return -1;
+    }
+    kfree((void *) k_argv[0]);
+    k_argv[0] = exec_path;
 
     task_t *child = load_exec(k_argv[0], current, argc, k_argv);
     if (child == NULL) {
@@ -612,6 +734,8 @@ long syscall_dispatch(uintptr_t num, uintptr_t arg1, uintptr_t arg2, uintptr_t a
         return sys_rsrc_mmap((int) arg1, (uint64_t) arg2, (uint64_t) arg3, (uint64_t) arg4);
     case SYSCALL_RSRC_POLL:
         return sys_rsrc_poll((const syscall_rsrc_poll_t *) arg1, (uint64_t) arg2);
+    case SYSCALL_CHCWD:
+        return sys_chcwd((const char *) arg1);
     case SYSCALL_FILE_CREATE:
         return sys_file_create((const char *) arg1);
     case SYSCALL_IPC_CHANNEL_CREATE:

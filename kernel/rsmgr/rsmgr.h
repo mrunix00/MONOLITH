@@ -287,6 +287,12 @@ rsrc_domain_t *rsmgr_get_domain(const char *name);
 rsrc_node_t *rsmgr_get_path(const char *path);
 
 /*
+ * Normalizes a global path into canonical `domain:/path` form.
+ * Returns `RSRC_STATUS_OK` on success.
+ */
+rsrc_status_t rsmgr_normalize_global_path(const char *path, char *path_out, size_t buffer_size);
+
+/*
  * Finds the resource node for the given relative path, starting from the given parent node.
  * Returns the node when found, `NULL` otherwise.
  */
@@ -333,6 +339,18 @@ void rsmgr_handle_table_destroy(rsrc_handle_table_t *table);
  * Returns the resource on success, NULL on failure.
  */
 rsrc_t *rsmgr_open(const char *path);
+
+/*
+ * Bumps or drops a resource reference held outside handle tables.
+ */
+void rsmgr_ref(rsrc_t *resource);
+void rsmgr_unref(rsrc_t *resource);
+
+/*
+ * Builds the canonical absolute path for an attached resource.
+ * Returns `RSRC_STATUS_OK` on success.
+ */
+rsrc_status_t rsmgr_get_resource_path(const rsrc_t *resource, char *path_out, size_t buffer_size);
 
 /*
  * Looks up a child resource from a collection handle.

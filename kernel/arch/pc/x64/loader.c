@@ -127,7 +127,7 @@ static task_t *_load_elf_impl(const char *path, task_t *parent, int argc, const 
 
     debug_log_fmt("Found %d program headers\n", pht_entry_count);
 
-    task_t *task = task_create((void *) entry_offset, path, TASK_MODE_USER);
+    task_t *task = task_create((void *) entry_offset, file, TASK_MODE_USER);
 
     for (int i = 0; i < pht_entry_count; i++) {
         elf64_psh_t psh;

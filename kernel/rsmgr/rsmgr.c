@@ -216,10 +216,7 @@ static rsrc_node_t *_find_child_by_name(rsrc_node_t *parent, const char *name, s
 }
 
 rsrc_status_t rsmgr_attach_resource_at_path(
-    rsrc_domain_id_t domain_id,
-    const char *path,
-    rsrc_t *resource,
-    const rsrc_ops_t *collection_ops)
+    rsrc_domain_id_t domain_id, const char *path, rsrc_t *resource, const rsrc_ops_t *collection_ops)
 {
     if (domain_id <= RSRC_DOMAIN_NULL || domain_id >= RSRC_DOMAIN_END || path == NULL
         || resource == NULL || collection_ops == NULL)
@@ -327,8 +324,7 @@ static rsrc_status_t _get_path(
     /* Skip the scheme prefix (`name:/`). */
     full_path = colon_pos + 2;
 
-    char temp[buffer_size];
-    temp[0] = '\0';
+    path_out[0] = '\0';
     size_t pos = 0;
 
     /* Process each component of the path */
@@ -348,24 +344,26 @@ static rsrc_status_t _get_path(
         size_t component_len = component_end - component_start;
 
         /* Handle special components */
-        if (component_len == 2 && component_start[0] == '.' && component_start[1] == '.') {
+        if (component_len == 1 && component_start[0] == '.') {
+            /* "." - stay in the current directory */
+        } else if (component_len == 2 && component_start[0] == '.' && component_start[1] == '.') {
             /* ".." - go up one directory */
             if (pos > 1) { // Make sure we don't go past root
                 pos--;     // Remove trailing slash
-                while (pos > 1 && temp[pos - 1] != '/')
+                while (pos > 1 && path_out[pos - 1] != '/')
                     pos--;
-                temp[pos] = '\0';
+                path_out[pos] = '\0';
             }
         } else {
             /* Regular component, append it */
             if (pos + component_len + 1 >= buffer_size)
                 return RSRC_ERROR_OUT_OF_RANGE;
 
-            if (pos > 1 || temp[0] != '/') // Don't add slash if we're at root
-                temp[pos++] = '/';
-            strncpy(&temp[pos], component_start, component_len);
+            if (pos > 1 || path_out[0] != '/') // Don't add slash if we're at root
+                path_out[pos++] = '/';
+            strncpy(&path_out[pos], component_start, component_len);
             pos += component_len;
-            temp[pos] = '\0';
+            path_out[pos] = '\0';
         }
 
         /* Move to next component */
@@ -374,15 +372,9 @@ static rsrc_status_t _get_path(
 
     /* If we ended up with an empty path, make sure it's at least "/" */
     if (pos == 0) {
-        temp[pos++] = '/';
-        temp[pos] = '\0';
+        path_out[pos++] = '/';
+        path_out[pos] = '\0';
     }
-
-    /* Copy result to output buffer */
-    if (strlen(temp) >= buffer_size)
-        return RSRC_ERROR_OUT_OF_RANGE;
-
-    strcpy(path_out, temp);
 
     return RSRC_STATUS_OK;
 }
@@ -394,6 +386,98 @@ rsrc_node_t *rsmgr_get_path(const char *path)
     if (_get_path(path, &domain, path_out, RSRC_PATH_MAX_LEN) != RSRC_STATUS_OK)
         return NULL;
     return rsmgr_get_relative_path(domain->root_node, path_out);
+}
+
+void rsmgr_ref(rsrc_t *resource)
+{
+    if (resource == NULL)
+        return;
+    resource->refcount++;
+}
+
+void rsmgr_unref(rsrc_t *resource)
+{
+    if (resource == NULL)
+        return;
+    if (!debug_assert(resource->refcount > 0))
+        return;
+    resource->refcount--;
+}
+
+rsrc_status_t rsmgr_normalize_global_path(const char *path, char *path_out, size_t buffer_size)
+{
+    if (path_out == NULL || buffer_size == 0)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    rsrc_domain_t *domain;
+    rsrc_status_t result = _get_path(path, &domain, path_out, buffer_size);
+    if (result != RSRC_STATUS_OK)
+        return result;
+    if (domain == NULL || domain->name == NULL)
+        return RSRC_ERROR_NOT_FOUND;
+
+    size_t domain_len = strlen(domain->name);
+    size_t relative_len = strlen(path_out);
+    if (domain_len + 1 + relative_len + 1 > buffer_size)
+        return RSRC_ERROR_OUT_OF_RANGE;
+
+    for (size_t i = relative_len + 1; i > 0; i--)
+        path_out[domain_len + i] = path_out[i - 1];
+    memcpy(path_out, domain->name, domain_len);
+    path_out[domain_len] = ':';
+    return RSRC_STATUS_OK;
+}
+
+rsrc_status_t rsmgr_get_resource_path(const rsrc_t *resource, char *path_out, size_t buffer_size)
+{
+    if (resource == NULL || path_out == NULL || buffer_size == 0)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+    if (resource->domain == NULL || resource->domain->name == NULL || resource->node == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    const rsrc_node_t *node = resource->node;
+    const char *components[RSRC_PATH_MAX_LEN / 2];
+    size_t component_lengths[RSRC_PATH_MAX_LEN / 2];
+    size_t component_count = 0;
+
+    while (node != NULL && node->parent != NULL) {
+        if (component_count >= (RSRC_PATH_MAX_LEN / 2))
+            return RSRC_ERROR_OUT_OF_RANGE;
+        components[component_count] = node->resource->header.name;
+        component_lengths[component_count] = strlen(node->resource->header.name);
+        component_count++;
+        node = node->parent;
+    }
+
+    if (node == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    size_t domain_len = strlen(resource->domain->name);
+    if (domain_len + 3 > buffer_size)
+        return RSRC_ERROR_OUT_OF_RANGE;
+
+    memcpy(path_out, resource->domain->name, domain_len);
+    size_t pos = domain_len;
+    path_out[pos++] = ':';
+    path_out[pos++] = '/';
+
+    for (size_t i = component_count; i > 0; i--) {
+        size_t index = i - 1;
+        size_t component_len = component_lengths[index];
+        if (component_len == 0)
+            continue;
+        if (pos + component_len + 1 > buffer_size)
+            return RSRC_ERROR_OUT_OF_RANGE;
+        memcpy(path_out + pos, components[index], component_len);
+        pos += component_len;
+        if (index != 0)
+            path_out[pos++] = '/';
+    }
+
+    if (pos >= buffer_size)
+        return RSRC_ERROR_OUT_OF_RANGE;
+    path_out[pos] = '\0';
+    return RSRC_STATUS_OK;
 }
 
 rsrc_node_t *rsmgr_get_relative_path(rsrc_node_t *parent, const char *path)
