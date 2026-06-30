@@ -128,6 +128,7 @@ $(INITRD_TAR): FORCE userspace $(INITRD_DIR) | $(BUILD_DIR)
 	@mkdir -p $(INITRD_DIR)/assets
 	@cp -f assets/wallpaper.jpg $(INITRD_DIR)/assets/wallpaper.jpg
 	@cp -f assets/IBMPlexSans_Condensed-Medium.ttf $(INITRD_DIR)/assets/IBMPlexSans_Condensed-Medium.ttf
+	@cp -f assets/JetBrainsMono-Medium.ttf $(INITRD_DIR)/assets/JetBrainsMono-Medium.ttf
 	tar --format=ustar -cf $(INITRD_TAR) -C $(INITRD_DIR) .
 
 $(INITRD_TAR_GZ): $(INITRD_TAR)

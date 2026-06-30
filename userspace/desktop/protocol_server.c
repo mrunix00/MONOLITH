@@ -321,15 +321,6 @@ static bool _pump_window_resize_events()
     return had_resize_event;
 }
 
-static void _accept_pending_connections()
-{
-    connection_t connection;
-    int result;
-
-    while ((result = ipc_poll_connection(_channel, &connection)) == 0)
-        ipc_accept_connection(_channel, &connection);
-}
-
 int protocol_server_init()
 {
     if (_channel >= 0)
@@ -352,7 +343,6 @@ bool protocol_server_pump()
 
     bool had_activity = false;
 
-    _accept_pending_connections();
     unsigned char raw_packet[PROTOCOL_SERVER_RECV_BUFFER_SIZE] = {0};
 
     while (ipc_receive_packet(_channel, raw_packet, sizeof(raw_packet)) > 0) {
@@ -360,6 +350,11 @@ bool protocol_server_pump()
         ipc_channel_recv_out_t *packet = (ipc_channel_recv_out_t *) raw_packet;
 
         switch (packet->header.type) {
+        case IPC_CHANNEL_PACKET_CONNECTION_REQUEST: {
+            connection_t connection = packet->header.connection_id;
+            ipc_accept_connection(_channel, &connection);
+            break;
+        }
         case IPC_CHANNEL_PACKET_MESSAGE:
             if (packet->header.payload_len < sizeof(desktop_request_t)) {
                 protocol_send_error(packet->header.sender_task_id, 0, 4, "invalid request size");

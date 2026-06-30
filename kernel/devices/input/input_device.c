@@ -99,7 +99,7 @@ static rsrc_status_t _input_device_read(
         return RSRC_ERROR_NOT_SUPPORTED;
 
     if (!poll_fn(buffer, buffer_len, out_bytes_read))
-        return RSRC_ERROR_WOULD_BLOCK;
+        *out_bytes_read = 0;
 
     return RSRC_STATUS_OK;
 }

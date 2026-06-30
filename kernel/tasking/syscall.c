@@ -18,8 +18,14 @@
 #include <shared/include/monolith/sys/syscall.h>
 
 #define TASK_CREATE_MAX_ARGS 256
-#define TASK_CREATE_MAX_INHERITED_RDS 256
+#define TASK_CREATE_MAX_INHERITED_DESCRIPTORS 256
 #define RSRC_POLL_MAX_HANDLES 64
+
+typedef struct
+{
+    int current_descriptor;
+    int target_descriptor;
+} task_create_inherit_t;
 
 typedef struct
 {
@@ -165,9 +171,10 @@ rsrc_status_t sys_rsrc_dup(int fd)
     return new_fd;
 }
 
-rsrc_status_t sys_rsrc_read(int fd, void *buffer, uint64_t size)
+rsrc_status_t sys_rsrc_read(int fd, void *buffer, uint64_t size, uint64_t *out_bytes_read)
 {
-    if (!syscall_user_ptr_range(buffer, size))
+    if (!syscall_user_ptr_range(buffer, size)
+        || !syscall_user_ptr_range(out_bytes_read, sizeof(*out_bytes_read)))
         return RSRC_ERROR_INVALID_ARGUMENT;
 
     task_t *current = task_get_current();
@@ -183,7 +190,8 @@ rsrc_status_t sys_rsrc_read(int fd, void *buffer, uint64_t size)
         return result;
 
     entry->offset += bytes_read;
-    return bytes_read;
+    *out_bytes_read = bytes_read;
+    return RSRC_STATUS_OK;
 }
 
 rsrc_status_t sys_rsrc_write(int fd, const void *buffer, uint64_t size)
@@ -266,7 +274,7 @@ rsrc_status_t sys_rsrc_lookup(int parent_fd, const char *path)
     return _alloc_task_handle(current, child);
 }
 
-rsrc_status_t sys_file_create(const char *path)
+static rsrc_status_t _sys_create_in_file_domain(const char *path, bool directory)
 {
     if (!syscall_user_ptr_range(path, 1))
         return RSRC_ERROR_INVALID_ARGUMENT;
@@ -282,13 +290,24 @@ rsrc_status_t sys_file_create(const char *path)
         return resolve_result;
 
     rsrc_t *resource = NULL;
-    rsrc_status_t result = rsmgr_create_file(resolved_path, &resource);
+    rsrc_status_t result = directory ? rsmgr_create_directory(resolved_path, &resource)
+                                     : rsmgr_create_file(resolved_path, &resource);
     if (result != RSRC_STATUS_OK)
         return result;
     if (resource == NULL)
         return RSRC_ERROR;
 
     return _alloc_task_handle(current, resource);
+}
+
+rsrc_status_t sys_file_create(const char *path)
+{
+    return _sys_create_in_file_domain(path, false);
+}
+
+rsrc_status_t sys_dir_create(const char *path)
+{
+    return _sys_create_in_file_domain(path, true);
 }
 
 rsrc_status_t sys_ipc_channel_create(const char *name)
@@ -410,7 +429,7 @@ rsrc_status_t sys_rsrc_control(int fd, uint64_t command_id, void *buffer, uint64
     return result;
 }
 
-rsrc_status_t sys_rsrc_mmap(int fd, uint64_t offset, uint64_t length, uint64_t prot)
+long sys_rsrc_mmap(int fd, uint64_t offset, uint64_t length, uint64_t prot)
 {
     task_t *current = task_get_current();
     if (length == 0)
@@ -427,7 +446,7 @@ rsrc_status_t sys_rsrc_mmap(int fd, uint64_t offset, uint64_t length, uint64_t p
         = rsmgr_mmap(entry->resource, &entry->offset, offset, length, prot, &address);
     if (result != RSRC_STATUS_OK)
         return result;
-    return (rsrc_status_t) address;
+    return (long) address;
 }
 
 rsrc_status_t sys_rsrc_poll(const syscall_rsrc_poll_t *polls, uint64_t count)
@@ -557,13 +576,15 @@ rsrc_status_t sys_chcwd(const char *path)
     return RSRC_STATUS_OK;
 }
 
-int sys_task_create(int argc, const char **argv, const int *inherit_rds, int inherit_rd_count)
+int sys_task_create(
+    int argc, const char **argv, const task_create_inherit_t *inherit, int inherit_count)
 {
     if (argc < 1 || !syscall_user_ptr_range(argv, argc * sizeof(const char *)))
         return -1;
-    if (inherit_rd_count < 0 || inherit_rd_count > TASK_CREATE_MAX_INHERITED_RDS)
+    if (inherit_count < 0 || inherit_count > TASK_CREATE_MAX_INHERITED_DESCRIPTORS)
         return -1;
-    if (inherit_rd_count > 0 && !syscall_user_ptr_range(inherit_rds, inherit_rd_count * sizeof(int)))
+    if (inherit_count > 0
+        && !syscall_user_ptr_range(inherit, inherit_count * sizeof(task_create_inherit_t)))
         return -1;
 
     task_t *current = task_get_current();
@@ -573,20 +594,36 @@ int sys_task_create(int argc, const char **argv, const int *inherit_rds, int inh
     if (argc > TASK_CREATE_MAX_ARGS)
         argc = TASK_CREATE_MAX_ARGS;
 
-    for (int i = 0; i < inherit_rd_count; i++) {
-        int rd = inherit_rds[i];
-        if (rsmgr_handle_table_get(&current->handle_table, rd) == NULL)
+    task_create_inherit_t *k_inherit = NULL;
+    if (inherit_count > 0) {
+        k_inherit = kmalloc(sizeof(task_create_inherit_t) * inherit_count);
+        if (k_inherit == NULL)
             return -1;
+        memcpy(k_inherit, inherit, sizeof(task_create_inherit_t) * inherit_count);
+    }
+
+    for (int i = 0; i < inherit_count; i++) {
+        int current_descriptor = k_inherit[i].current_descriptor;
+        int target_descriptor = k_inherit[i].target_descriptor;
+        if (current_descriptor < 0 || target_descriptor < 0
+            || target_descriptor >= TASK_CREATE_MAX_INHERITED_DESCRIPTORS
+            || rsmgr_handle_table_get(&current->handle_table, current_descriptor) == NULL) {
+            kfree(k_inherit);
+            return -1;
+        }
     }
 
     const char **k_argv = (const char **) kmalloc(sizeof(const char *) * argc);
-    if (!k_argv)
+    if (!k_argv) {
+        kfree(k_inherit);
         return -1;
+    }
     memset(k_argv, 0, sizeof(const char *) * argc);
 
     for (int i = 0; i < argc; i++) {
         const char *user_str = argv[i];
         if (!syscall_user_ptr_range(user_str, 1)) {
+            kfree(k_inherit);
             _free_task_create_argv(k_argv, argc);
             return -1;
         }
@@ -607,6 +644,7 @@ int sys_task_create(int argc, const char **argv, const int *inherit_rds, int inh
 
         char *k_str = (char *) kmalloc(len + 1);
         if (!k_str) {
+            kfree(k_inherit);
             _free_task_create_argv(k_argv, argc);
             return -1;
         }
@@ -617,6 +655,7 @@ int sys_task_create(int argc, const char **argv, const int *inherit_rds, int inh
 
     char *resolved_exec_path = kmalloc(RSRC_PATH_MAX_LEN);
     if (resolved_exec_path == NULL) {
+        kfree(k_inherit);
         _free_task_create_argv(k_argv, argc);
         return -1;
     }
@@ -625,6 +664,7 @@ int sys_task_create(int argc, const char **argv, const int *inherit_rds, int inh
         = _resolve_task_path(current, k_argv[0], resolved_exec_path, RSRC_PATH_MAX_LEN);
     if (resolve_result != RSRC_STATUS_OK) {
         kfree(resolved_exec_path);
+        kfree(k_inherit);
         _free_task_create_argv(k_argv, argc);
         return -1;
     }
@@ -632,6 +672,7 @@ int sys_task_create(int argc, const char **argv, const int *inherit_rds, int inh
     char *exec_path = strdup(resolved_exec_path);
     kfree(resolved_exec_path);
     if (exec_path == NULL) {
+        kfree(k_inherit);
         _free_task_create_argv(k_argv, argc);
         return -1;
     }
@@ -641,18 +682,23 @@ int sys_task_create(int argc, const char **argv, const int *inherit_rds, int inh
     task_t *child = load_exec(k_argv[0], current, argc, k_argv);
     if (child == NULL) {
         debug_log_fmt("Failed to load %s!\n", k_argv[0]);
+        kfree(k_inherit);
         _free_task_create_argv(k_argv, argc);
         return -1;
     }
 
-    for (int i = 0; i < inherit_rd_count; i++) {
-        int rd = inherit_rds[i];
-        rsrc_handle_entry_t *entry = rsmgr_handle_table_get(&current->handle_table, rd);
-        if (rsmgr_handle_table_get(&child->handle_table, rd) != NULL)
+    for (int i = 0; i < inherit_count; i++) {
+        int current_descriptor = k_inherit[i].current_descriptor;
+        int target_descriptor = k_inherit[i].target_descriptor;
+        rsrc_handle_entry_t *entry
+            = rsmgr_handle_table_get(&current->handle_table, current_descriptor);
+        if (rsmgr_handle_table_get(&child->handle_table, target_descriptor) != NULL)
             continue;
         if (entry == NULL
-            || rsmgr_handle_table_inherit(&child->handle_table, rd, entry) != RSRC_STATUS_OK) {
+            || rsmgr_handle_table_inherit(&child->handle_table, target_descriptor, entry)
+                != RSRC_STATUS_OK) {
             task_remove(child);
+            kfree(k_inherit);
             _free_task_create_argv(k_argv, argc);
             return -1;
         }
@@ -661,6 +707,7 @@ int sys_task_create(int argc, const char **argv, const int *inherit_rds, int inh
     rsrc_t *task_resource = child->resource_node == NULL ? NULL : child->resource_node->resource;
     if (task_resource == NULL) {
         task_remove(child);
+        kfree(k_inherit);
         _free_task_create_argv(k_argv, argc);
         return -1;
     }
@@ -668,10 +715,14 @@ int sys_task_create(int argc, const char **argv, const int *inherit_rds, int inh
     int handle = _alloc_task_handle(current, task_resource);
     if (handle < 0) {
         task_remove(child);
+        kfree(k_inherit);
         _free_task_create_argv(k_argv, argc);
         return -1;
     }
 
+    task_set_state(child, TASK_STATE_RUNNABLE);
+
+    kfree(k_inherit);
     _free_task_create_argv(k_argv, argc);
     return handle;
 }
@@ -717,7 +768,7 @@ long syscall_dispatch(uintptr_t num, uintptr_t arg1, uintptr_t arg2, uintptr_t a
     case SYSCALL_RSRC_LIST:
         return sys_rsrc_list((int) arg1, (uint64_t) arg2, (void *) arg3, (uint64_t) arg4);
     case SYSCALL_RSRC_READ:
-        return sys_rsrc_read((int) arg1, (void *) arg2, (uint64_t) arg3);
+        return sys_rsrc_read((int) arg1, (void *) arg2, (uint64_t) arg3, (uint64_t *) arg4);
     case SYSCALL_RSRC_WRITE:
         return sys_rsrc_write((int) arg1, (const void *) arg2, (uint64_t) arg3);
     case SYSCALL_RSRC_REMOVE:
@@ -738,12 +789,15 @@ long syscall_dispatch(uintptr_t num, uintptr_t arg1, uintptr_t arg2, uintptr_t a
         return sys_chcwd((const char *) arg1);
     case SYSCALL_FILE_CREATE:
         return sys_file_create((const char *) arg1);
+    case SYSCALL_DIR_CREATE:
+        return sys_dir_create((const char *) arg1);
     case SYSCALL_IPC_CHANNEL_CREATE:
         return sys_ipc_channel_create((const char *) arg1);
     case SYSCALL_SHM_CREATE:
         return sys_shm_create((const char *) arg1, (size_t) arg2);
     case SYSCALL_TASK_CREATE:
-        return sys_task_create((int) arg1, (const char **) arg2, (const int *) arg3, (int) arg4);
+        return sys_task_create(
+            (int) arg1, (const char **) arg2, (const task_create_inherit_t *) arg3, (int) arg4);
     case SYSCALL_PIPE_CREATE:
         return sys_pipe_create((const char *) arg1);
     default:

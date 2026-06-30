@@ -169,6 +169,7 @@ void kmain()
         while (1)
             asm_hlt();
     }
+    task_set_state(task, TASK_STATE_RUNNABLE);
 
     stop_debug_console();
     scheduler_init();

@@ -5,6 +5,34 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
+#include <term.h>
+
+static int _write_stdout(const char *str, size_t length)
+{
+    while (length > 0) {
+        uint32_t chunk = length > TERM_MAX_PAYLOAD ? TERM_MAX_PAYLOAD : (uint32_t) length;
+        if (term_write_command(TERM_RD_TIN, TERM_COMMAND_WRITE_VT100, str, chunk) != 0)
+            return -1;
+
+        str += chunk;
+        length -= chunk;
+    }
+
+    return 0;
+}
+
+int puts(const char *s)
+{
+    if (s == NULL)
+        return -1;
+
+    size_t length = strlen(s);
+    if (_write_stdout(s, length) != 0 || _write_stdout("\r\n", 2) != 0)
+        return -1;
+
+    return (int) length + 1;
+}
 
 static char *utoa(char *str, unsigned long num, int base, int uppercase)
 {

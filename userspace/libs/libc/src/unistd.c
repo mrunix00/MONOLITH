@@ -18,7 +18,9 @@ int close(int fd)
 
 int read(int fd, void *buffer, uint32_t size)
 {
-    return rsmgr_read(fd, buffer, size);
+    uint64_t bytes_read = 0;
+    int result = rsmgr_read(fd, buffer, size, &bytes_read);
+    return result < 0 ? result : (int) bytes_read;
 }
 
 int write(int fd, const void *buffer, uint32_t size)
@@ -46,8 +48,21 @@ rsrc_handle_t file_create(const char *path)
     return (rsrc_handle_t) syscall1(SYSCALL_FILE_CREATE, (long) path);
 }
 
-rsrc_handle_t task_create(int argc, const char **argv, const int *inherit_rds, int inherit_rd_count)
+int mkdir(const char *path, unsigned mode)
+{
+    (void) mode;
+
+    int fd = (int) syscall1(SYSCALL_DIR_CREATE, (long) path);
+    if (fd < 0)
+        return fd;
+
+    close(fd);
+    return 0;
+}
+
+rsrc_handle_t task_create(
+    int argc, const char **argv, const task_create_inherit_t *inherit, int inherit_count)
 {
     return (rsrc_handle_t) syscall4(
-        SYSCALL_TASK_CREATE, (long) argc, (long) argv, (long) inherit_rds, (long) inherit_rd_count);
+        SYSCALL_TASK_CREATE, (long) argc, (long) argv, (long) inherit, (long) inherit_count);
 }

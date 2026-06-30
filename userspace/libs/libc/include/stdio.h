@@ -14,3 +14,4 @@ typedef enum {
 } io_t;
 
 int sprintf(char *str, const char *format, ...);
+int puts(const char *s);

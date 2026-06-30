@@ -764,6 +764,11 @@ rsrc_status_t rsmgr_create_file(const char *path, rsrc_t **out_resource)
     return _rsmgr_create_in_domain(path, RSRC_DOMAIN_FILE, RSRC_TYPE_RESOURCE, out_resource);
 }
 
+rsrc_status_t rsmgr_create_directory(const char *path, rsrc_t **out_resource)
+{
+    return _rsmgr_create_in_domain(path, RSRC_DOMAIN_FILE, RSRC_TYPE_COLLECTION, out_resource);
+}
+
 rsrc_status_t rsmgr_describe(rsrc_t *resource, rsrc_info_t *out_info)
 {
     if (resource == NULL || out_info == NULL)

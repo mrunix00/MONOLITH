@@ -93,7 +93,7 @@ typedef struct
 rsrc_handle_t rsmgr_open(const char *path);
 int rsmgr_close(rsrc_handle_t handle);
 int rsmgr_describe(rsrc_handle_t handle, rsrc_info_t *info);
-int rsmgr_read(rsrc_handle_t handle, void *buffer, uint32_t size);
+int rsmgr_read(rsrc_handle_t handle, void *buffer, uint32_t size, uint64_t *out_bytes_read);
 int rsmgr_write(rsrc_handle_t handle, const void *buffer, uint32_t size);
 int rsmgr_list(rsrc_handle_t handle, void *buffer, uint32_t size);
 int rsmgr_seek(rsrc_handle_t handle, int offset, int whence);

@@ -194,6 +194,39 @@ static rsrc_status_t _tmpfs_create_op(
     return RSRC_STATUS_OK;
 }
 
+static rsrc_status_t _tmpfs_remove_op(rsrc_t *resource, void *handle_state, const char *name)
+{
+    (void) handle_state;
+
+    if (resource == NULL || resource->header.type != RSRC_TYPE_COLLECTION || resource->node == NULL
+        || name == NULL || *name == '\0')
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    rsrc_node_t *prev = NULL;
+    rsrc_node_t *current = resource->node->first_child;
+    while (current != NULL) {
+        if (strcmp(current->resource->header.name, name) == 0)
+            break;
+        prev = current;
+        current = current->next_sibling;
+    }
+
+    if (current == NULL)
+        return RSRC_ERROR_NOT_FOUND;
+    if (current->first_child != NULL)
+        return RSRC_ERROR_NOT_SUPPORTED;
+    if (current->resource->refcount > 0)
+        return RSRC_ERROR_BAD_HANDLE;
+
+    if (prev == NULL)
+        resource->node->first_child = current->next_sibling;
+    else
+        prev->next_sibling = current->next_sibling;
+    current->next_sibling = NULL;
+
+    return RSRC_STATUS_OK;
+}
+
 static const rsrc_ops_t _tmpfs_resource_ops = {
     .open = NULL,
     .lookup = NULL,
@@ -208,7 +241,7 @@ static const rsrc_ops_t _tmpfs_resource_ops = {
     .mmap = NULL,
     .poll = _tmpfs_poll_op,
     .create = _tmpfs_create_op,
-    .remove = NULL,
+    .remove = _tmpfs_remove_op,
     .control = NULL,
 };
 

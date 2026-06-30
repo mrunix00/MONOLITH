@@ -21,9 +21,10 @@ int rsmgr_describe(rsrc_handle_t handle, rsrc_info_t *info)
     return (int) syscall2(SYSCALL_RSRC_DESCRIBE, (long) handle, (long) info);
 }
 
-int rsmgr_read(rsrc_handle_t handle, void *buffer, uint32_t size)
+int rsmgr_read(rsrc_handle_t handle, void *buffer, uint32_t size, uint64_t *out_bytes_read)
 {
-    return (int) syscall3(SYSCALL_RSRC_READ, (long) handle, (long) buffer, (long) size);
+    return (int) syscall4(
+        SYSCALL_RSRC_READ, (long) handle, (long) buffer, (long) size, (long) out_bytes_read);
 }
 
 int rsmgr_write(rsrc_handle_t handle, const void *buffer, uint32_t size)

@@ -152,7 +152,7 @@ static int _request_window_framebuffer(
     return 0;
 }
 
-int desktop_connect(void)
+rsrc_handle_t desktop_connect(void)
 {
     _protocol_channel = ipc_connect(DESKTOP_CHANNEL_NAME);
     if (_protocol_channel < 0) {
@@ -168,7 +168,7 @@ int desktop_connect(void)
         return -1;
     }
 
-    return 0;
+    return _protocol_channel;
 }
 
 uint32_t desktop_create_window(uint16_t w, uint16_t h, window_flags_t flags, const char *title)

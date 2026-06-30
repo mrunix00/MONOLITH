@@ -559,24 +559,6 @@ static int _receive_packet(
     return written;
 }
 
-static int _receive_message(
-    task_t *task, _ipc_channel_t *channel, _ipc_packet_queue_t *queue, void *buffer, size_t size)
-{
-    if (task == NULL || channel == NULL || queue == NULL || buffer == NULL || size == 0)
-        return -1;
-    if (queue->count == 0)
-        return 0;
-
-    _ipc_packet_t *packet = queue->packets[0];
-    if (packet->header.type != IPC_CHANNEL_PACKET_MESSAGE || packet->header.payload_len > size)
-        return -1;
-
-    memcpy(buffer, packet->payload, packet->header.payload_len);
-    int written = (int) packet->header.payload_len;
-    _dequeue_packet(queue, 0);
-    return written;
-}
-
 static int _disconnect_channel(task_t *task, _ipc_channel_t *channel)
 {
     if (task == NULL || channel == NULL)
@@ -633,7 +615,7 @@ static rsrc_status_t _channel_domain_open(
 
     if (node->resource->header.type != RSRC_TYPE_COLLECTION
         && _channel_connect_resource(task_get_current(), node->resource) < 0) {
-        return RSRC_ERROR_PERMISSION_DENIED;
+        return RSRC_ERROR_IO;
     }
 
     *out_resource = node->resource;
@@ -653,7 +635,7 @@ static rsrc_status_t _channel_domain_lookup(
 
     if (node->resource->header.type != RSRC_TYPE_COLLECTION
         && _channel_connect_resource(task_get_current(), node->resource) < 0) {
-        return RSRC_ERROR_PERMISSION_DENIED;
+        return RSRC_ERROR_IO;
     }
 
     *out_resource = node->resource;
@@ -689,11 +671,11 @@ static rsrc_status_t _channel_read_op(
 
     _ipc_packet_queue_t *queue = _queue_for_task(channel, current);
     if (queue == NULL)
-        return RSRC_ERROR_PERMISSION_DENIED;
+        return RSRC_ERROR_BAD_HANDLE;
 
-    int result = _receive_message(current, channel, queue, buffer, buffer_len);
+    int result = _receive_packet(current, channel, queue, buffer, buffer_len);
     if (result < 0)
-        return RSRC_ERROR_WOULD_BLOCK;
+        return RSRC_ERROR_INVALID_ARGUMENT;
 
     *out_bytes_read = (uint64_t) result;
     return RSRC_STATUS_OK;
@@ -734,7 +716,7 @@ static rsrc_status_t _channel_poll_op(
     _ipc_channel_t *channel = (_ipc_channel_t *) resource->type_state;
     _ipc_packet_queue_t *queue = _queue_for_task(channel, current);
     if (queue == NULL)
-        return RSRC_ERROR_PERMISSION_DENIED;
+        return RSRC_ERROR_BAD_HANDLE;
 
     uint64_t ready = 0;
     if ((requested_events & RSRC_POLL_READ) != 0 && queue->count > 0)
@@ -834,27 +816,6 @@ static rsrc_status_t _channel_command_op(
                    ? RSRC_STATUS_OK
                    : RSRC_ERROR_IO;
     }
-    case IPC_CHANNEL_COMMAND_RECV: {
-        if (out == NULL || out_len < sizeof(ipc_channel_packet_header_t))
-            return RSRC_ERROR_INVALID_ARGUMENT;
-
-        _ipc_packet_queue_t *queue = _queue_for_task(channel, current);
-        if (queue == NULL)
-            return RSRC_ERROR_PERMISSION_DENIED;
-
-        int result = _receive_packet(current, channel, queue, out, out_len);
-        if (result < 0)
-            return RSRC_ERROR_WOULD_BLOCK;
-        if (out_bytes_written != NULL)
-            *out_bytes_written = (uint64_t) result;
-        return RSRC_STATUS_OK;
-    }
-    case IPC_CHANNEL_COMMAND_POLL_CONNECTION:
-        if (out == NULL || out_len < sizeof(connection_t))
-            return RSRC_ERROR_INVALID_ARGUMENT;
-        return _poll_channel_connection(current, channel, (connection_t *) out) == 0
-                   ? RSRC_STATUS_OK
-                   : RSRC_ERROR_WOULD_BLOCK;
     case IPC_CHANNEL_COMMAND_WAIT_CONNECTION:
         if (out == NULL || out_len < sizeof(connection_t))
             return RSRC_ERROR_INVALID_ARGUMENT;

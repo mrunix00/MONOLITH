@@ -37,10 +37,7 @@ typedef enum {
     RSRC_ERROR_ALREADY_EXISTS = -6,
     RSRC_ERROR_BAD_HANDLE = -7,
     RSRC_ERROR_OUT_OF_RANGE = -8,
-    RSRC_ERROR_BUSY = -9,
-    RSRC_ERROR_WOULD_BLOCK = -10,
-    RSRC_ERROR_PERMISSION_DENIED = -11,
-    RSRC_ERROR_IO = -12,
+    RSRC_ERROR_IO = -9,
 } rsrc_status_t;
 
 typedef enum {
@@ -363,6 +360,12 @@ rsrc_t *rsmgr_lookup(rsrc_t *collection, const char *path);
  * Returns `RSRC_STATUS_OK` on success.
  */
 rsrc_status_t rsmgr_create_file(const char *path, rsrc_t **out_resource);
+
+/*
+ * Creates a directory/collection resource by global path (e.g., "file:/path/to/resource").
+ * Returns `RSRC_STATUS_OK` on success.
+ */
+rsrc_status_t rsmgr_create_directory(const char *path, rsrc_t **out_resource);
 
 /*
  * Describes a resource.

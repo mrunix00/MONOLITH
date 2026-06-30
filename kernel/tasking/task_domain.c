@@ -13,6 +13,19 @@ static rsrc_node_t *_task_domain_root_node = NULL;
 
 static const rsrc_ops_t _task_collection_ops;
 
+static void _task_domain_release_node(rsrc_node_t *node)
+{
+    if (node == NULL || node->resource == NULL)
+        return;
+
+    rsrc_t *resource = node->resource;
+    resource->node = NULL;
+    resource->type_state = NULL;
+
+    if (resource->refcount == 0)
+        kfree(resource);
+}
+
 static void _task_domain_detach_node(rsrc_node_t *node)
 {
     if (node == NULL || node->parent == NULL)
@@ -78,6 +91,24 @@ static rsrc_status_t _task_collection_describe_op(rsrc_t *resource, rsrc_info_t 
         out_info->task.name[RSRC_NAME_MAX_LEN - 1] = '\0';
     } else
         out_info->task.name[0] = '\0';
+    return RSRC_STATUS_OK;
+}
+
+static rsrc_status_t _task_collection_poll_op(
+    rsrc_t *resource, void *handle_state, uint64_t requested_events, uint64_t *out_ready_events)
+{
+    (void) handle_state;
+    if (resource == NULL || out_ready_events == NULL)
+        return RSRC_ERROR_INVALID_ARGUMENT;
+
+    *out_ready_events = 0;
+    if ((requested_events & RSRC_POLL_READ) == 0)
+        return RSRC_STATUS_OK;
+
+    task_t *task = (task_t *) resource->type_state;
+    if (task == NULL || task->state == TASK_STATE_EXITING)
+        *out_ready_events = RSRC_POLL_READ;
+
     return RSRC_STATUS_OK;
 }
 
@@ -157,7 +188,7 @@ static const rsrc_ops_t _task_collection_ops = {
     .read = NULL,
     .write = NULL,
     .mmap = NULL,
-    .poll = NULL,
+    .poll = _task_collection_poll_op,
     .create = NULL,
     .remove = _task_collection_remove_op,
     .control = NULL,
@@ -260,12 +291,12 @@ void task_domain_unregister(task_t *task)
         if (child_task != NULL)
             child_task->resource_node = NULL;
         _task_domain_detach_node(child);
-        kfree(child->resource);
+        _task_domain_release_node(child);
         kfree(child);
     }
 
     _task_domain_detach_node(node);
-    kfree(node->resource);
+    _task_domain_release_node(node);
     kfree(node);
 }
 

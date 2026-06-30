@@ -181,6 +181,7 @@ static task_t *_load_elf_impl(const char *path, task_t *parent, int argc, const 
     /* Set up argc/argv on the user stack per System V i386 ABI */
     _setup_user_stack_args(task, stack, stack_base, stack_top, argc, argv);
 
+    task_set_state(task, TASK_STATE_SLEEPING);
     task_set_parent(task, parent);
 
     interrupts_enable();

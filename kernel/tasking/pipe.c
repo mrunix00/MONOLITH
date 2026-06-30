@@ -94,8 +94,10 @@ static rsrc_status_t _pipe_read_op(
     (void) handle_state;
 
     _pipe_t *pipe = (_pipe_t *) resource->type_state;
-    if (pipe->size == 0)
-        return RSRC_ERROR_WOULD_BLOCK;
+    if (pipe->size == 0) {
+        *out_bytes_read = 0;
+        return RSRC_STATUS_OK;
+    }
 
     uint64_t bytes_read = buffer_len < pipe->size ? buffer_len : pipe->size;
     memcpy(buffer, pipe->buffer, bytes_read);

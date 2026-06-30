@@ -39,16 +39,24 @@ static inline void _debug_write_char(char c)
 {
     if (_debug_port)
         write_serial(_debug_port, c);
-    if (_fb_ctx != NULL)
+    if (_fb_ctx != NULL) {
+        if (c == '\n')
+            flanterm_write(_fb_ctx, "\r", 1);
         flanterm_write(_fb_ctx, &c, 1);
+    }
 }
 
 static inline void _debug_write_string(const char *str)
 {
     if (_debug_port)
         write_string(_debug_port, str);
-    if (_fb_ctx != NULL)
-        flanterm_write(_fb_ctx, str, strlen(str));
+    if (_fb_ctx != NULL) {
+        for (size_t i = 0; str[i] != '\0'; i++) {
+            if (str[i] == '\n')
+                flanterm_write(_fb_ctx, "\r", 1);
+            flanterm_write(_fb_ctx, &str[i], 1);
+        }
+    }
 }
 
 static inline void _debug_logu64(uint64_t value)
@@ -279,7 +287,10 @@ static rsrc_status_t _debug_dev_write(
         return RSRC_ERROR_INVALID_ARGUMENT;
     }
 
-    _debug_log(buffer);
+    _debug_lock_acquire();
+    for (uint64_t i = 0; i < buffer_len; i++)
+        _debug_write_char(((const char *) buffer)[i]);
+    _debug_lock_release();
 
     if (out_bytes_written != NULL)
         *out_bytes_written = buffer_len;

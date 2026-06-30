@@ -80,7 +80,7 @@ int main()
         debug_log("failed to load font\n");
         return 1;
     }
-    if (desktop_connect() != 0) {
+    if (desktop_connect() < 0) {
         debug_log("failed to connect to desktop\n");
         return 1;
     }

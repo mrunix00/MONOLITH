@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "resource.h"
 #include <libgfx/types.h>
 #include <protocol.h>
 #include <stdint.h>
@@ -18,7 +19,7 @@ typedef enum {
     DESKTOP_ERROR_ALLOC_FAILED = 5,
 } desktop_error_t;
 
-int desktop_connect();
+rsrc_handle_t desktop_connect();
 
 uint32_t desktop_create_window(uint16_t w, uint16_t h, window_flags_t flags, const char *title);
 

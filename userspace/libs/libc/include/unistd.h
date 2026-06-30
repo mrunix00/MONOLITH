@@ -23,10 +23,19 @@ int getdents(int fd, void *buffer, uint32_t size);
 
 int lseek(int fd, int offset, int whence);
 int chcwd(const char *path);
+int mkdir(const char *path, unsigned mode);
 
 rsrc_handle_t file_create(const char *path);
 rsrc_handle_t pipe_create(const char *name);
-rsrc_handle_t task_create(int argc, const char **argv, const int *inherit_rds, int inherit_rd_count);
+
+typedef struct
+{
+    int current_descriptor;
+    int target_descriptor;
+} task_create_inherit_t;
+
+rsrc_handle_t task_create(
+    int argc, const char **argv, const task_create_inherit_t *inherit, int inherit_count);
 
 #ifdef TEST_ENV
 typedef long (*fs_syscall0_fn)(long num);

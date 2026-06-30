@@ -13,6 +13,7 @@ typedef struct __monolith_FILE FILE;
 extern FILE *stderr;
 
 int sprintf(char *str, const char *format, ...);
+int puts(const char *s);
 int fprintf(FILE *stream, const char *format, ...);
 int vfprintf(FILE *stream, const char *format, va_list ap);
 int fflush(FILE *stream);

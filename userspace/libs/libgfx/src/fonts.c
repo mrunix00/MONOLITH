@@ -270,10 +270,11 @@ gfx_font_t gfx_load_font_from_file(const char *path, uint32_t font_size)
             capacity = new_cap;
         }
 
-        int bytes_read = rsmgr_read(fd, data + total_read, 8192);
-        if (bytes_read <= 0)
+        uint64_t bytes_read = 0;
+        int result = rsmgr_read(fd, data + total_read, 8192, &bytes_read);
+        if (result < 0 || bytes_read == 0)
             break;
-        total_read += (uint64_t) bytes_read;
+        total_read += bytes_read;
     }
 
     rsmgr_close(fd);

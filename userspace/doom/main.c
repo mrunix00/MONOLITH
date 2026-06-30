@@ -10,6 +10,7 @@
 #include <debug.h>
 #include <libdesktop.h>
 #include <libgfx.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -50,7 +51,7 @@ static int doom_ensure_size(doom_file_t *file)
 
 static void doom_print_override(const char *str)
 {
-    debug_log("%s", str);
+    puts(str);
 }
 
 static void *doom_malloc_override(int size)
@@ -156,7 +157,11 @@ static int doom_read_override(void *handle, void *buf, int count)
         return 0;
 
     doom_file_t *file = (doom_file_t *) handle;
-    int read_bytes = rsmgr_read(file->fd, buf, (uint32_t) count);
+    uint64_t bytes_read = 0;
+    int result = rsmgr_read(file->fd, buf, (uint32_t) count, &bytes_read);
+    if (result < 0)
+        return result;
+    int read_bytes = (int) bytes_read;
     if (read_bytes == 0 && !file->size_known) {
         int pos = doom_tell_fd(file->fd);
         if (pos >= 0)
@@ -497,7 +502,7 @@ int main(int argc, char *argv[])
     doom_set_getenv(doom_getenv_override);
 
     if (argc < 2 || argv[1] == NULL) {
-        debug_log("doom: missing WAD file argument\n");
+        puts("doom: missing WAD file argument\n");
         return 1;
     }
 
@@ -517,7 +522,7 @@ int main(int argc, char *argv[])
 
     gfx_context_t framebuffer = {0};
 
-    if (desktop_connect() != 0) {
+    if (desktop_connect() < 0) {
         debug_log("doom: failed to connect to desktop\n");
         return 1;
     }

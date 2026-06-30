@@ -52,11 +52,6 @@ int ipc_await_connection(rsrc_handle_t channel, connection_t *connection)
     return _connection_command(channel, IPC_CHANNEL_COMMAND_WAIT_CONNECTION, connection);
 }
 
-int ipc_poll_connection(rsrc_handle_t channel, connection_t *connection)
-{
-    return _connection_command(channel, IPC_CHANNEL_COMMAND_POLL_CONNECTION, connection);
-}
-
 int ipc_accept_connection(rsrc_handle_t channel, connection_t *connection)
 {
     return _connection_command(channel, IPC_CHANNEL_COMMAND_ACCEPT_CONNECTION, connection);
@@ -112,7 +107,9 @@ int ipc_receive_packet(rsrc_handle_t channel, void *buffer, size_t size)
 {
     if (channel < 0 || buffer == NULL || size < sizeof(ipc_channel_packet_header_t))
         return -1;
-    return _channel_command(channel, IPC_CHANNEL_COMMAND_RECV, buffer, size);
+    uint64_t bytes_read = 0;
+    int result = rsmgr_read(channel, buffer, (uint32_t) size, &bytes_read);
+    return result < 0 ? result : (int) bytes_read;
 }
 
 int ipc_receive(rsrc_handle_t channel, connection_t *sender, void *data, size_t size)

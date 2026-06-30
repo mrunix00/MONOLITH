@@ -12,5 +12,13 @@ int execve(const char *path, char *const argv[], char *const envp[]);
 int getpid(void);
 int close(int fd);
 int access(const char *path, int mode);
+int mkdir(const char *path, unsigned mode);
 int file_create(const char *path);
-int task_create(int argc, const char **argv, const int *inherit_rds, int inherit_rd_count);
+
+typedef struct
+{
+    int current_descriptor;
+    int target_descriptor;
+} task_create_inherit_t;
+
+int task_create(int argc, const char **argv, const task_create_inherit_t *inherit, int inherit_count);

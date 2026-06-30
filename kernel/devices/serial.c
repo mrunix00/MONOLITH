@@ -79,9 +79,6 @@ static rsrc_status_t _serial_dev_read(
     serial_port_t port = (serial_port_t) (uintptr_t) resource->type_state;
     uint64_t count = read_bytes(port, buffer, buffer_len);
 
-    if (count == 0)
-        return RSRC_ERROR_WOULD_BLOCK;
-
     *out_bytes_read = count;
     return RSRC_STATUS_OK;
 }

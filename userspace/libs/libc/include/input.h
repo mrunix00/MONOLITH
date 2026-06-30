@@ -35,10 +35,14 @@ static inline rsrc_handle_t open_mouse_device(void)
 
 static inline int read_keyboard_event(rsrc_handle_t fd, input_keyboard_event_t *event)
 {
-    return rsmgr_read(fd, event, sizeof(input_keyboard_event_t));
+    uint64_t bytes_read = 0;
+    int result = rsmgr_read(fd, event, sizeof(input_keyboard_event_t), &bytes_read);
+    return result < 0 ? result : (int) bytes_read;
 }
 
 static inline int read_mouse_event(rsrc_handle_t fd, input_mouse_event_t *event)
 {
-    return rsmgr_read(fd, event, sizeof(input_mouse_event_t));
+    uint64_t bytes_read = 0;
+    int result = rsmgr_read(fd, event, sizeof(input_mouse_event_t), &bytes_read);
+    return result < 0 ? result : (int) bytes_read;
 }

@@ -14,8 +14,6 @@ typedef uint64_t connection_t;
 typedef enum {
     IPC_CHANNEL_COMMAND_SEND_MESSAGE = 1,
     IPC_CHANNEL_COMMAND_SEND_OBJECT = 2,
-    IPC_CHANNEL_COMMAND_RECV = 3,
-    IPC_CHANNEL_COMMAND_POLL_CONNECTION = 5,
     IPC_CHANNEL_COMMAND_WAIT_CONNECTION = 6,
     IPC_CHANNEL_COMMAND_ACCEPT_CONNECTION = 7,
     IPC_CHANNEL_COMMAND_REJECT_CONNECTION = 8,
@@ -73,7 +71,6 @@ int ipc_receive(rsrc_handle_t channel, connection_t *sender, void *data, size_t 
 int ipc_receive_packet(rsrc_handle_t channel, void *buffer, size_t size);
 int ipc_receive_resource(rsrc_handle_t channel, connection_t *sender, rsrc_handle_t *resource);
 int ipc_await_connection(rsrc_handle_t channel, connection_t *connection);
-int ipc_poll_connection(rsrc_handle_t channel, connection_t *connection);
 int ipc_accept_connection(rsrc_handle_t channel, connection_t *connection);
 int ipc_reject_connection(rsrc_handle_t channel, connection_t *connection);
 int ipc_send_to(rsrc_handle_t channel, connection_t *connection, void *data, size_t size);
