@@ -316,7 +316,7 @@ int main()
     };
     set_default_menubar(&system_menubar);
 
-    bool launched_initial_about = false;
+    bool launched_initial_term = false;
     bool needs_redraw = true;
 
     while (1) {
@@ -327,9 +327,9 @@ int main()
         bool menubar_changed = update_menubar_state(&context);
         bool windows_changed = update_windows_state(&context);
         _terminal_taps_pump();
-        if (!launched_initial_about) {
-            _menu_action_about();
-            launched_initial_about = true;
+        if (!launched_initial_term) {
+            _menu_action_terminal();
+            launched_initial_term = true;
             client_activity = true;
         }
 
@@ -357,6 +357,7 @@ int main()
             (gfx_pos_t){context.width - 60, context.height - 10});
 
         gfx_end_frame(&context);
+        gfx_wait_frame(&context);
         needs_redraw = false;
     }
 }

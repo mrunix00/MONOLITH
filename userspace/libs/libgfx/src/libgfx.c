@@ -220,15 +220,21 @@ void gfx_end_frame(gfx_context_t *ctx)
     uint64_t now = get_ticks();
     ctx->last_frame_ticks = now - ctx->frame_start_ticks;
 
-    if (ctx->target_fps != 0) {
-        uint64_t frame_budget = 1000 / ctx->target_fps;
-        if (ctx->last_frame_ticks < frame_budget)
-            usleep((unsigned int) (frame_budget - ctx->last_frame_ticks));
-    }
-
-    now = get_ticks();
-    ctx->last_frame_ticks = now - ctx->frame_start_ticks;
     _gfx_update_fps(ctx, now);
+}
+
+void gfx_wait_frame(gfx_context_t *ctx)
+{
+    if (!ctx || ctx->frame_start_ticks == 0 || ctx->target_fps == 0)
+        return;
+
+    uint64_t now = get_ticks();
+    uint64_t elapsed = now - ctx->frame_start_ticks;
+    uint64_t frame_budget = 1000 / ctx->target_fps;
+    if (elapsed < frame_budget)
+        usleep((unsigned int) (frame_budget - elapsed));
+
+    ctx->last_frame_ticks = get_ticks() - ctx->frame_start_ticks;
 }
 
 void gfx_draw_fps_counter(gfx_context_t *ctx, gfx_font_t *font, gfx_color_t color, gfx_pos_t pos)

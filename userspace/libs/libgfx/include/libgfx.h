@@ -16,6 +16,8 @@ void gfx_begin_frame(gfx_context_t *ctx);
 
 void gfx_end_frame(gfx_context_t *ctx);
 
+void gfx_wait_frame(gfx_context_t *ctx);
+
 void gfx_draw_fps_counter(gfx_context_t *ctx, gfx_font_t *font, gfx_color_t color, gfx_pos_t pos);
 
 void gfx_deinit(gfx_context_t *ctx);

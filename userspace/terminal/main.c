@@ -18,9 +18,6 @@
 #define TERM_FONT_SIZE 20
 #define TERM_CSI_PARAM_COUNT 8
 #define TERM_FONT_PATH "file:/system/assets/JetBrainsMono-Medium.ttf"
-#define KEYBOARD_HOLD 0
-#define KEYBOARD_PRESSED 1
-#define KEYBOARD_RELEASED 2
 
 enum {
     SHELL_TIN = TERM_RD_TIN,
@@ -695,15 +692,15 @@ static void _handle_keyboard_event(terminal_state_t *term, const window_keyboard
     uint8_t action = event->keyboard.action;
 
     if (scancode == 0x2A || scancode == 0x36) {
-        term->shift_down = action != KEYBOARD_RELEASED;
+        term->shift_down = action != INPUT_KEYBOARD_ACTION_RELEASED;
         return;
     }
 
-    if (action == KEYBOARD_RELEASED)
+    if (action == INPUT_KEYBOARD_ACTION_RELEASED)
         return;
 
     if (scancode == 0x3A) {
-        if (action == KEYBOARD_PRESSED)
+        if (action == INPUT_KEYBOARD_ACTION_PRESSED)
             term->caps_lock = !term->caps_lock;
         return;
     }
@@ -743,6 +740,7 @@ static void _present_if_dirty(
 
     _term_render(term, ctx);
     desktop_present_window((uint16_t) window_id);
+    gfx_wait_frame(ctx);
     term->dirty = false;
 }
 

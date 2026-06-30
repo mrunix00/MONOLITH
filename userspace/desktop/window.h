@@ -59,6 +59,8 @@ window_t *get_window_by_owner(uint64_t owner_task_id, uint32_t id);
 
 window_t *get_active_window(void);
 
+window_t *get_window_at_content_point(uint32_t x, uint32_t y);
+
 void draw_all_windows(gfx_context_t *context);
 
 bool update_windows_state(gfx_context_t *context);

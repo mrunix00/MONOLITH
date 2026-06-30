@@ -427,12 +427,6 @@ static doom_key_t doom_key_from_scancode(uint8_t scancode)
     }
 }
 
-enum {
-    KEYBOARD_HOLD = 0,
-    KEYBOARD_PRESSED = 1,
-    KEYBOARD_RELEASED = 2,
-};
-
 static void handle_doom_keyboard_event(const window_keyboard_event_t *event)
 {
     if (!event)
@@ -442,9 +436,11 @@ static void handle_doom_keyboard_event(const window_keyboard_event_t *event)
     if (key == DOOM_KEY_UNKNOWN)
         return;
 
-    if (event->keyboard.action == KEYBOARD_RELEASED)
+    if (event->keyboard.action == INPUT_KEYBOARD_ACTION_RELEASED)
         doom_key_up(key);
-    else if (event->keyboard.action == KEYBOARD_PRESSED || event->keyboard.action == KEYBOARD_HOLD)
+    else if (
+        event->keyboard.action == INPUT_KEYBOARD_ACTION_PRESSED
+        || event->keyboard.action == INPUT_KEYBOARD_ACTION_HOLD)
         doom_key_down(key);
 }
 
@@ -590,6 +586,7 @@ int main(int argc, char *argv[])
             gfx_end_frame(&framebuffer);
 
             desktop_present_window((uint16_t) window_id);
+            gfx_wait_frame(&framebuffer);
         }
     }
 

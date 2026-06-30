@@ -5,23 +5,8 @@
 
 #pragma once
 
+#include <input_events.h>
 #include <resource.h>
-#include <stdint.h>
-
-typedef struct
-{
-    uint8_t scancode;
-    uint8_t action;
-} input_keyboard_event_t;
-
-typedef struct
-{
-    int32_t x;
-    int32_t y;
-    int8_t delta_x;
-    int8_t delta_y;
-    uint8_t buttons;
-} input_mouse_event_t;
 
 static inline rsrc_handle_t open_keyboard_device(void)
 {

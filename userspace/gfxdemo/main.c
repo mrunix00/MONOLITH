@@ -261,6 +261,7 @@ int main()
         if (created && framebuffer_ready) {
             _draw_cube_frame(&framebuffer, width, height, angle);
             desktop_present_window((uint16_t) window_id);
+            gfx_wait_frame(&framebuffer);
             angle += 0.03f;
             if (angle > 6.28318530717958647692f)
                 angle -= 6.28318530717958647692f;

@@ -31,7 +31,7 @@ static inline uint32_t _next_index(uint32_t index)
     return (index + 1) % INPUT_RING_SIZE;
 }
 
-void input_push_keyboard_event(uint8_t scancode, uint8_t action)
+void input_push_keyboard_event(input_keyboard_scancode_t scancode, input_keyboard_action_t action)
 {
     uint32_t next = _next_index(_kb_head);
     if (next == _kb_tail)
@@ -41,7 +41,8 @@ void input_push_keyboard_event(uint8_t scancode, uint8_t action)
     _kb_head = next;
 }
 
-void input_push_mouse_event(int32_t x, int32_t y, int8_t delta_x, int8_t delta_y, uint8_t buttons)
+void input_push_mouse_event(
+    int32_t x, int32_t y, int8_t delta_x, int8_t delta_y, input_mouse_buttons_t buttons)
 {
     uint32_t next = _next_index(_mouse_head);
     if (next == _mouse_tail)

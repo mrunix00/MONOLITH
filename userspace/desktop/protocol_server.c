@@ -239,14 +239,12 @@ static bool _pump_input_events()
         had_input = true;
         input_process_mouse_event(&mouse_event);
 
-        window_t *window = get_active_window();
-        if (!window || window->owner_task_id == 0)
-            continue;
-
         input_mouse_event_t mouse_state = get_mouse_state();
         uint32_t mouse_x = mouse_state.x < 0 ? 0u : (uint32_t) mouse_state.x;
         uint32_t mouse_y = mouse_state.y < 0 ? 0u : (uint32_t) mouse_state.y;
-        if (!window_contains_content_point(window, mouse_x, mouse_y))
+
+        window_t *window = get_window_at_content_point(mouse_x, mouse_y);
+        if (!window || window->owner_task_id == 0)
             continue;
 
         uint32_t content_x = window->pos_x;
@@ -263,6 +261,7 @@ static bool _pump_input_events()
             .data.mouse.mouse = mouse_event,
             .data.mouse.mouse.x = (int32_t) (mouse_x - content_x),
             .data.mouse.mouse.y = (int32_t) (mouse_y - content_y),
+            .data.mouse.mouse.buttons = mouse_state.buttons,
         };
         protocol_send_event(window->owner_task_id, event);
     }

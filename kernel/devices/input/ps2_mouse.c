@@ -65,7 +65,9 @@ static void _mouse_irq()
         _mouse_left_button = _mouse_byte[0] & MOUSE_STATUS_LEFT_BUTTON;
         _mouse_right_button = _mouse_byte[0] & MOUSE_STATUS_RIGHT_BUTTON;
         _mouse_middle_button = _mouse_byte[0] & MOUSE_STATUS_MIDDLE_BUTTON;
-        uint8_t buttons = _mouse_left_button | _mouse_right_button << 1 | _mouse_middle_button << 2;
+        input_mouse_buttons_t buttons = (_mouse_left_button ? INPUT_MOUSE_BUTTON_LEFT : 0)
+                                        | (_mouse_right_button ? INPUT_MOUSE_BUTTON_RIGHT : 0)
+                                        | (_mouse_middle_button ? INPUT_MOUSE_BUTTON_MIDDLE : 0);
         input_push_mouse_event(_mouse_x, _mouse_y, delta_x, delta_y, buttons);
         break;
     }

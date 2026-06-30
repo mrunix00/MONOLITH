@@ -382,6 +382,18 @@ window_t *get_active_window(void)
     return NULL;
 }
 
+window_t *get_window_at_content_point(uint32_t x, uint32_t y)
+{
+    for (int32_t i = (int32_t) _window_list_size - 1; i >= 0; i--) {
+        window_t *window = &_window_list[i];
+        if (window->minimized)
+            continue;
+        if (window_contains_content_point(window, x, y))
+            return window;
+    }
+    return NULL;
+}
+
 static void draw_window(gfx_context_t *context, window_t *window)
 {
     if (window->minimized)
