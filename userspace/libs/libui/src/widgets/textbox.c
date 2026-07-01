@@ -211,7 +211,7 @@ static int _textbox_stb_key(ui_wctx_t *ctx, input_keyboard_scancode_t key)
 
 static void _textbox_insert_text(ui_widget_t *widget, const char *text)
 {
-    char ascii[BUI_TEXT_INPUT_MAX];
+    char ascii[UI_TEXT_INPUT_MAX];
     int count = 0;
     for (const unsigned char *ch = (const unsigned char *) text; *ch && count < (int) sizeof(ascii);
          ch++) {
@@ -232,15 +232,15 @@ static float _textbox_mouse_x(ui_wctx_t *ctx, ui_widget_t *widget)
 
 static bool _textbox_submitted(ui_wctx_t *ctx, ui_id_t id)
 {
-    return ctx->focused_widget_id == id && ctx->input_event_type == BUI_EVENT_KEY_DOWN
+    return ctx->focused_widget_id == id && ctx->input_event_type == UI_EVENT_KEY_DOWN
            && ctx->input_event.data.keyboard.keyboard.scancode == INPUT_KEY_ENTER;
 }
 
 static void _textbox_handle_input(ui_wctx_t *ctx, ui_widget_t *widget)
 {
     ui_event_type_t type = ctx->input_event_type;
-    bool clicked = type == BUI_EVENT_MOUSE_BUTTON_DOWN && ctx->event_widget_id == widget->id
-                   && (ctx->event_widget_state & BUI_WIDGET_EVENT_LCLICKED);
+    bool clicked = type == UI_EVENT_MOUSE_BUTTON_DOWN && ctx->event_widget_id == widget->id
+                   && (ctx->event_widget_state & UI_WIDGET_EVENT_LCLICKED);
     bool active_click = ctx->active_widget_id == widget->id
                         && ui_is_mouse_button_down(ctx, INPUT_MOUSE_BUTTON_LEFT)
                         && ui_is_mouse_in_area(ctx, widget->computed_area);
@@ -249,7 +249,7 @@ static void _textbox_handle_input(ui_wctx_t *ctx, ui_widget_t *widget)
         ctx->focused_widget_id = widget->id;
         stb_textedit_click(widget, &widget->edit, _textbox_mouse_x(ctx, widget), 0.0f);
     } else if (
-        type == BUI_EVENT_MOUSE_MOVE && ctx->active_widget_id == widget->id
+        type == UI_EVENT_MOUSE_MOVE && ctx->active_widget_id == widget->id
         && ui_is_mouse_button_down(ctx, INPUT_MOUSE_BUTTON_LEFT)) {
         stb_textedit_drag(widget, &widget->edit, _textbox_mouse_x(ctx, widget), 0.0f);
     }
@@ -257,7 +257,7 @@ static void _textbox_handle_input(ui_wctx_t *ctx, ui_widget_t *widget)
     if (ctx->focused_widget_id != widget->id)
         return;
 
-    if (type == BUI_EVENT_KEY_DOWN || type == BUI_EVENT_KEY_HOLD) {
+    if (type == UI_EVENT_KEY_DOWN || type == UI_EVENT_KEY_HOLD) {
         bool ctrl = ui_is_key_down(ctx, INPUT_KEY_LCTRL);
         if (ctrl && ctx->input_event.data.keyboard.keyboard.scancode == INPUT_KEY_A) {
             int length = _textbox_string_length(widget->string);
@@ -268,7 +268,7 @@ static void _textbox_handle_input(ui_wctx_t *ctx, ui_widget_t *widget)
             int key = _textbox_stb_key(ctx, ctx->input_event.data.keyboard.keyboard.scancode);
             if (key != 0) {
                 stb_textedit_key(widget, &widget->edit, key);
-            } else if (type == BUI_EVENT_KEY_DOWN) {
+            } else if (type == UI_EVENT_KEY_DOWN) {
                 char ch = ui_char_from_key_scancode(
                     ctx, ctx->input_event.data.keyboard.keyboard.scancode);
                 if (ch != '\0')
@@ -288,7 +288,7 @@ static void _draw_textbox(ui_wctx_t *ctx, ui_widget_t *widget)
     bool focused = ctx->focused_widget_id == widget->id;
     gfx_color_t border_color = focused ? widget->theme->foreground_color
                                        : widget->theme->border_color;
-    gfx_color_t fill_color = ui_is_mouse_in_area(ctx, widget->computed_area)
+    gfx_color_t fill_color = ui_is_widget_hovered(ctx, widget)
                                  ? (gfx_color_t){0xFF, 0x30, 0x30, 0x30}
                                  : widget->theme->background_color;
 
@@ -430,19 +430,19 @@ bool ui_textbox(ui_wctx_t *wctx, const char *label, char *buffer, size_t buffer_
 
     if (!wctx->hot_state) {
         ui_widget_t widget = {
-            .flags = BUI_WIDGET_FLAG_CLICKABLE,
+            .flags = UI_WIDGET_FLAG_CLICKABLE,
             .label = label,
             .string = buffer,
             .string_size = buffer_size,
             .theme = theme,
             .semantic_size = {
-                [BUI_AXIS_X] = {
-                    .type = BUI_WIDGET_SIZE_TYPE_PERCENTAGE,
+                [UI_AXIS_X] = {
+                    .type = UI_WIDGET_SIZE_TYPE_PERCENTAGE,
                     .value = 1.0f,
                     .strictness = 0.0f,
                 },
-                [BUI_AXIS_Y] = {
-                    .type = BUI_WIDGET_SIZE_TYPE_FIXED,
+                [UI_AXIS_Y] = {
+                    .type = UI_WIDGET_SIZE_TYPE_FIXED,
                     .value = gfx_get_text_height(theme->font, "M") + theme->inner_padding.t
                              + theme->inner_padding.b,
                     .strictness = 0.0f,

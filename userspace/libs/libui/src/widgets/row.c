@@ -13,10 +13,10 @@ void ui_begin_row(ui_wctx_t *wctx, uint32_t width, uint32_t height)
     if (!wctx->hot_state) {
         ui_widget_t widget = {
             .theme = ui_get_current_theme(wctx),
-            .layout_axis = BUI_AXIS_X,
+            .layout_axis = UI_AXIS_X,
             .semantic_size = {
-                [BUI_AXIS_X] = ui_size_to_semantic(width, 0.0f),
-                [BUI_AXIS_Y] = ui_size_to_semantic(height, 0.0f),
+                [UI_AXIS_X] = ui_size_to_semantic(width, 0.0f),
+                [UI_AXIS_Y] = ui_size_to_semantic(height, 0.0f),
             },
             .draw = ui_draw_children,
         };

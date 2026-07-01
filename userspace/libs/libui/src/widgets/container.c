@@ -42,7 +42,7 @@ static void _translate_widget_tree(ui_widget_t *widget, int32_t dx, int32_t dy)
 static uint32_t _container_content_extent(ui_widget_t *widget, ui_axis_t axis)
 {
     gfx_area_t viewport = _container_viewport(widget);
-    uint32_t extent = axis == BUI_AXIS_X ? viewport.width : viewport.height;
+    uint32_t extent = axis == UI_AXIS_X ? viewport.width : viewport.height;
     uint32_t content_extent = 0;
     uint32_t children_count = 0;
 
@@ -64,23 +64,29 @@ static uint32_t _container_content_extent(ui_widget_t *widget, ui_axis_t axis)
 static uint32_t _container_max_scroll(ui_widget_t *widget, ui_axis_t axis)
 {
     gfx_area_t viewport = _container_viewport(widget);
-    uint32_t viewport_size = axis == BUI_AXIS_X ? viewport.width : viewport.height;
+    uint32_t viewport_size = axis == UI_AXIS_X ? viewport.width : viewport.height;
     uint32_t content_extent = _container_content_extent(widget, axis);
     return ui_sub_or_zero(content_extent, viewport_size);
 }
 
+static uint32_t _container_effective_scroll(ui_widget_t *widget, ui_axis_t axis)
+{
+    uint32_t scroll = axis == UI_AXIS_X ? widget->scroll_x : widget->scroll_y;
+    uint32_t max_scroll = _container_max_scroll(widget, axis);
+    return scroll > max_scroll ? max_scroll : scroll;
+}
+
 static void _container_set_scroll(ui_widget_t *widget, uint32_t scroll_x, uint32_t scroll_y)
 {
-    uint32_t old_scroll_x = widget->scroll_x;
-    uint32_t old_scroll_y = widget->scroll_y;
+    uint32_t old_effective_scroll_x = _container_effective_scroll(widget, UI_AXIS_X);
+    uint32_t old_effective_scroll_y = _container_effective_scroll(widget, UI_AXIS_Y);
+    widget->scroll_x = scroll_x;
+    widget->scroll_y = scroll_y;
+    uint32_t effective_scroll_x = _container_effective_scroll(widget, UI_AXIS_X);
+    uint32_t effective_scroll_y = _container_effective_scroll(widget, UI_AXIS_Y);
 
-    uint32_t max_scroll_x = _container_max_scroll(widget, BUI_AXIS_X);
-    uint32_t max_scroll_y = _container_max_scroll(widget, BUI_AXIS_Y);
-    widget->scroll_x = scroll_x > max_scroll_x ? max_scroll_x : scroll_x;
-    widget->scroll_y = scroll_y > max_scroll_y ? max_scroll_y : scroll_y;
-
-    int32_t dx = (int32_t) old_scroll_x - (int32_t) widget->scroll_x;
-    int32_t dy = (int32_t) old_scroll_y - (int32_t) widget->scroll_y;
+    int32_t dx = (int32_t) old_effective_scroll_x - (int32_t) effective_scroll_x;
+    int32_t dy = (int32_t) old_effective_scroll_y - (int32_t) effective_scroll_y;
     if (dx == 0 && dy == 0)
         return;
 
@@ -99,7 +105,7 @@ static gfx_area_t _scrollbar_thumb(
     if (max_scroll == 0)
         return (gfx_area_t){0};
 
-    uint32_t viewport_size = axis == BUI_AXIS_X ? viewport.width : viewport.height;
+    uint32_t viewport_size = axis == UI_AXIS_X ? viewport.width : viewport.height;
     uint32_t content_size = viewport_size + max_scroll;
     if (viewport_size == 0 || content_size == 0)
         return (gfx_area_t){0};
@@ -110,12 +116,12 @@ static gfx_area_t _scrollbar_thumb(
     if (thumb_size > viewport_size)
         thumb_size = viewport_size;
 
-    uint32_t scroll = axis == BUI_AXIS_X ? widget->scroll_x : widget->scroll_y;
+    uint32_t scroll = _container_effective_scroll(widget, axis);
     uint32_t travel = ui_sub_or_zero(viewport_size, thumb_size);
     uint32_t thumb_pos = max_scroll == 0 ? 0
                                          : (uint32_t) (((uint64_t) scroll * travel) / max_scroll);
 
-    if (axis == BUI_AXIS_X) {
+    if (axis == UI_AXIS_X) {
         return (gfx_area_t){
             .x = viewport.x + thumb_pos,
             .y = viewport.y + ui_sub_or_zero(viewport.height, SCROLLBAR_WIDTH),
@@ -151,8 +157,8 @@ static uint32_t _scroll_from_thumb_pos(
 static void _begin_scrollbar_drag(
     ui_wctx_t *wctx, ui_widget_t *widget, ui_axis_t axis, gfx_area_t thumb)
 {
-    uint32_t mouse_pos = axis == BUI_AXIS_X ? wctx->mouse_state.pos_x : wctx->mouse_state.pos_y;
-    uint32_t thumb_pos = axis == BUI_AXIS_X ? thumb.x : thumb.y;
+    uint32_t mouse_pos = axis == UI_AXIS_X ? wctx->mouse_state.pos_x : wctx->mouse_state.pos_y;
+    uint32_t thumb_pos = axis == UI_AXIS_X ? thumb.x : thumb.y;
 
     wctx->active_widget_id = widget->id;
     wctx->scrollbar_drag_widget_id = widget->id;
@@ -167,29 +173,29 @@ static bool _handle_scrollbar_drag(
     if (thumb.width == 0 || thumb.height == 0)
         return false;
 
-    if (wctx->input_event_type == BUI_EVENT_MOUSE_BUTTON_DOWN
+    if (wctx->input_event_type == UI_EVENT_MOUSE_BUTTON_DOWN
         && (wctx->last_mouse_button_changed & INPUT_MOUSE_BUTTON_LEFT)
         && _area_contains(thumb, wctx->mouse_state.pos_x, wctx->mouse_state.pos_y)) {
         _begin_scrollbar_drag(wctx, widget, axis, thumb);
         return true;
     }
 
-    if (wctx->input_event_type != BUI_EVENT_MOUSE_MOVE
+    if (wctx->input_event_type != UI_EVENT_MOUSE_MOVE
         || wctx->scrollbar_drag_widget_id != widget->id || wctx->scrollbar_drag_axis != axis
         || !ui_is_mouse_button_down(wctx, INPUT_MOUSE_BUTTON_LEFT))
         return false;
 
-    uint32_t mouse_pos = axis == BUI_AXIS_X ? wctx->mouse_state.pos_x : wctx->mouse_state.pos_y;
-    uint32_t track_pos = axis == BUI_AXIS_X ? viewport.x : viewport.y;
-    uint32_t track_size = axis == BUI_AXIS_X ? viewport.width : viewport.height;
-    uint32_t thumb_size = axis == BUI_AXIS_X ? thumb.width : thumb.height;
+    uint32_t mouse_pos = axis == UI_AXIS_X ? wctx->mouse_state.pos_x : wctx->mouse_state.pos_y;
+    uint32_t track_pos = axis == UI_AXIS_X ? viewport.x : viewport.y;
+    uint32_t track_size = axis == UI_AXIS_X ? viewport.width : viewport.height;
+    uint32_t thumb_size = axis == UI_AXIS_X ? thumb.width : thumb.height;
     uint32_t thumb_pos = mouse_pos > wctx->scrollbar_drag_offset
                              ? mouse_pos - wctx->scrollbar_drag_offset
                              : 0;
     uint32_t scroll
         = _scroll_from_thumb_pos(thumb_pos, track_pos, track_size, thumb_size, max_scroll);
 
-    if (axis == BUI_AXIS_X)
+    if (axis == UI_AXIS_X)
         _container_set_scroll(widget, scroll, widget->scroll_y);
     else
         _container_set_scroll(widget, widget->scroll_x, scroll);
@@ -199,11 +205,11 @@ static bool _handle_scrollbar_drag(
 
 static void _handle_container_scroll(ui_wctx_t *wctx, ui_widget_t *widget, gfx_area_t viewport)
 {
-    uint32_t max_scroll_x = _container_max_scroll(widget, BUI_AXIS_X);
-    uint32_t max_scroll_y = _container_max_scroll(widget, BUI_AXIS_Y);
-    if (_handle_scrollbar_drag(wctx, widget, BUI_AXIS_X, max_scroll_x, viewport))
+    uint32_t max_scroll_x = _container_max_scroll(widget, UI_AXIS_X);
+    uint32_t max_scroll_y = _container_max_scroll(widget, UI_AXIS_Y);
+    if (_handle_scrollbar_drag(wctx, widget, UI_AXIS_X, max_scroll_x, viewport))
         return;
-    if (_handle_scrollbar_drag(wctx, widget, BUI_AXIS_Y, max_scroll_y, viewport))
+    if (_handle_scrollbar_drag(wctx, widget, UI_AXIS_Y, max_scroll_y, viewport))
         return;
 }
 
@@ -238,7 +244,6 @@ static void _draw_container(ui_wctx_t *wctx, ui_widget_t *widget)
 {
     gfx_area_t viewport = _container_viewport(widget);
     _handle_container_scroll(wctx, widget, viewport);
-    _container_set_scroll(widget, widget->scroll_x, widget->scroll_y);
 
     uint32_t border_thickness = widget->theme->border_thickness;
     uint32_t shadow_thickness = widget->theme->shadow_thickness;
@@ -275,28 +280,53 @@ static void _draw_container(ui_wctx_t *wctx, ui_widget_t *widget)
 
     gfx_reset_clip(&wctx->gfx_context);
 
-    _draw_scrollbar(wctx, widget, BUI_AXIS_X, _container_max_scroll(widget, BUI_AXIS_X), viewport);
-    _draw_scrollbar(wctx, widget, BUI_AXIS_Y, _container_max_scroll(widget, BUI_AXIS_Y), viewport);
+    _draw_scrollbar(wctx, widget, UI_AXIS_X, _container_max_scroll(widget, UI_AXIS_X), viewport);
+    _draw_scrollbar(wctx, widget, UI_AXIS_Y, _container_max_scroll(widget, UI_AXIS_Y), viewport);
 }
 
-void ui_begin_container(ui_wctx_t *wctx, uint32_t width, uint32_t height)
+static void _set_scroll_axis(ui_widget_t *container, ui_axis_t axis, int32_t scroll)
+{
+    uint32_t scroll_value = scroll < 0 ? UINT32_MAX : (uint32_t) scroll;
+    if (axis == UI_AXIS_X)
+        container->scroll_x = scroll_value;
+    else
+        container->scroll_y = scroll_value;
+}
+
+void ui_begin_container(ui_wctx_t *wctx, const char *id, uint32_t width, uint32_t height)
 {
     if (!wctx->hot_state) {
         ui_widget_t widget = {
             .theme = ui_get_current_theme(wctx),
-            .flags = BUI_WIDGET_FLAG_PADDED | BUI_WIDGET_FLAG_SCROLLABLE,
-            .layout_axis = BUI_AXIS_Y,
+            .flags = UI_WIDGET_FLAG_PADDED | UI_WIDGET_FLAG_SCROLLABLE,
+            .layout_axis = UI_AXIS_Y,
             .semantic_size = {
-                [BUI_AXIS_X] = ui_size_to_semantic(width, 1.0f),
-                [BUI_AXIS_Y] = ui_size_to_semantic(height, 1.0f),
+                [UI_AXIS_X] = ui_size_to_semantic(width, 1.0f),
+                [UI_AXIS_Y] = ui_size_to_semantic(height, 1.0f),
             },
             .draw = _draw_container,
         };
-        ui_push_new_parent(wctx, &widget);
+        ui_widget_t *container = ui_push_new_parent(wctx, &widget);
+        if (container != NULL && id != NULL) {
+            ui_id_t hashed_id = ui_hash_string(id);
+            ui_push_id(wctx, hashed_id, container);
+        }
     }
 }
 
 void ui_end_container(ui_wctx_t *wctx)
 {
     ui_pop_widget(wctx);
+}
+
+void ui_set_container_scroll(ui_wctx_t *wctx, const char *id, ui_axis_t axis, int32_t scroll)
+{
+    if (wctx == NULL || id == NULL)
+        return;
+
+    ui_widget_t *container = ui_get_by_id(wctx, ui_hash_string(id));
+    if (container == NULL || !(container->flags & UI_WIDGET_FLAG_SCROLLABLE))
+        return;
+
+    _set_scroll_axis(container, axis, scroll);
 }

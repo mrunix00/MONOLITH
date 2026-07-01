@@ -28,27 +28,28 @@ int main()
 
     char textbox_buffer[256] = {0};
     while (ui_pump_events(&ctx)) {
-        BUI_WINDOW(w, {
-            BUI_COLUMN(w, -1, -1, {
-                ui_text(w, "Hello, World!");
-                ui_text(w, "This is libui on MONOLITH");
+        UI_WINDOW(w, {
+            UI_COLUMN(w, -1, -1, {
+                ui_text(w, "Hello, World!", UI_TEXT_LEFT | UI_TEXT_WRAP);
+                ui_text(w, "This is libui on MONOLITH", UI_TEXT_LEFT | UI_TEXT_WRAP);
 
-                BUI_CONTAINER(w, -1, -1, {
+                UI_CONTAINER(w, "uidemo.list", -1, -1, {
                     for (size_t i = 0; i < list_count; i++)
-                        ui_text(w, list[i]);
+                        ui_text(w, list[i], UI_TEXT_LEFT);
                 });
 
                 bool submit;
                 ui_widget_event_t button_state;
-                BUI_ROW(w, -1, 0, {
+                UI_ROW(w, -1, 0, {
                     submit = ui_textbox(w, "Text Input", textbox_buffer, sizeof(textbox_buffer));
                     button_state = ui_button(w, "Submit");
                 });
 
-                if (submit || (button_state & BUI_WIDGET_EVENT_LCLICKED)) {
+                if (submit || (button_state & UI_WIDGET_EVENT_LCLICKED)) {
                     strncpy(list[list_count], textbox_buffer, sizeof(list[list_count]) - 1);
                     list_count++;
                     textbox_buffer[0] = '\0';
+                    ui_set_container_scroll(w, "uidemo.list", UI_AXIS_Y, -1);
                 }
             });
         });

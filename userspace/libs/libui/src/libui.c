@@ -9,8 +9,8 @@
 #include <unistd.h>
 
 #define INITIAL_STACK_CAPACITY 16
-#define BUI_DEFAULT_FONT_SIZE 20
-#define BUI_DEFAULT_FONT_PATH "file:/system/assets/IBMPlexSans_Condensed-Medium.ttf"
+#define UI_DEFAULT_FONT_SIZE 20
+#define UI_DEFAULT_FONT_PATH "file:/system/assets/IBMPlexSans_Condensed-Medium.ttf"
 
 static bool _desktop_connected;
 static gfx_font_t _default_font;
@@ -20,14 +20,14 @@ static bool _ui_init_default_font(void)
     if (_default_font.data)
         return true;
 
-    _default_font = gfx_load_font_from_file(BUI_DEFAULT_FONT_PATH, BUI_DEFAULT_FONT_SIZE);
+    _default_font = gfx_load_font_from_file(UI_DEFAULT_FONT_PATH, UI_DEFAULT_FONT_SIZE);
     return _default_font.data != NULL;
 }
 
 static ui_wctx_t *_ui_find_window_by_sequence(ui_ctx_t *ctx, uint32_t sequence)
 {
     for (ui_wctx_t *window = ctx->first_window; window; window = window->next) {
-        if (window->state == BUI_WINDOW_STATE_PENDING && window->create_sequence == sequence)
+        if (window->state == UI_WINDOW_STATE_PENDING && window->create_sequence == sequence)
             return window;
     }
     return NULL;
@@ -41,7 +41,7 @@ static bool _ui_desktop_window_init(ui_wctx_t *wctx)
         _desktop_connected = true;
     }
 
-    wctx->state = BUI_WINDOW_STATE_PENDING;
+    wctx->state = UI_WINDOW_STATE_PENDING;
     wctx->framebuffer_ready = false;
     wctx->create_sequence = desktop_create_window(
         (uint16_t) wctx->width,
@@ -65,14 +65,14 @@ static void _handle_window_created(
     ui_wctx_t *wctx, const desktop_event_t *event, desktop_event_t *out)
 {
     if (event->data.created.status != WINDOW_CREATED_SUCCESS) {
-        wctx->state = BUI_WINDOW_STATE_ERROR;
+        wctx->state = UI_WINDOW_STATE_ERROR;
         return;
     }
 
     wctx->window_id = event->data.created.window_id;
     wctx->width = event->data.created.width;
     wctx->height = event->data.created.height;
-    wctx->state = BUI_WINDOW_STATE_PENDING;
+    wctx->state = UI_WINDOW_STATE_PENDING;
     wctx->framebuffer_ready = desktop_request_window_framebuffer(
                                   (uint16_t) wctx->window_id,
                                   (uint16_t) wctx->width,
@@ -85,9 +85,8 @@ static void _handle_window_created(
 static void _handle_framebuffer_ready(ui_wctx_t *wctx, const desktop_event_t *event)
 {
     if (desktop_handle_framebuffer_event(event, &wctx->gfx_context) == 1) {
-        gfx_set_target_fps(&wctx->gfx_context, 0);
         wctx->framebuffer_ready = true;
-        wctx->state = BUI_WINDOW_STATE_ACTIVE;
+        wctx->state = UI_WINDOW_STATE_ACTIVE;
         wctx->hot_state = false;
         wctx->needs_redraw = true;
     }
@@ -202,7 +201,7 @@ ui_wctx_t *ui_new_window(ui_ctx_t *ctx, const char *title, int w, int h, window_
     wctx->flags = flags;
     wctx->width = w;
     wctx->height = h;
-    wctx->state = BUI_WINDOW_STATE_PENDING;
+    wctx->state = UI_WINDOW_STATE_PENDING;
 
     if (!_ui_desktop_window_init(wctx)) {
         free(wctx);
@@ -243,7 +242,7 @@ static bool _ui_area_contains(gfx_area_t area, uint32_t x, uint32_t y)
 
 static void _ui_clear_widget_event_state(ui_wctx_t *wctx)
 {
-    wctx->event_widget_state = BUI_WIDGET_EVENT_NONE;
+    wctx->event_widget_state = UI_WIDGET_EVENT_NONE;
     wctx->event_widget_id = 0;
 }
 
@@ -252,21 +251,21 @@ static void _ui_handle_click_event(ui_wctx_t *wctx)
     ui_mouse_state_t mouse_state = wctx->mouse_state;
     for (size_t i = 0; i < wctx->key_pairs_count; i++) {
         ui_widget_t *widget = wctx->key_pairs[i].widget;
-        if (!(widget->flags & BUI_WIDGET_FLAG_CLICKABLE))
+        if (!(widget->flags & UI_WIDGET_FLAG_CLICKABLE))
             continue;
 
-        ui_widget_event_t event = BUI_WIDGET_EVENT_HOVERED;
+        ui_widget_event_t event = UI_WIDGET_EVENT_HOVERED;
         if (mouse_state.buttons_state & INPUT_MOUSE_BUTTON_LEFT)
-            event |= BUI_WIDGET_EVENT_LCLICKED;
+            event |= UI_WIDGET_EVENT_LCLICKED;
         if (mouse_state.buttons_state & INPUT_MOUSE_BUTTON_RIGHT)
-            event |= BUI_WIDGET_EVENT_RCLICKED;
+            event |= UI_WIDGET_EVENT_RCLICKED;
         if (mouse_state.buttons_state & INPUT_MOUSE_BUTTON_MIDDLE)
-            event |= BUI_WIDGET_EVENT_MCLICKED;
+            event |= UI_WIDGET_EVENT_MCLICKED;
 
         if (_ui_area_contains(widget->computed_area, mouse_state.pos_x, mouse_state.pos_y)) {
             widget->last_event |= event;
             if (wctx->event_widget_id != widget->id)
-                wctx->event_widget_state = BUI_WIDGET_EVENT_NONE;
+                wctx->event_widget_state = UI_WIDGET_EVENT_NONE;
             wctx->event_widget_state |= event;
             wctx->event_widget_id = widget->id;
             wctx->focused_widget_id = widget->id;
@@ -283,32 +282,32 @@ static void _ui_handle_click_event(ui_wctx_t *wctx)
 static void _ui_handle_release_event(ui_wctx_t *wctx, input_mouse_buttons_t button)
 {
     ui_mouse_state_t mouse_state = wctx->mouse_state;
-    ui_widget_event_t clicked = BUI_WIDGET_EVENT_NONE, released = BUI_WIDGET_EVENT_NONE;
+    ui_widget_event_t clicked = UI_WIDGET_EVENT_NONE, released = UI_WIDGET_EVENT_NONE;
 
     if (button & INPUT_MOUSE_BUTTON_LEFT) {
-        clicked |= BUI_WIDGET_EVENT_LCLICKED;
-        released |= BUI_WIDGET_EVENT_LRELEASED;
+        clicked |= UI_WIDGET_EVENT_LCLICKED;
+        released |= UI_WIDGET_EVENT_LRELEASED;
     }
     if (button & INPUT_MOUSE_BUTTON_RIGHT) {
-        clicked |= BUI_WIDGET_EVENT_RCLICKED;
-        released |= BUI_WIDGET_EVENT_RRELEASED;
+        clicked |= UI_WIDGET_EVENT_RCLICKED;
+        released |= UI_WIDGET_EVENT_RRELEASED;
     }
     if (button & INPUT_MOUSE_BUTTON_MIDDLE) {
-        clicked |= BUI_WIDGET_EVENT_MCLICKED;
-        released |= BUI_WIDGET_EVENT_MRELEASED;
+        clicked |= UI_WIDGET_EVENT_MCLICKED;
+        released |= UI_WIDGET_EVENT_MRELEASED;
     }
 
     for (size_t i = 0; i < wctx->key_pairs_count; i++) {
         ui_widget_t *widget = wctx->key_pairs[i].widget;
-        if (!(widget->flags & BUI_WIDGET_FLAG_CLICKABLE))
+        if (!(widget->flags & UI_WIDGET_FLAG_CLICKABLE))
             continue;
 
         if (_ui_area_contains(widget->computed_area, mouse_state.pos_x, mouse_state.pos_y)) {
-            ui_widget_event_t event = BUI_WIDGET_EVENT_HOVERED | released;
+            ui_widget_event_t event = UI_WIDGET_EVENT_HOVERED | released;
 
             widget->last_event |= event;
             if (wctx->event_widget_id != widget->id)
-                wctx->event_widget_state = BUI_WIDGET_EVENT_NONE;
+                wctx->event_widget_state = UI_WIDGET_EVENT_NONE;
             wctx->event_widget_state &= ~clicked;
             wctx->event_widget_state |= event;
             wctx->event_widget_id = widget->id;
@@ -330,13 +329,13 @@ static void _ui_handle_mouse_hover(ui_wctx_t *wctx)
         ui_widget_t *widget = wctx->key_pairs[i].widget;
         if (_ui_area_contains(widget->computed_area, mouse_state.pos_x, mouse_state.pos_y)) {
             if (wctx->event_widget_id == widget->id
-                && (wctx->event_widget_state & BUI_WIDGET_EVENT_HOVERED))
+                && (wctx->event_widget_state & UI_WIDGET_EVENT_HOVERED))
                 return;
 
-            widget->last_event |= BUI_WIDGET_EVENT_HOVERED;
+            widget->last_event |= UI_WIDGET_EVENT_HOVERED;
             if (wctx->event_widget_id != widget->id)
-                wctx->event_widget_state = BUI_WIDGET_EVENT_NONE;
-            wctx->event_widget_state |= BUI_WIDGET_EVENT_HOVERED;
+                wctx->event_widget_state = UI_WIDGET_EVENT_NONE;
+            wctx->event_widget_state |= UI_WIDGET_EVENT_HOVERED;
             wctx->event_widget_id = widget->id;
             return;
         }
@@ -349,7 +348,7 @@ bool ui_pump_events(ui_ctx_t *ctx)
 {
     for (ui_wctx_t *current = ctx->first_window; current; current = current->next) {
         memset(&current->input_event, 0, sizeof(current->input_event));
-        current->input_event_type = BUI_EVENT_NONE;
+        current->input_event_type = UI_EVENT_NONE;
     }
 
     desktop_event_t event = {0};
@@ -380,14 +379,14 @@ bool ui_pump_events(ui_ctx_t *ctx)
     }
     if (wctx) {
         wctx->input_event = event;
-        wctx->input_event_type = BUI_EVENT_NONE;
+        wctx->input_event_type = UI_EVENT_NONE;
         wctx->needs_redraw = true;
     }
 
     if (event.type == DESKTOP_EVENT_WINDOW_CLOSED) {
         if (wctx) {
             wctx->close_requested = true;
-            wctx->state = BUI_WINDOW_STATE_PENDING;
+            wctx->state = UI_WINDOW_STATE_PENDING;
         }
         ctx->running = false;
         return false;
@@ -398,14 +397,15 @@ bool ui_pump_events(ui_ctx_t *ctx)
 
     switch (event.type) {
     case DESKTOP_EVENT_WINDOW_CREATED:
-        wctx->input_event_type = BUI_EVENT_WINDOW_CREATED;
+        wctx->input_event_type = UI_EVENT_WINDOW_CREATED;
         wctx->width = event.data.created.width;
         wctx->height = event.data.created.height;
         break;
     case DESKTOP_EVENT_WINDOW_RESIZED:
-        wctx->input_event_type = BUI_EVENT_WINDOW_RESIZED;
+        wctx->input_event_type = UI_EVENT_WINDOW_RESIZED;
         wctx->width = event.data.resized.new_width;
         wctx->height = event.data.resized.new_height;
+        _ui_clear_widget_event_state(wctx);
         break;
     case DESKTOP_EVENT_WINDOW_MOUSE: {
         uint8_t previous = wctx->previous_mouse_buttons;
@@ -416,13 +416,13 @@ bool ui_pump_events(ui_ctx_t *ctx)
 
         if (changed != 0) {
             if (current & changed) {
-                wctx->input_event_type = BUI_EVENT_MOUSE_BUTTON_DOWN;
+                wctx->input_event_type = UI_EVENT_MOUSE_BUTTON_DOWN;
             } else {
-                wctx->input_event_type = BUI_EVENT_MOUSE_BUTTON_UP;
+                wctx->input_event_type = UI_EVENT_MOUSE_BUTTON_UP;
             }
             wctx->mouse_state.pos_x = (uint32_t) event.data.mouse.mouse.x;
             wctx->mouse_state.pos_y = (uint32_t) event.data.mouse.mouse.y;
-            if (wctx->input_event_type == BUI_EVENT_MOUSE_BUTTON_DOWN) {
+            if (wctx->input_event_type == UI_EVENT_MOUSE_BUTTON_DOWN) {
                 wctx->mouse_state.buttons_state |= changed;
                 _ui_handle_click_event(wctx);
             } else {
@@ -432,7 +432,7 @@ bool ui_pump_events(ui_ctx_t *ctx)
                 _ui_handle_release_event(wctx, changed);
             }
         } else {
-            wctx->input_event_type = BUI_EVENT_MOUSE_MOVE;
+            wctx->input_event_type = UI_EVENT_MOUSE_MOVE;
             wctx->mouse_state.pos_x = (uint32_t) event.data.mouse.mouse.x;
             wctx->mouse_state.pos_y = (uint32_t) event.data.mouse.mouse.y;
             _ui_handle_mouse_hover(wctx);
@@ -443,20 +443,20 @@ bool ui_pump_events(ui_ctx_t *ctx)
         uint8_t scancode = event.data.keyboard.keyboard.scancode;
         switch (event.data.keyboard.keyboard.action) {
         case INPUT_KEYBOARD_ACTION_RELEASED:
-            wctx->input_event_type = BUI_EVENT_KEY_UP;
+            wctx->input_event_type = UI_EVENT_KEY_UP;
             if (scancode < 128)
-                wctx->keyboard_keys[scancode] = BUI_KEY_STATE_UP;
+                wctx->keyboard_keys[scancode] = UI_KEY_STATE_UP;
             break;
         case INPUT_KEYBOARD_ACTION_HOLD:
-            wctx->input_event_type = BUI_EVENT_KEY_HOLD;
+            wctx->input_event_type = UI_EVENT_KEY_HOLD;
             if (scancode < 128)
-                wctx->keyboard_keys[scancode] = BUI_KEY_STATE_HOLD;
+                wctx->keyboard_keys[scancode] = UI_KEY_STATE_HOLD;
             break;
         case INPUT_KEYBOARD_ACTION_PRESSED:
         default:
-            wctx->input_event_type = BUI_EVENT_KEY_DOWN;
+            wctx->input_event_type = UI_EVENT_KEY_DOWN;
             if (scancode < 128)
-                wctx->keyboard_keys[scancode] = BUI_KEY_STATE_DOWN;
+                wctx->keyboard_keys[scancode] = UI_KEY_STATE_DOWN;
             break;
         }
         break;
@@ -522,7 +522,7 @@ ui_widget_t *ui_push_new_parent(ui_wctx_t *wctx, ui_widget_t *parent)
     ui_widget_t *widget = ui_push_new_child(wctx, parent);
     if (widget == NULL)
         return NULL;
-    widget->flags |= BUI_WIDGET_FLAG_WITH_CHILDREN;
+    widget->flags |= UI_WIDGET_FLAG_WITH_CHILDREN;
     wctx->current_widget = widget;
     return widget;
 }
@@ -532,13 +532,13 @@ void ui_pop_widget(ui_wctx_t *wctx)
     if (wctx->current_widget == NULL || wctx->current_widget->parent == NULL)
         return;
     if (wctx->current_widget->first_child == NULL)
-        wctx->current_widget->flags &= ~BUI_WIDGET_FLAG_WITH_CHILDREN;
+        wctx->current_widget->flags &= ~UI_WIDGET_FLAG_WITH_CHILDREN;
     wctx->current_widget = wctx->current_widget->parent;
 }
 
 bool ui_begin_window(ui_wctx_t *wctx)
 {
-    if (wctx->state != BUI_WINDOW_STATE_ACTIVE || wctx->close_requested)
+    if (wctx->state != UI_WINDOW_STATE_ACTIVE || wctx->close_requested)
         return false;
     if (!wctx->needs_redraw)
         return false;
@@ -586,20 +586,20 @@ bool ui_begin_window(ui_wctx_t *wctx)
         *wctx->widget_tree = (ui_widget_t){
             .id = ui_hash_string("bui.root"),
             .semantic_size = {
-                [BUI_AXIS_X] = {
-                    .type = BUI_WIDGET_SIZE_TYPE_FIXED,
+                [UI_AXIS_X] = {
+                    .type = UI_WIDGET_SIZE_TYPE_FIXED,
                     .value = content_width,
                     .strictness = 1.0f,
                 },
-                [BUI_AXIS_Y] = {
-                    .type = BUI_WIDGET_SIZE_TYPE_FIXED,
+                [UI_AXIS_Y] = {
+                    .type = UI_WIDGET_SIZE_TYPE_FIXED,
                     .value = content_height,
                     .strictness = 1.0f,
                 },
             },
             .computed_size = {
-                [BUI_AXIS_X] = content_width,
-                [BUI_AXIS_Y] = content_height,
+                [UI_AXIS_X] = content_width,
+                [UI_AXIS_Y] = content_height,
             },
             .computed_area = {
                 .x = default_theme.inner_padding.l,
@@ -607,8 +607,8 @@ bool ui_begin_window(ui_wctx_t *wctx)
                 .width = content_width,
                 .height = content_height,
                 },
-            .flags = BUI_WIDGET_FLAG_WITH_CHILDREN,
-            .layout_axis = BUI_AXIS_Y,
+            .flags = UI_WIDGET_FLAG_WITH_CHILDREN,
+            .layout_axis = UI_AXIS_Y,
         };
         wctx->current_widget = wctx->widget_tree;
     }
@@ -634,7 +634,7 @@ bool ui_end_window(ui_wctx_t *wctx)
 
     gfx_end_frame(&wctx->gfx_context);
     desktop_present_window((uint16_t) wctx->window_id);
-    wctx->needs_redraw = wctx->input_event_type != BUI_EVENT_NONE;
+    wctx->needs_redraw = wctx->input_event_type != UI_EVENT_NONE;
     return true;
 }
 
@@ -642,6 +642,12 @@ bool ui_is_mouse_in_area(ui_wctx_t *wctx, gfx_area_t area)
 {
     return wctx->mouse_state.pos_x >= area.x && wctx->mouse_state.pos_x < area.x + area.width
            && wctx->mouse_state.pos_y >= area.y && wctx->mouse_state.pos_y < area.y + area.height;
+}
+
+bool ui_is_widget_hovered(ui_wctx_t *wctx, ui_widget_t *widget)
+{
+    return wctx != NULL && widget != NULL && wctx->event_widget_id == widget->id
+           && (wctx->event_widget_state & UI_WIDGET_EVENT_HOVERED);
 }
 
 gfx_pos_t ui_get_mouse_pos(ui_wctx_t *wctx)
@@ -657,122 +663,56 @@ bool ui_is_mouse_button_down(ui_wctx_t *wctx, input_mouse_buttons_t button)
 bool ui_is_key_down(ui_wctx_t *wctx, input_keyboard_scancode_t keycode)
 {
     return wctx && keycode < 128
-           && (wctx->keyboard_keys[keycode] == BUI_KEY_STATE_DOWN
-               || wctx->keyboard_keys[keycode] == BUI_KEY_STATE_HOLD);
+           && (wctx->keyboard_keys[keycode] == UI_KEY_STATE_DOWN
+               || wctx->keyboard_keys[keycode] == UI_KEY_STATE_HOLD);
 }
 
 bool ui_is_key_up(ui_wctx_t *wctx, input_keyboard_scancode_t keycode)
 {
-    return !wctx || keycode >= 128 || wctx->keyboard_keys[keycode] == BUI_KEY_STATE_UP;
+    return !wctx || keycode >= 128 || wctx->keyboard_keys[keycode] == UI_KEY_STATE_UP;
 }
 
 char ui_char_from_key_scancode(ui_wctx_t *wctx, input_keyboard_scancode_t key)
 {
-    if (ui_is_key_down(wctx, INPUT_KEY_LCTRL)
-        || ui_is_key_down(wctx, INPUT_KEY_LALT))
+    if (ui_is_key_down(wctx, INPUT_KEY_LCTRL) || ui_is_key_down(wctx, INPUT_KEY_LALT))
         return '\0';
 
-    bool shifted = ui_is_key_down(wctx, INPUT_KEY_LSHIFT)
-                   || ui_is_key_down(wctx, INPUT_KEY_RSHIFT);
+    bool shifted = ui_is_key_down(wctx, INPUT_KEY_LSHIFT) || ui_is_key_down(wctx, INPUT_KEY_RSHIFT);
     static const char normal[128] = {
-        [INPUT_KEY_A] = 'a',
-        [INPUT_KEY_B] = 'b',
-        [INPUT_KEY_C] = 'c',
-        [INPUT_KEY_D] = 'd',
-        [INPUT_KEY_E] = 'e',
-        [INPUT_KEY_F] = 'f',
-        [INPUT_KEY_G] = 'g',
-        [INPUT_KEY_H] = 'h',
-        [INPUT_KEY_I] = 'i',
-        [INPUT_KEY_J] = 'j',
-        [INPUT_KEY_K] = 'k',
-        [INPUT_KEY_L] = 'l',
-        [INPUT_KEY_M] = 'm',
-        [INPUT_KEY_N] = 'n',
-        [INPUT_KEY_O] = 'o',
-        [INPUT_KEY_P] = 'p',
-        [INPUT_KEY_Q] = 'q',
-        [INPUT_KEY_R] = 'r',
-        [INPUT_KEY_S] = 's',
-        [INPUT_KEY_T] = 't',
-        [INPUT_KEY_U] = 'u',
-        [INPUT_KEY_V] = 'v',
-        [INPUT_KEY_W] = 'w',
-        [INPUT_KEY_X] = 'x',
-        [INPUT_KEY_Y] = 'y',
-        [INPUT_KEY_Z] = 'z',
-        [INPUT_KEY_1] = '1',
-        [INPUT_KEY_2] = '2',
-        [INPUT_KEY_3] = '3',
-        [INPUT_KEY_4] = '4',
-        [INPUT_KEY_5] = '5',
-        [INPUT_KEY_6] = '6',
-        [INPUT_KEY_7] = '7',
-        [INPUT_KEY_8] = '8',
-        [INPUT_KEY_9] = '9',
-        [INPUT_KEY_0] = '0',
-        [INPUT_KEY_SPACE] = ' ',
-        [INPUT_KEY_MINUS] = '-',
-        [INPUT_KEY_EQUALS] = '=',
-        [INPUT_KEY_LBRACKET] = '[',
-        [INPUT_KEY_RBRACKET] = ']',
-        [INPUT_KEY_BACKSLASH] = '\\',
-        [INPUT_KEY_SEMICOLON] = ';',
-        [INPUT_KEY_APOSTROPHE] = '\'',
-        [INPUT_KEY_BACKTICK] = '`',
-        [INPUT_KEY_COMMA] = ',',
-        [INPUT_KEY_PERIOD] = '.',
-        [INPUT_KEY_SLASH] = '/',
+        [INPUT_KEY_A] = 'a',         [INPUT_KEY_B] = 'b',           [INPUT_KEY_C] = 'c',
+        [INPUT_KEY_D] = 'd',         [INPUT_KEY_E] = 'e',           [INPUT_KEY_F] = 'f',
+        [INPUT_KEY_G] = 'g',         [INPUT_KEY_H] = 'h',           [INPUT_KEY_I] = 'i',
+        [INPUT_KEY_J] = 'j',         [INPUT_KEY_K] = 'k',           [INPUT_KEY_L] = 'l',
+        [INPUT_KEY_M] = 'm',         [INPUT_KEY_N] = 'n',           [INPUT_KEY_O] = 'o',
+        [INPUT_KEY_P] = 'p',         [INPUT_KEY_Q] = 'q',           [INPUT_KEY_R] = 'r',
+        [INPUT_KEY_S] = 's',         [INPUT_KEY_T] = 't',           [INPUT_KEY_U] = 'u',
+        [INPUT_KEY_V] = 'v',         [INPUT_KEY_W] = 'w',           [INPUT_KEY_X] = 'x',
+        [INPUT_KEY_Y] = 'y',         [INPUT_KEY_Z] = 'z',           [INPUT_KEY_1] = '1',
+        [INPUT_KEY_2] = '2',         [INPUT_KEY_3] = '3',           [INPUT_KEY_4] = '4',
+        [INPUT_KEY_5] = '5',         [INPUT_KEY_6] = '6',           [INPUT_KEY_7] = '7',
+        [INPUT_KEY_8] = '8',         [INPUT_KEY_9] = '9',           [INPUT_KEY_0] = '0',
+        [INPUT_KEY_SPACE] = ' ',     [INPUT_KEY_MINUS] = '-',       [INPUT_KEY_EQUALS] = '=',
+        [INPUT_KEY_LBRACKET] = '[',  [INPUT_KEY_RBRACKET] = ']',    [INPUT_KEY_BACKSLASH] = '\\',
+        [INPUT_KEY_SEMICOLON] = ';', [INPUT_KEY_APOSTROPHE] = '\'', [INPUT_KEY_BACKTICK] = '`',
+        [INPUT_KEY_COMMA] = ',',     [INPUT_KEY_PERIOD] = '.',      [INPUT_KEY_SLASH] = '/',
     };
     static const char shifted_chars[128] = {
-        [INPUT_KEY_A] = 'A',
-        [INPUT_KEY_B] = 'B',
-        [INPUT_KEY_C] = 'C',
-        [INPUT_KEY_D] = 'D',
-        [INPUT_KEY_E] = 'E',
-        [INPUT_KEY_F] = 'F',
-        [INPUT_KEY_G] = 'G',
-        [INPUT_KEY_H] = 'H',
-        [INPUT_KEY_I] = 'I',
-        [INPUT_KEY_J] = 'J',
-        [INPUT_KEY_K] = 'K',
-        [INPUT_KEY_L] = 'L',
-        [INPUT_KEY_M] = 'M',
-        [INPUT_KEY_N] = 'N',
-        [INPUT_KEY_O] = 'O',
-        [INPUT_KEY_P] = 'P',
-        [INPUT_KEY_Q] = 'Q',
-        [INPUT_KEY_R] = 'R',
-        [INPUT_KEY_S] = 'S',
-        [INPUT_KEY_T] = 'T',
-        [INPUT_KEY_U] = 'U',
-        [INPUT_KEY_V] = 'V',
-        [INPUT_KEY_W] = 'W',
-        [INPUT_KEY_X] = 'X',
-        [INPUT_KEY_Y] = 'Y',
-        [INPUT_KEY_Z] = 'Z',
-        [INPUT_KEY_1] = '!',
-        [INPUT_KEY_2] = '@',
-        [INPUT_KEY_3] = '#',
-        [INPUT_KEY_4] = '$',
-        [INPUT_KEY_5] = '%',
-        [INPUT_KEY_6] = '^',
-        [INPUT_KEY_7] = '&',
-        [INPUT_KEY_8] = '*',
-        [INPUT_KEY_9] = '(',
-        [INPUT_KEY_0] = ')',
-        [INPUT_KEY_SPACE] = ' ',
-        [INPUT_KEY_MINUS] = '_',
-        [INPUT_KEY_EQUALS] = '+',
-        [INPUT_KEY_LBRACKET] = '{',
-        [INPUT_KEY_RBRACKET] = '}',
-        [INPUT_KEY_BACKSLASH] = '|',
-        [INPUT_KEY_SEMICOLON] = ':',
-        [INPUT_KEY_APOSTROPHE] = '"',
-        [INPUT_KEY_BACKTICK] = '~',
-        [INPUT_KEY_COMMA] = '<',
-        [INPUT_KEY_PERIOD] = '>',
-        [INPUT_KEY_SLASH] = '?',
+        [INPUT_KEY_A] = 'A',         [INPUT_KEY_B] = 'B',          [INPUT_KEY_C] = 'C',
+        [INPUT_KEY_D] = 'D',         [INPUT_KEY_E] = 'E',          [INPUT_KEY_F] = 'F',
+        [INPUT_KEY_G] = 'G',         [INPUT_KEY_H] = 'H',          [INPUT_KEY_I] = 'I',
+        [INPUT_KEY_J] = 'J',         [INPUT_KEY_K] = 'K',          [INPUT_KEY_L] = 'L',
+        [INPUT_KEY_M] = 'M',         [INPUT_KEY_N] = 'N',          [INPUT_KEY_O] = 'O',
+        [INPUT_KEY_P] = 'P',         [INPUT_KEY_Q] = 'Q',          [INPUT_KEY_R] = 'R',
+        [INPUT_KEY_S] = 'S',         [INPUT_KEY_T] = 'T',          [INPUT_KEY_U] = 'U',
+        [INPUT_KEY_V] = 'V',         [INPUT_KEY_W] = 'W',          [INPUT_KEY_X] = 'X',
+        [INPUT_KEY_Y] = 'Y',         [INPUT_KEY_Z] = 'Z',          [INPUT_KEY_1] = '!',
+        [INPUT_KEY_2] = '@',         [INPUT_KEY_3] = '#',          [INPUT_KEY_4] = '$',
+        [INPUT_KEY_5] = '%',         [INPUT_KEY_6] = '^',          [INPUT_KEY_7] = '&',
+        [INPUT_KEY_8] = '*',         [INPUT_KEY_9] = '(',          [INPUT_KEY_0] = ')',
+        [INPUT_KEY_SPACE] = ' ',     [INPUT_KEY_MINUS] = '_',      [INPUT_KEY_EQUALS] = '+',
+        [INPUT_KEY_LBRACKET] = '{',  [INPUT_KEY_RBRACKET] = '}',   [INPUT_KEY_BACKSLASH] = '|',
+        [INPUT_KEY_SEMICOLON] = ':', [INPUT_KEY_APOSTROPHE] = '"', [INPUT_KEY_BACKTICK] = '~',
+        [INPUT_KEY_COMMA] = '<',     [INPUT_KEY_PERIOD] = '>',     [INPUT_KEY_SLASH] = '?',
     };
 
     if (key >= sizeof(normal))
@@ -865,8 +805,7 @@ void ui_push_id(ui_wctx_t *wctx, ui_id_t id, ui_widget_t *widget)
         wctx->key_pairs = malloc(wctx->key_pairs_capacity * sizeof(ui_key_pair_t));
     } else if (wctx->key_pairs_count == wctx->key_pairs_capacity) {
         wctx->key_pairs_capacity *= 2;
-        wctx->key_pairs
-            = realloc(wctx->key_pairs, wctx->key_pairs_capacity * sizeof(ui_key_pair_t));
+        wctx->key_pairs = realloc(wctx->key_pairs, wctx->key_pairs_capacity * sizeof(ui_key_pair_t));
     }
     widget->id = id;
     ui_widget_t *prev = _ui_find_widget_by_id(wctx->prev_widget_tree, id);

@@ -24,21 +24,21 @@ static inline ui_widget_size_t ui_size_to_semantic(uint32_t size, float fixed_st
 {
     if (size == 0) {
         return (ui_widget_size_t){
-            .type = BUI_WIDGET_SIZE_TYPE_CHILDREN_SUM,
+            .type = UI_WIDGET_SIZE_TYPE_CHILDREN_SUM,
             .strictness = 1.0f,
         };
     }
 
     if (size == UINT32_MAX) {
         return (ui_widget_size_t){
-            .type = BUI_WIDGET_SIZE_TYPE_PERCENTAGE,
+            .type = UI_WIDGET_SIZE_TYPE_PERCENTAGE,
             .value = 1.0f,
             .strictness = 0.0f,
         };
     }
 
     return (ui_widget_size_t){
-        .type = BUI_WIDGET_SIZE_TYPE_FIXED,
+        .type = UI_WIDGET_SIZE_TYPE_FIXED,
         .value = size,
         .strictness = fixed_strictness,
     };

@@ -9,9 +9,9 @@
 static ui_widget_event_t _consume_button_event(ui_wctx_t *wctx, ui_id_t id)
 {
     if (wctx->event_widget_id != id)
-        return BUI_WIDGET_EVENT_NONE;
+        return UI_WIDGET_EVENT_NONE;
     ui_widget_event_t event = wctx->event_widget_state;
-    wctx->event_widget_state &= BUI_WIDGET_EVENT_HOVERED;
+    wctx->event_widget_state &= UI_WIDGET_EVENT_HOVERED;
     return event;
 }
 
@@ -22,7 +22,7 @@ static void _draw_button(ui_wctx_t *ctx, ui_widget_t *widget)
                                     ? widget->computed_area.height - text_area.height
                                     : 0;
     uint32_t text_y = widget->computed_area.y + available_height / 2 + text_area.y;
-    gfx_color_t fill_color = ui_is_mouse_in_area(ctx, widget->computed_area)
+    gfx_color_t fill_color = ui_is_widget_hovered(ctx, widget)
                                  ? (gfx_color_t){0xFF, 0x30, 0x30, 0x30}
                                  : widget->theme->background_color;
     gfx_draw_filled_rect(
@@ -69,18 +69,18 @@ ui_widget_event_t ui_button(ui_wctx_t *wctx, const char *label)
         gfx_area_t text_area = gfx_get_text_area(theme->font, label);
         uint32_t text_height = gfx_get_text_height(theme->font, label);
         ui_widget_t widget = {
-            .flags = BUI_WIDGET_FLAG_CLICKABLE,
+            .flags = UI_WIDGET_FLAG_CLICKABLE,
             .theme = theme,
             .label = label,
             .semantic_size = {
-                [BUI_AXIS_X] = {
-                    .type = BUI_WIDGET_SIZE_TYPE_FIXED,
+                [UI_AXIS_X] = {
+                    .type = UI_WIDGET_SIZE_TYPE_FIXED,
                     .value = text_area.width + theme->inner_padding.l
                              + theme->inner_padding.r,
                     .strictness = 1.0f,
                 },
-                [BUI_AXIS_Y] = {
-                    .type = BUI_WIDGET_SIZE_TYPE_FIXED,
+                [UI_AXIS_Y] = {
+                    .type = UI_WIDGET_SIZE_TYPE_FIXED,
                     .value = text_height + theme->inner_padding.t + theme->inner_padding.b,
                     .strictness = 1.0f,
                 },

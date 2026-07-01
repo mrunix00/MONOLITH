@@ -10,7 +10,7 @@
 #include <libgfx.h>
 #include <libui/memory.h>
 
-#define BUI_TEXT_INPUT_MAX 32
+#define UI_TEXT_INPUT_MAX 32
 
 #ifndef STB_TEXTEDIT_CHARTYPE
 #define STB_TEXTEDIT_CHARTYPE char
@@ -26,22 +26,22 @@ typedef struct _ui_theme ui_theme_t;
 typedef uint32_t ui_id_t;
 
 typedef enum {
-    BUI_KEY_STATE_UP = 0,
-    BUI_KEY_STATE_DOWN = 1,
-    BUI_KEY_STATE_HOLD = 2,
+    UI_KEY_STATE_UP = 0,
+    UI_KEY_STATE_DOWN = 1,
+    UI_KEY_STATE_HOLD = 2,
 } ui_key_state_t;
 
 typedef enum {
-    BUI_EVENT_NONE = 0,
-    BUI_EVENT_WINDOW_CREATED,
-    BUI_EVENT_WINDOW_RESIZED,
-    BUI_EVENT_WINDOW_CLOSED,
-    BUI_EVENT_KEY_DOWN,
-    BUI_EVENT_KEY_HOLD,
-    BUI_EVENT_KEY_UP,
-    BUI_EVENT_MOUSE_MOVE,
-    BUI_EVENT_MOUSE_BUTTON_DOWN,
-    BUI_EVENT_MOUSE_BUTTON_UP,
+    UI_EVENT_NONE = 0,
+    UI_EVENT_WINDOW_CREATED,
+    UI_EVENT_WINDOW_RESIZED,
+    UI_EVENT_WINDOW_CLOSED,
+    UI_EVENT_KEY_DOWN,
+    UI_EVENT_KEY_HOLD,
+    UI_EVENT_KEY_UP,
+    UI_EVENT_MOUSE_MOVE,
+    UI_EVENT_MOUSE_BUTTON_DOWN,
+    UI_EVENT_MOUSE_BUTTON_UP,
 } ui_event_type_t;
 
 typedef struct
@@ -50,16 +50,16 @@ typedef struct
 } ui_rtlb_t;
 
 typedef enum {
-    BUI_AXIS_X = 0,
-    BUI_AXIS_Y = 1,
-    BUI_AXIS2_COUNT = 2,
+    UI_AXIS_X = 0,
+    UI_AXIS_Y = 1,
+    UI_AXIS2_COUNT = 2,
 } ui_axis_t;
 
 typedef enum {
-    BUI_WIDGET_SIZE_TYPE_NONE = 0,
-    BUI_WIDGET_SIZE_TYPE_FIXED,
-    BUI_WIDGET_SIZE_TYPE_PERCENTAGE,
-    BUI_WIDGET_SIZE_TYPE_CHILDREN_SUM,
+    UI_WIDGET_SIZE_TYPE_NONE = 0,
+    UI_WIDGET_SIZE_TYPE_FIXED,
+    UI_WIDGET_SIZE_TYPE_PERCENTAGE,
+    UI_WIDGET_SIZE_TYPE_CHILDREN_SUM,
 } ui_widget_size_type_t;
 
 typedef struct
@@ -70,9 +70,9 @@ typedef struct
 } ui_widget_size_t;
 
 typedef enum {
-    BUI_WINDOW_STATE_ERROR = -1,
-    BUI_WINDOW_STATE_PENDING = 0,
-    BUI_WINDOW_STATE_ACTIVE = 1,
+    UI_WINDOW_STATE_ERROR = -1,
+    UI_WINDOW_STATE_PENDING = 0,
+    UI_WINDOW_STATE_ACTIVE = 1,
 } ui_window_state;
 
 
@@ -109,11 +109,21 @@ struct _ui_theme
 };
 
 typedef enum {
-    BUI_WIDGET_FLAG_CLICKABLE = 1 << 0,
-    BUI_WIDGET_FLAG_WITH_CHILDREN = 1 << 1,
-    BUI_WIDGET_FLAG_PADDED = 1 << 2,
-    BUI_WIDGET_FLAG_SCROLLABLE = 1 << 3,
+    UI_WIDGET_FLAG_CLICKABLE = 1 << 0,
+    UI_WIDGET_FLAG_WITH_CHILDREN = 1 << 1,
+    UI_WIDGET_FLAG_PADDED = 1 << 2,
+    UI_WIDGET_FLAG_SCROLLABLE = 1 << 3,
+    UI_WIDGET_FLAG_TEXT = 1 << 4,
 } ui_widget_flags_t;
+
+typedef enum {
+    UI_TEXT_LEFT = 1 << 0,
+    UI_TEXT_CENTER = 1 << 1,
+    UI_TEXT_RIGHT = 1 << 2,
+    UI_TEXT_WRAP = 1 << 3,
+    UI_TEXT_FILL_HORIZONTAL = 1 << 4,
+    UI_TEXT_FILL_VERTICAL = 1 << 5,
+} ui_text_flags_t;
 
 typedef struct
 {
@@ -122,14 +132,14 @@ typedef struct
 } ui_key_pair_t;
 
 typedef enum {
-    BUI_WIDGET_EVENT_NONE = 0,
-    BUI_WIDGET_EVENT_HOVERED = 1 << 0,
-    BUI_WIDGET_EVENT_RCLICKED = 1 << 1,
-    BUI_WIDGET_EVENT_LCLICKED = 1 << 2,
-    BUI_WIDGET_EVENT_MCLICKED = 1 << 3,
-    BUI_WIDGET_EVENT_RRELEASED = 1 << 4,
-    BUI_WIDGET_EVENT_LRELEASED = 1 << 5,
-    BUI_WIDGET_EVENT_MRELEASED = 1 << 6,
+    UI_WIDGET_EVENT_NONE = 0,
+    UI_WIDGET_EVENT_HOVERED = 1 << 0,
+    UI_WIDGET_EVENT_RCLICKED = 1 << 1,
+    UI_WIDGET_EVENT_LCLICKED = 1 << 2,
+    UI_WIDGET_EVENT_MCLICKED = 1 << 3,
+    UI_WIDGET_EVENT_RRELEASED = 1 << 4,
+    UI_WIDGET_EVENT_LRELEASED = 1 << 5,
+    UI_WIDGET_EVENT_MRELEASED = 1 << 6,
 } ui_widget_event_t;
 
 struct _ui_widget
@@ -144,8 +154,8 @@ struct _ui_widget
     ui_theme_t *theme;
     void (*draw)(ui_wctx_t *ctx, ui_widget_t *widget);
 
-    ui_widget_size_t semantic_size[BUI_AXIS2_COUNT];
-    uint32_t computed_size[BUI_AXIS2_COUNT];
+    ui_widget_size_t semantic_size[UI_AXIS2_COUNT];
+    uint32_t computed_size[UI_AXIS2_COUNT];
     gfx_area_t computed_area;
     ui_id_t id;
     ui_widget_event_t last_event;
@@ -153,6 +163,7 @@ struct _ui_widget
     uint32_t scroll_x, scroll_y;
 
     ui_widget_flags_t flags;
+    ui_text_flags_t text_flags;
     ui_axis_t layout_axis;
 };
 

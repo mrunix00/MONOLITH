@@ -12,12 +12,12 @@
 extern "C" {
 #endif
 
-#define BUI_THEME(window, theme, body) \
+#define UI_THEME(window, theme, body) \
     ui_push_theme(window, theme); \
     {body}; \
     ui_pop_theme(window)
 
-#define BUI_WINDOW(window, body) \
+#define UI_WINDOW(window, body) \
     do { \
         if (ui_begin_window(window)) { \
             {body}; \
@@ -33,6 +33,7 @@ void ui_autolayout(ui_wctx_t *wctx);
 bool ui_is_mouse_button_down(ui_wctx_t *wctx, input_mouse_buttons_t button);
 gfx_pos_t ui_get_mouse_pos(ui_wctx_t *wctx);
 bool ui_is_mouse_in_area(ui_wctx_t *wctx, gfx_area_t area);
+bool ui_is_widget_hovered(ui_wctx_t *wctx, ui_widget_t *widget);
 
 bool ui_is_key_down(ui_wctx_t *wctx, input_keyboard_scancode_t keycode);
 bool ui_is_key_up(ui_wctx_t *wctx, input_keyboard_scancode_t keycode);

@@ -8,7 +8,7 @@
 #include <libui/types.h>
 #include <stdint.h>
 
-#define BUI_COLUMN(window, width, height, body) \
+#define UI_COLUMN(window, width, height, body) \
     ui_begin_column(window, width, height); \
     {body}; \
     ui_end_column(window)

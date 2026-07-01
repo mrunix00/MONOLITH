@@ -7,7 +7,7 @@
 
 #include <libui/types.h>
 
-#define BUI_ROW(window, width, height, body) \
+#define UI_ROW(window, width, height, body) \
     ui_begin_row(window, width, height); \
     {body}; \
     ui_end_row(window)

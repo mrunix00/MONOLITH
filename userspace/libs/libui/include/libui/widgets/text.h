@@ -7,4 +7,4 @@
 
 #include <libui/types.h>
 
-void ui_text(ui_wctx_t *wctx, const char *text);
+void ui_text(ui_wctx_t *wctx, const char *text, ui_text_flags_t flags);
