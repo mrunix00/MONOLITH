@@ -173,7 +173,7 @@ static void _free_packet(_ipc_packet_t *packet)
     if (packet == NULL)
         return;
     if (packet->resource != NULL && packet->resource->refcount > 0)
-        packet->resource->refcount--;
+        rsmgr_unref(packet->resource);
     kfree(packet);
 }
 

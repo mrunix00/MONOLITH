@@ -200,6 +200,18 @@ static rsrc_status_t _shm_describe_op(rsrc_t *resource, rsrc_info_t *out_info)
     return RSRC_STATUS_OK;
 }
 
+static void _shm_destroy_op(rsrc_t *resource)
+{
+    if (resource == NULL || resource->type_state == NULL)
+        return;
+
+    _shm_object_t *object = (_shm_object_t *) resource->type_state;
+    if (object->phys_addr != 0 && object->page_count > 0)
+        pmm_free((void *) object->phys_addr, object->page_count);
+    kfree(object);
+    resource->type_state = NULL;
+}
+
 rsrc_status_t shm_create(const char *name, size_t size, rsrc_t **out_resource)
 {
     if (size == 0 || out_resource == NULL)
@@ -257,7 +269,7 @@ static const rsrc_ops_t _shm_ops = {
     .lookup = NULL,
     .dup_handle = NULL,
     .close_handle = NULL,
-    .destroy = NULL,
+    .destroy = _shm_destroy_op,
     .describe = _shm_describe_op,
     .seek = _shm_seek_op,
     .list = _shm_list_op,

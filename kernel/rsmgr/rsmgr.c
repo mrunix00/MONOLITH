@@ -395,6 +395,20 @@ void rsmgr_ref(rsrc_t *resource)
     resource->refcount++;
 }
 
+static void _rsmgr_destroy_if_unreferenced(rsrc_t *resource)
+{
+    if (resource == NULL || resource->refcount > 0 || resource->node != NULL)
+        return;
+
+    if (resource->ops != NULL && resource->ops->destroy != NULL)
+        resource->ops->destroy(resource);
+
+    if (resource->header.id < _rsrc_list_capacity)
+        _rsrc_list[resource->header.id] = NULL;
+    idalloc_free(&_rsrc_idalloc, resource->header.id);
+    kfree(resource);
+}
+
 void rsmgr_unref(rsrc_t *resource)
 {
     if (resource == NULL)
@@ -402,6 +416,7 @@ void rsmgr_unref(rsrc_t *resource)
     if (!debug_assert(resource->refcount > 0))
         return;
     resource->refcount--;
+    _rsmgr_destroy_if_unreferenced(resource);
 }
 
 rsrc_status_t rsmgr_normalize_global_path(const char *path, char *path_out, size_t buffer_size)
@@ -649,10 +664,13 @@ rsrc_status_t rsmgr_handle_table_close(rsrc_handle_table_t *table, int fd)
     if (entry->resource->ops != NULL && entry->resource->ops->close_handle != NULL)
         entry->resource->ops->close_handle(entry->resource, NULL);
 
+    rsrc_t *resource = entry->resource;
+
     /* Drop reference */
-    entry->resource->refcount--;
+    resource->refcount--;
     entry->resource = NULL;
     entry->offset = 0;
+    _rsmgr_destroy_if_unreferenced(resource);
 
     /* Shrink count if closing last entries */
     while (table->count > 0 && table->entries[table->count - 1].resource == NULL)
@@ -671,6 +689,7 @@ void rsmgr_handle_table_destroy(rsrc_handle_table_t *table)
                     current_rsrc->ops->close_handle(current_rsrc, NULL);
                 current_rsrc->refcount--;
                 table->entries[i].resource = NULL;
+                _rsmgr_destroy_if_unreferenced(current_rsrc);
             }
         }
         kfree(table->entries);
